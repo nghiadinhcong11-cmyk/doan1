@@ -26,6 +26,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         [HttpGet("summary")]
         public async Task<IActionResult> GetSummary()
         {
+            // Kiểm tra cache trước để trả về ngay lập tức
             if (_cache.TryGetValue(DashboardCacheKey, out object? cachedData))
             {
                 return Ok(cachedData);
@@ -37,22 +38,28 @@ namespace RestaurantPOS.WebAPI.Controllers
                 var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
                 var todayEnd = todayStart.AddDays(1);
 
-                // Gửi các yêu cầu Database song song
-                var revenueTask = _context.Orders.AsNoTracking()
-                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
-                    .SumAsync(o => (decimal?)o.PaidAmount);
+                // EF Core DbContext KHÔNG hỗ trợ chạy song song trên cùng 1 instance.
+                // Chúng ta phải await tuần tự. Việc tối ưu tốc độ sẽ dựa vào IMemoryCache và AsNoTracking.
 
-                var countTask = _context.Orders.AsNoTracking()
+                // 1. Doanh thu hôm nay
+                var todayRevenue = await _context.Orders.AsNoTracking()
+                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
+                    .SumAsync(o => (decimal?)o.PaidAmount) ?? 0m;
+
+                // 2. Số lượng đơn hôm nay
+                var totalOrders = await _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd)
                     .CountAsync();
 
-                var customerTask = _context.Orders.AsNoTracking()
+                // 3. Lượng khách hàng
+                var customerCount = await _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.CustomerName != "Khách lẻ")
                     .Select(o => o.CustomerName)
                     .Distinct()
                     .CountAsync();
 
-                var recentTask = _context.Orders.AsNoTracking()
+                // 4. Hoạt động gần đây
+                var recentOrders = await _context.Orders.AsNoTracking()
                     .OrderByDescending(o => o.CreatedAt)
                     .Take(5)
                     .Select(o => new {
@@ -64,10 +71,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                     })
                     .ToListAsync();
 
-                await Task.WhenAll(revenueTask, countTask, customerTask, recentTask);
-
-                var todayRevenue = (await revenueTask) ?? 0m;
-
+                // 5. Top mặt hàng bán chạy
                 var topProducts = await _context.OrderDetails.AsNoTracking()
                     .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId")
                                                         && o.CreatedAt >= todayStart
@@ -84,6 +88,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                     .Take(5)
                     .ToListAsync();
 
+                // 6. Dữ liệu biểu đồ
                 var ordersToday = await _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
                     .Select(o => new { o.CreatedAt, o.PaidAmount })
@@ -102,14 +107,15 @@ namespace RestaurantPOS.WebAPI.Controllers
                 var result = new
                 {
                     TodayRevenue = todayRevenue,
-                    TotalOrders = await countTask,
-                    CustomerCount = await customerTask,
+                    TotalOrders = totalOrders,
+                    CustomerCount = customerCount,
                     TopProducts = topProducts,
                     ChartData = chartData,
-                    RecentOrders = await recentTask,
+                    RecentOrders = recentOrders,
                     EstimatedProfit = todayRevenue * 0.4m
                 };
 
+                // Lưu vào cache trong 2 phút để các lần load sau cực nhanh
                 var cacheOptions = new MemoryCacheEntryOptions()
                     .SetAbsoluteExpiration(TimeSpan.FromMinutes(2));
                 _cache.Set(DashboardCacheKey, result, cacheOptions);

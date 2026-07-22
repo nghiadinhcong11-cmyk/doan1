@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Infrastructure.Persistence;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -12,34 +14,62 @@ namespace RestaurantPOS.WebAPI.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IMemoryCache _cache;
+        private const string DashboardCacheKey = "DashboardSummary";
 
-        public DashboardController(ApplicationDbContext context)
+        public DashboardController(ApplicationDbContext context, IMemoryCache cache)
         {
             _context = context;
+            _cache = cache;
         }
 
         [HttpGet("summary")]
         public async Task<IActionResult> GetSummary()
         {
+            // Kiểm tra cache trước để trả về ngay lập tức (trễ tối đa 2 phút)
+            if (_cache.TryGetValue(DashboardCacheKey, out object cachedData))
+            {
+                return Ok(cachedData);
+            }
+
             try
             {
                 var now = DateTime.UtcNow;
                 var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
                 var todayEnd = todayStart.AddDays(1);
 
-                // 1. Doanh thu hôm nay
-                var todayRevenue = await _context.Orders
+                // Chạy tất cả các truy vấn song song để giảm thời gian chờ
+                var revenueTask = _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
-                    .SumAsync(o => o.PaidAmount);
+                    .SumAsync(o => (decimal?)o.PaidAmount) ?? Task.FromResult(0m);
 
-                // 2. Số lượng đơn hôm nay
-                var totalOrders = await _context.Orders
+                var countTask = _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd)
                     .CountAsync();
 
-                // 3. Top mặt hàng bán chạy hôm nay
-                // Sử dụng cách truy vấn đơn giản hơn, không dùng Include trên ProductId (vì nó là Guid, không phải navigation property)
-                var topProducts = await _context.OrderDetails
+                var customerTask = _context.Orders.AsNoTracking()
+                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.CustomerName != "Khách lẻ")
+                    .Select(o => o.CustomerName)
+                    .Distinct()
+                    .CountAsync();
+
+                var recentTask = _context.Orders.AsNoTracking()
+                    .OrderByDescending(o => o.CreatedAt)
+                    .Take(5)
+                    .Select(o => new {
+                        o.InvoiceCode,
+                        o.CustomerName,
+                        o.TotalAmount,
+                        o.CreatedAt,
+                        o.TableName
+                    })
+                    .ToListAsync();
+
+                // Đợi tất cả hoàn thành cùng lúc
+                await Task.WhenAll(revenueTask, countTask, customerTask, recentTask);
+
+                // Các truy vấn phức tạp hơn vẫn chạy tuần tự hoặc tối ưu riêng
+                var topProducts = await _context.OrderDetails.AsNoTracking()
                     .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId")
                                                         && o.CreatedAt >= todayStart
                                                         && o.CreatedAt < todayEnd
@@ -55,15 +85,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                     .Take(5)
                     .ToListAsync();
 
-                // 4. Lượng khách hàng (Số hóa đơn có tên khách khác "Khách lẻ")
-                var customerCount = await _context.Orders
-                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.CustomerName != "Khách lẻ")
-                    .Select(o => o.CustomerName)
-                    .Distinct()
-                    .CountAsync();
-
-                // 5. Doanh thu theo giờ (Cho biểu đồ)
-                var ordersToday = await _context.Orders
+                var ordersToday = await _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
                     .Select(o => new { o.CreatedAt, o.PaidAmount })
                     .ToListAsync();
@@ -78,29 +100,23 @@ namespace RestaurantPOS.WebAPI.Controllers
                     .OrderBy(g => g.Time)
                     .ToList();
 
-                // 6. Hoạt động gần đây (5 hóa đơn mới nhất)
-                var recentOrders = await _context.Orders
-                    .OrderByDescending(o => o.CreatedAt)
-                    .Take(5)
-                    .Select(o => new {
-                        o.InvoiceCode,
-                        o.CustomerName,
-                        o.TotalAmount,
-                        o.CreatedAt,
-                        o.TableName
-                    })
-                    .ToListAsync();
-
-                return Ok(new
+                var result = new
                 {
-                    TodayRevenue = todayRevenue,
-                    TotalOrders = totalOrders,
-                    CustomerCount = customerCount,
+                    TodayRevenue = await revenueTask,
+                    TotalOrders = await countTask,
+                    CustomerCount = await customerTask,
                     TopProducts = topProducts,
                     ChartData = chartData,
-                    RecentOrders = recentOrders,
-                    EstimatedProfit = todayRevenue * 0.4m // Giả định lợi nhuận 40%
-                });
+                    RecentOrders = await recentTask,
+                    EstimatedProfit = (await revenueTask) * 0.4m
+                };
+
+                // Lưu vào cache trong 2 phút
+                var cacheOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(2));
+                _cache.Set(DashboardCacheKey, result, cacheOptions);
+
+                return Ok(result);
             }
             catch (Exception ex)
             {

@@ -79,7 +79,7 @@ function App() {
     return (
       <div className="min-h-screen bg-[#f0f2f5]">
         <Routes>
-          <Route path="/pos" element={<POSPage setActiveTab={() => {}} userName={userName} userRole={userRole} />} />
+          <Route path="/pos" element={<POSPage onLogout={handleLogout} userName={userName} userRole={userRole} />} />
           <Route path="*" element={<Navigate to="/pos" replace />} />
         </Routes>
       </div>
@@ -107,7 +107,7 @@ function App() {
           <Route path="/print-templates" element={<PrintTemplates />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SystemSettings />} />
-          <Route path="/pos" element={<POSPage setActiveTab={() => navigate('/dashboard')} userName={userName} userRole={userRole} />} />
+          <Route path="/pos" element={<POSPage onLogout={() => navigate('/dashboard')} userName={userName} userRole={userRole} />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

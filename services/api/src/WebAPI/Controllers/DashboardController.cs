@@ -26,8 +26,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         [HttpGet("summary")]
         public async Task<IActionResult> GetSummary()
         {
-            // Kiểm tra cache trước để trả về ngay lập tức (trễ tối đa 2 phút)
-            if (_cache.TryGetValue(DashboardCacheKey, out object cachedData))
+            if (_cache.TryGetValue(DashboardCacheKey, out object? cachedData))
             {
                 return Ok(cachedData);
             }
@@ -38,10 +37,10 @@ namespace RestaurantPOS.WebAPI.Controllers
                 var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
                 var todayEnd = todayStart.AddDays(1);
 
-                // Chạy tất cả các truy vấn song song để giảm thời gian chờ
+                // Gửi các yêu cầu Database song song
                 var revenueTask = _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
-                    .SumAsync(o => (decimal?)o.PaidAmount) ?? Task.FromResult(0m);
+                    .SumAsync(o => (decimal?)o.PaidAmount);
 
                 var countTask = _context.Orders.AsNoTracking()
                     .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd)
@@ -65,10 +64,10 @@ namespace RestaurantPOS.WebAPI.Controllers
                     })
                     .ToListAsync();
 
-                // Đợi tất cả hoàn thành cùng lúc
                 await Task.WhenAll(revenueTask, countTask, customerTask, recentTask);
 
-                // Các truy vấn phức tạp hơn vẫn chạy tuần tự hoặc tối ưu riêng
+                var todayRevenue = (await revenueTask) ?? 0m;
+
                 var topProducts = await _context.OrderDetails.AsNoTracking()
                     .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId")
                                                         && o.CreatedAt >= todayStart
@@ -102,16 +101,15 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 var result = new
                 {
-                    TodayRevenue = await revenueTask,
+                    TodayRevenue = todayRevenue,
                     TotalOrders = await countTask,
                     CustomerCount = await customerTask,
                     TopProducts = topProducts,
                     ChartData = chartData,
                     RecentOrders = await recentTask,
-                    EstimatedProfit = (await revenueTask) * 0.4m
+                    EstimatedProfit = todayRevenue * 0.4m
                 };
 
-                // Lưu vào cache trong 2 phút
                 var cacheOptions = new MemoryCacheEntryOptions()
                     .SetAbsoluteExpiration(TimeSpan.FromMinutes(2));
                 _cache.Set(DashboardCacheKey, result, cacheOptions);

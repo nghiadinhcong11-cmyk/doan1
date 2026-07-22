@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RestaurantPOS.Infrastructure.Persistence;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,46 +11,101 @@ namespace RestaurantPOS.WebAPI.Controllers
     [Route("api/[controller]")]
     public class DashboardController : ControllerBase
     {
-        // Giả sử bạn đã có DbContext được Inject vào đây
-        // private readonly ApplicationDbContext _context;
-        // public DashboardController(ApplicationDbContext context) => _context = context;
+        private readonly ApplicationDbContext _context;
+
+        public DashboardController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
 
         [HttpGet("summary")]
-        public IActionResult GetSummary()
+        public async Task<IActionResult> GetSummary()
         {
-            // Logic tính toán thực tế sẽ truy vấn từ DB:
-            // var today = DateTime.Today;
-            // var revenue = _context.Orders.Where(o => o.CreatedAt.Date == today).Sum(o => o.TotalAmount);
-            // var expense = _context.Expenses.Where(e => e.ExpenseDate.Date == today).Sum(e => e.Amount);
-
-            var summary = new
+            try
             {
-                TodayRevenue = 5420000, // Tổng tiền bán được trong ngày
-                TotalOrders = 42,        // Tổng số hóa đơn
-                TodayExpenses = 1200000, // Tổng các khoản chi trong ngày
-                EstimatedProfit = 4220000, // Lợi nhuận = Doanh thu - Chi phí
+                var now = DateTime.UtcNow;
+                var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+                var todayEnd = todayStart.AddDays(1);
 
-                // Dữ liệu cho biểu đồ (Revenue Chart)
-                ChartData = new[]
+                // 1. Doanh thu hôm nay
+                var todayRevenue = await _context.Orders
+                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
+                    .SumAsync(o => o.PaidAmount);
+
+                // 2. Số lượng đơn hôm nay
+                var totalOrders = await _context.Orders
+                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd)
+                    .CountAsync();
+
+                // 3. Top mặt hàng bán chạy hôm nay
+                // Sử dụng cách truy vấn đơn giản hơn, không dùng Include trên ProductId (vì nó là Guid, không phải navigation property)
+                var topProducts = await _context.OrderDetails
+                    .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId")
+                                                        && o.CreatedAt >= todayStart
+                                                        && o.CreatedAt < todayEnd
+                                                        && o.Status == "Hoàn thành"))
+                    .GroupBy(d => d.ProductName)
+                    .Select(g => new
+                    {
+                        Name = g.Key,
+                        Quantity = g.Sum(x => x.Quantity),
+                        Revenue = g.Sum(x => x.Quantity * x.UnitPrice)
+                    })
+                    .OrderByDescending(x => x.Quantity)
+                    .Take(5)
+                    .ToListAsync();
+
+                // 4. Lượng khách hàng (Số hóa đơn có tên khách khác "Khách lẻ")
+                var customerCount = await _context.Orders
+                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.CustomerName != "Khách lẻ")
+                    .Select(o => o.CustomerName)
+                    .Distinct()
+                    .CountAsync();
+
+                // 5. Doanh thu theo giờ (Cho biểu đồ)
+                var ordersToday = await _context.Orders
+                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
+                    .Select(o => new { o.CreatedAt, o.PaidAmount })
+                    .ToListAsync();
+
+                var chartData = ordersToday
+                    .GroupBy(o => o.CreatedAt.Hour)
+                    .Select(g => new
+                    {
+                        Time = g.Key + ":00",
+                        Amount = g.Sum(o => o.PaidAmount)
+                    })
+                    .OrderBy(g => g.Time)
+                    .ToList();
+
+                // 6. Hoạt động gần đây (5 hóa đơn mới nhất)
+                var recentOrders = await _context.Orders
+                    .OrderByDescending(o => o.CreatedAt)
+                    .Take(5)
+                    .Select(o => new {
+                        o.InvoiceCode,
+                        o.CustomerName,
+                        o.TotalAmount,
+                        o.CreatedAt,
+                        o.TableName
+                    })
+                    .ToListAsync();
+
+                return Ok(new
                 {
-                    new { Time = "08:00", Amount = 450000 },
-                    new { Time = "10:00", Amount = 1200000 },
-                    new { Time = "12:00", Amount = 2100000 },
-                    new { Time = "14:00", Amount = 800000 },
-                    new { Time = "16:00", Amount = 1500000 },
-                    new { Time = "18:00", Amount = 3200000 }
-                },
-
-                // Danh sách chi tiêu gần nhất
-                RecentExpenses = new[]
-                {
-                    new { Id = 1, Description = "Tiền điện tháng 7", Amount = 1500000, Category = "Tiện ích" },
-                    new { Id = 2, Description = "Nhập bia Sài Gòn", Amount = 2400000, Category = "Hàng hóa" },
-                    new { Id = 3, Description = "Trả lương nhân viên A", Amount = 500000, Category = "Lương" }
-                }
-            };
-
-            return Ok(summary);
+                    TodayRevenue = todayRevenue,
+                    TotalOrders = totalOrders,
+                    CustomerCount = customerCount,
+                    TopProducts = topProducts,
+                    ChartData = chartData,
+                    RecentOrders = recentOrders,
+                    EstimatedProfit = todayRevenue * 0.4m // Giả định lợi nhuận 40%
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi Dashboard", detail = ex.Message });
+            }
         }
     }
 }

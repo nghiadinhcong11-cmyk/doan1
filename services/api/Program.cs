@@ -27,12 +27,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// Bật Swagger cho tất cả môi trường để dễ kiểm tra
+app.UseSwagger();
+app.UseSwaggerUI(c => {
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Restaurant POS API V1");
+    c.RoutePrefix = "swagger"; // Truy cập tại localhost:PORT/swagger
+});
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");

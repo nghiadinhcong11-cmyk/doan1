@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, LogIn } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, User, Eye, EyeOff, LogIn, Store, ShieldCheck, MapPin, ChevronRight, Loader2 } from 'lucide-react';
+
+interface Branch {
+  id: string;
+  name: string;
+}
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (role: 'admin' | 'cashier', fullName: string, branchId?: string) => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
@@ -10,14 +15,63 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loginMode, setLoginMode] = useState<'admin' | 'cashier'>('admin');
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [loadingBranches, setLoadingBranches] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (loginMode === 'cashier') {
+      fetchBranches();
+    }
+  }, [loginMode]);
+
+  const fetchBranches = async () => {
+    try {
+      setLoadingBranches(true);
+      const response = await fetch('http://localhost:5000/api/Branch');
+      const data = await response.json();
+      setBranches(data);
+      if (data.length > 0) {
+        setSelectedBranchId(data[0].id);
+      }
+    } catch (err) {
+      console.error('Error fetching branches:', err);
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Giả lập đăng nhập đơn giản
-    if (username === 'admin' && password === '123456') {
-      onLogin();
-    } else {
-      setError('Tên đăng nhập hoặc mật khẩu không đúng!');
+    setError('');
+
+    try {
+      const response = await fetch('http://localhost:5000/api/Auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          mode: loginMode
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (loginMode === 'cashier' && !selectedBranchId) {
+          setError('Vui lòng chọn chi nhánh làm việc!');
+          return;
+        }
+
+        onLogin(data.role, data.fullName, selectedBranchId);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Đăng nhập thất bại');
+      }
+    } catch (err) {
+      setError('Lỗi kết nối đến máy chủ');
     }
   };
 
@@ -29,14 +83,31 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-[#0070f4] rounded-2xl shadow-lg mb-4 rotate-3 transform transition-transform hover:rotate-0 cursor-default">
             <span className="text-white text-3xl font-black italic">K</span>
           </div>
-          <h1 className="text-3xl font-black text-gray-800 tracking-tighter uppercase italic">KiotViet Admin</h1>
+          <h1 className="text-3xl font-black text-gray-800 tracking-tighter uppercase italic">KiotViet RESTAURANT</h1>
           <p className="text-gray-500 mt-2 text-sm font-medium">Hệ thống quản lý nhà hàng chuyên nghiệp</p>
+        </div>
+
+        {/* Mode Selector */}
+        <div className="flex bg-white p-1 rounded-xl mb-4 shadow-sm border border-gray-100">
+          <button
+            onClick={() => setLoginMode('admin')}
+            className={`flex-1 flex items-center justify-center py-2.5 rounded-lg text-xs font-bold transition-all ${loginMode === 'admin' ? 'bg-[#0070f4] text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            <ShieldCheck size={16} className="mr-2" /> QUẢN TRỊ VIÊN
+          </button>
+          <button
+            onClick={() => setLoginMode('cashier')}
+            className={`flex-1 flex items-center justify-center py-2.5 rounded-lg text-xs font-bold transition-all ${loginMode === 'cashier' ? 'bg-[#0070f4] text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            <Store size={16} className="mr-2" /> BÁN HÀNG (POS)
+          </button>
         </div>
 
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl shadow-blue-500/5 p-8 border border-gray-100">
           <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center">
-            <LogIn className="mr-2 text-[#0070f4]" size={20} /> Đăng nhập hệ thống
+            <LogIn className="mr-2 text-[#0070f4]" size={20} />
+            {loginMode === 'admin' ? 'Đăng nhập Quản trị' : 'Đăng nhập Thu ngân'}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -51,7 +122,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all bg-gray-50 focus:bg-white"
-                  placeholder="Nhập tên đăng nhập (admin)"
+                  placeholder={loginMode === 'admin' ? 'Nhập tên đăng nhập (admin)' : 'Nhập tài khoản thu ngân (pos)'}
                   required
                 />
               </div>
@@ -80,6 +151,33 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </button>
               </div>
             </div>
+
+            {loginMode === 'cashier' && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 tracking-wider">Chọn chi nhánh làm việc</label>
+                <div className="relative group">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 group-focus-within:text-[#0070f4] transition-colors">
+                    <MapPin size={18} />
+                  </span>
+                  {loadingBranches ? (
+                    <div className="w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl bg-gray-50 flex items-center">
+                       <Loader2 size={16} className="animate-spin text-blue-600 mr-2" />
+                       <span className="text-xs text-gray-400">Đang tải danh sách cơ sở...</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedBranchId}
+                      onChange={(e) => setSelectedBranchId(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50 focus:bg-white appearance-none font-bold text-gray-700"
+                    >
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="bg-red-50 text-red-600 text-xs p-3 rounded-lg font-bold flex items-center animate-shake">
@@ -113,10 +211,5 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     </div>
   );
 };
-
-// Internal icon to avoid import issues
-const ChevronRight = ({size}: {size: number}) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-);
 
 export default LoginPage;

@@ -16,6 +16,8 @@ namespace RestaurantPOS.Infrastructure.Persistence
         public DbSet<Expense> Expenses { get; set; }
         public DbSet<Employee> Employees { get; set; }
         public DbSet<RestaurantTable> Tables { get; set; }
+        public DbSet<Area> Areas { get; set; }
+        public DbSet<Branch> Branches { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

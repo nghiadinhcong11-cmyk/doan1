@@ -5,9 +5,10 @@ interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onLogout: () => void;
+  userName?: string;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout }) => {
+const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout, userName }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -86,14 +87,14 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout }) =>
                 </div>
                 <div className="p-1">
                    {[
-                     { icon: <Settings className="h-4 w-4" />, label: "Thiết lập tính năng" },
-                     { icon: <Printer className="h-4 w-4" />, label: "Quản lý mẫu in" },
-                     { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh" },
-                     { icon: <Users className="h-4 w-4" />, label: "Quản lý người dùng" },
+                     { icon: <Settings className="h-4 w-4" />, label: "Thiết lập tính năng", tab: 'settings' },
+                     { icon: <Printer className="h-4 w-4" />, label: "Quản lý mẫu in", tab: 'print-templates' },
+                     { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", tab: 'branches' },
+                     { icon: <Users className="h-4 w-4" />, label: "Quản lý người dùng", tab: 'users' },
                    ].map((item, i) => (
                      <button
                        key={i}
-                       onClick={() => navigateTo('settings')}
+                       onClick={() => navigateTo(item.tab)}
                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-blue-50 rounded group transition-colors"
                      >
                        <div className="flex items-center text-sm text-gray-600 group-hover:text-blue-700 font-medium">
@@ -148,7 +149,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout }) =>
               <div className="w-7 h-7 bg-blue-300 rounded-full flex items-center justify-center text-blue-700">
                 <User size={16} />
               </div>
-              <span className="text-[13px] font-medium hidden sm:block">Đinh Công Nghĩa</span>
+              <span className="text-[13px] font-medium hidden sm:block">{userName || 'Admin'}</span>
             </button>
 
             {isUserMenuOpen && (
@@ -158,7 +159,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout }) =>
                     <User className="h-6 w-6 text-blue-500" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold">Đinh Công Nghĩa</p>
+                    <p className="text-sm font-bold">{userName || 'Quản trị viên'}</p>
                     <p className="text-[10px] text-orange-500 font-medium">Chưa bật xác thực 2 lớp</p>
                   </div>
                 </div>
@@ -189,13 +190,6 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout }) =>
               </div>
             )}
           </div>
-
-          <button
-            onClick={() => navigateTo('pos')}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded text-xs font-bold transition-colors ml-2 shadow-sm uppercase shrink-0"
-          >
-            Thu ngân
-          </button>
         </div>
       </div>
     </nav>

@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Domain.Entities;
+using RestaurantPOS.Infrastructure.Persistence;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -10,36 +13,17 @@ namespace RestaurantPOS.WebAPI.Controllers
     [Route("api/[controller]")]
     public class OrderController : ControllerBase
     {
-        private static List<Order> _orders = new List<Order>
+        private readonly ApplicationDbContext _context;
+
+        public OrderController(ApplicationDbContext context)
         {
-            new Order {
-                Id = Guid.NewGuid(),
-                InvoiceCode = "HD00001",
-                CreatedAt = DateTime.Now.AddHours(-2),
-                CustomerName = "Khách lẻ",
-                TotalAmount = 150000,
-                Discount = 0,
-                PaidAmount = 150000,
-                PaymentMethod = "Tiền mặt",
-                TableName = "Bàn 01"
-            },
-            new Order {
-                Id = Guid.NewGuid(),
-                InvoiceCode = "HD00002",
-                CreatedAt = DateTime.Now.AddHours(-1),
-                CustomerName = "Anh Tuấn",
-                TotalAmount = 450000,
-                Discount = 50000,
-                PaidAmount = 400000,
-                PaymentMethod = "Chuyển khoản",
-                TableName = "VIP 02"
-            }
-        };
+            _context = context;
+        }
 
         [HttpGet]
-        public IActionResult GetOrders([FromQuery] string search, [FromQuery] string status, [FromQuery] DateTime? date)
+        public async Task<IActionResult> GetOrders([FromQuery] string? search, [FromQuery] string? status)
         {
-            var query = _orders.AsQueryable();
+            var query = _context.Orders.Include(o => o.Details).AsQueryable();
 
             if (!string.IsNullOrEmpty(search))
                 query = query.Where(o => o.InvoiceCode.Contains(search) || o.CustomerName.Contains(search));
@@ -47,15 +31,46 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(o => o.Status == status);
 
-            return Ok(query.OrderByDescending(o => o.CreatedAt).ToList());
+            return Ok(await query.OrderByDescending(o => o.CreatedAt).ToListAsync());
         }
 
         [HttpPost]
-        public IActionResult CreateOrder(Order order)
+        public async Task<IActionResult> CreateOrder(Order order)
         {
-            order.Id = Guid.NewGuid();
-            order.InvoiceCode = "HD" + DateTime.Now.Ticks.ToString().Substring(10);
-            _orders.Add(order);
+            try
+            {
+                order.Id = Guid.NewGuid();
+                // Ép kiểu sang UTC cho PostgreSQL
+                order.CreatedAt = DateTime.UtcNow;
+
+                if (string.IsNullOrEmpty(order.InvoiceCode))
+                {
+                    order.InvoiceCode = "HD" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                }
+
+                if (order.Details != null)
+                {
+                    foreach (var detail in order.Details)
+                    {
+                        detail.Id = Guid.NewGuid();
+                    }
+                }
+
+                _context.Orders.Add(order);
+                await _context.SaveChangesAsync();
+                return Ok(order);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+            }
+        }
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetOrder(Guid id)
+        {
+            var order = await _context.Orders.Include(o => o.Details).FirstOrDefaultAsync(o => o.Id == id);
+            if (order == null) return NotFound();
             return Ok(order);
         }
     }

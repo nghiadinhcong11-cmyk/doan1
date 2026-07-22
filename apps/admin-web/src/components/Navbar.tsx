@@ -1,53 +1,49 @@
 import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Bell, Settings, User, Search, HelpCircle, ChevronRight, Globe, LogOut, Printer, Users, Store, ShieldCheck, CreditCard, BellRing } from 'lucide-react';
 
 interface NavbarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
   onLogout: () => void;
   userName?: string;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout, userName }) => {
+const Navbar: React.FC<NavbarProps> = ({ onLogout, userName }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const location = useLocation();
 
   const navItems = [
-    { id: 'dashboard', label: 'Tổng quan' },
-    { id: 'products', label: 'Thực đơn' },
-    { id: 'tables', label: 'Phòng/Bàn' },
-    { id: 'invoices', label: 'Giao dịch' },
-    { id: 'expenses', label: 'Chi tiêu' },
-    { id: 'employees', label: 'Nhân viên' },
+    { id: 'dashboard', label: 'Tổng quan', path: '/dashboard' },
+    { id: 'products', label: 'Thực đơn', path: '/products' },
+    { id: 'tables', label: 'Phòng/Bàn', path: '/tables' },
+    { id: 'invoices', label: 'Giao dịch', path: '/invoices' },
+    { id: 'expenses', label: 'Chi tiêu', path: '/expenses' },
+    { id: 'employees', label: 'Nhân viên', path: '/employees' },
   ];
 
-  const navigateTo = (tabId: string) => {
-    setActiveTab(tabId);
-    setIsUserMenuOpen(false);
-    setIsSettingsOpen(false);
-  };
+  const isActive = (path: string) => location.pathname === path;
 
   return (
     <nav className="bg-[#0070f4] text-white h-12 flex items-center justify-between px-4 shadow-md sticky top-0 z-50">
       <div className="flex items-center h-full">
         {/* Logo/Brand */}
-        <div className="flex items-center mr-6 font-bold text-lg italic tracking-tighter cursor-pointer" onClick={() => navigateTo('dashboard')}>
+        <Link to="/dashboard" className="flex items-center mr-6 font-bold text-lg italic tracking-tighter cursor-pointer">
           <div className="bg-white text-[#0070f4] rounded-full w-6 h-6 flex items-center justify-center mr-1 not-italic text-sm">K</div>
           KiotViet
-        </div>
+        </Link>
 
         {/* Nav Links */}
         <div className="flex h-full items-center space-x-1">
           {navItems.map((item) => (
-            <button
+            <Link
               key={item.id}
-              onClick={() => navigateTo(item.id)}
+              to={item.path}
               className={`px-3 h-full flex items-center text-[13px] font-medium transition-colors hover:bg-blue-600 ${
-                activeTab === item.id ? 'bg-blue-700 shadow-inner' : ''
+                isActive(item.path) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
               {item.label}
-            </button>
+            </Link>
           ))}
         </div>
       </div>
@@ -74,7 +70,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout, user
           <div className="relative">
             <button
               onClick={() => { setIsSettingsOpen(!isSettingsOpen); setIsUserMenuOpen(false); }}
-              className={`p-1 hover:bg-blue-600 rounded transition-colors ${isSettingsOpen || activeTab === 'settings' ? 'bg-blue-700' : ''}`}
+              className={`p-1 hover:bg-blue-600 rounded transition-colors ${isSettingsOpen || location.pathname === '/settings' ? 'bg-blue-700' : ''}`}
               title="Thiết lập"
             >
               <Settings size={18} />
@@ -87,48 +83,51 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout, user
                 </div>
                 <div className="p-1">
                    {[
-                     { icon: <Settings className="h-4 w-4" />, label: "Thiết lập tính năng", tab: 'settings' },
-                     { icon: <Printer className="h-4 w-4" />, label: "Quản lý mẫu in", tab: 'print-templates' },
-                     { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", tab: 'branches' },
-                     { icon: <Users className="h-4 w-4" />, label: "Quản lý người dùng", tab: 'users' },
+                     { icon: <Settings className="h-4 w-4" />, label: "Thiết lập tính năng", path: '/settings' },
+                     { icon: <Printer className="h-4 w-4" />, label: "Quản lý mẫu in", path: '/print-templates' },
+                     { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", path: '/branches' },
+                     { icon: <Users className="h-4 w-4" />, label: "Quản lý người dùng", path: '/users' },
                    ].map((item, i) => (
-                     <button
+                     <Link
                        key={i}
-                       onClick={() => navigateTo(item.tab)}
+                       to={item.path}
+                       onClick={() => setIsSettingsOpen(false)}
                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-blue-50 rounded group transition-colors"
                      >
                        <div className="flex items-center text-sm text-gray-600 group-hover:text-blue-700 font-medium">
                          <span className="mr-3 text-gray-400 group-hover:text-blue-500">{item.icon}</span> {item.label}
                        </div>
                        <ChevronRight className="h-3 w-3 text-gray-300 group-hover:text-blue-400" />
-                     </button>
+                     </Link>
                    ))}
                 </div>
 
                 <div className="p-1 border-t">
                   <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tiện ích</p>
                   {[
-                    { icon: <BellRing size={14}/>, label: "Thông báo hệ thống" },
-                    { icon: <ShieldCheck size={14}/>, label: "Bảo mật & Phân quyền" },
-                    { icon: <CreditCard size={14}/>, label: "Lịch sử thanh toán gói" },
+                    { icon: <BellRing size={14}/>, label: "Thông báo hệ thống", path: '/settings' },
+                    { icon: <ShieldCheck size={14}/>, label: "Bảo mật & Phân quyền", path: '/settings' },
+                    { icon: <CreditCard size={14}/>, label: "Lịch sử thanh toán gói", path: '/settings' },
                   ].map((item, i) => (
-                    <button
+                    <Link
                       key={i}
-                      onClick={() => navigateTo('settings')}
+                      to={item.path}
+                      onClick={() => setIsSettingsOpen(false)}
                       className="w-full flex items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded transition-colors"
                     >
                       <span className="mr-3 text-gray-400">{item.icon}</span> {item.label}
-                    </button>
+                    </Link>
                   ))}
                 </div>
 
                 <div className="p-1 border-t bg-gray-50 text-center">
-                   <button
-                     onClick={() => navigateTo('settings')}
-                     className="text-[11px] font-bold text-blue-600 py-1.5 uppercase w-full hover:bg-blue-100 transition-colors"
+                   <Link
+                     to="/settings"
+                     onClick={() => setIsSettingsOpen(false)}
+                     className="text-[11px] font-bold text-blue-600 py-1.5 uppercase w-full hover:bg-blue-100 transition-colors block"
                    >
                      Xem tất cả thiết lập
-                   </button>
+                   </Link>
                 </div>
               </div>
             )}
@@ -144,7 +143,7 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout, user
           <div className="relative">
             <button
               onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsSettingsOpen(false); }}
-              className={`flex items-center space-x-2 hover:bg-blue-600 px-2 py-1 rounded transition-colors ${isUserMenuOpen || activeTab === 'profile' ? 'bg-blue-700' : ''}`}
+              className={`flex items-center space-x-2 hover:bg-blue-600 px-2 py-1 rounded transition-colors ${isUserMenuOpen || location.pathname === '/profile' ? 'bg-blue-700' : ''}`}
             >
               <div className="w-7 h-7 bg-blue-300 rounded-full flex items-center justify-center text-blue-700">
                 <User size={16} />
@@ -165,14 +164,14 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onLogout, user
                 </div>
 
                 <div className="p-1">
-                  <button onClick={() => navigateTo('profile')} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 hover:bg-blue-50 rounded group">
+                  <Link to="/profile" onClick={() => setIsUserMenuOpen(false)} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 hover:bg-blue-50 rounded group">
                     <span className="flex items-center"><Store className="h-4 w-4 mr-3 text-gray-400 group-hover:text-blue-500" /> Hồ sơ cửa hàng</span>
                     <ChevronRight className="h-4 w-4 text-gray-300" />
-                  </button>
-                  <button onClick={() => navigateTo('profile')} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 hover:bg-blue-50 rounded group">
+                  </Link>
+                  <Link to="/branches" onClick={() => setIsUserMenuOpen(false)} className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 hover:bg-blue-50 rounded group">
                     <span className="flex items-center"><Users className="h-4 w-4 mr-3 text-gray-400 group-hover:text-blue-500" /> Chi nhánh</span>
                     <ChevronRight className="h-4 w-4 text-gray-300" />
-                  </button>
+                  </Link>
                 </div>
 
                 <div className="p-1 border-t">

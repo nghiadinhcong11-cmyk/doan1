@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, Filter, Download, History, ChevronRight, Settings, Users, Store, Printer, CreditCard, ShieldCheck, Bell, Database, Lock, Trash2, ShoppingBag, Utensils, ClipboardList, Users2, BarChart3, Receipt, QrCode, Truck, MessageSquare, Info, Smartphone, Eye, Save } from 'lucide-react';
 
-const SystemSettings = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
+const SystemSettings = () => {
   const [activeSubTab, setActiveSubTab] = useState('history');
+  const navigate = useNavigate();
 
   const auditLogs = [
     { user: 'Đinh Công Nghĩa', action: 'Thông báo bếp', time: '19/07/2026 11:23', detail: 'Báo bếp đơn hàng: 1-3 Mang về, Bao gồm: - SP000001 cà phê muối: 2' },
@@ -196,9 +198,9 @@ const SystemSettings = ({ setActiveTab }: { setActiveTab: (tab: string) => void 
                   <button
                     key={i}
                     onClick={() => {
-                      if (item.id === 'user-mgmt') setActiveTab('users');
-                      else if (item.id === 'branch-mgmt') setActiveTab('branches');
-                      else if (item.id === 'print-templates') setActiveTab('print-templates');
+                      if (item.id === 'user-mgmt') navigate('/users');
+                      else if (item.id === 'branch-mgmt') navigate('/branches');
+                      else if (item.id === 'print-templates') navigate('/print-templates');
                       else setActiveSubTab(item.id);
                     }}
                     className={`w-full flex items-center px-3 py-1.5 text-xs rounded transition-all ${

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import ProductManagement from './pages/ProductManagement';
@@ -18,7 +19,8 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'cashier' | null>(null);
   const [userName, setUserName] = useState('');
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Kiểm tra trạng thái đăng nhập từ localStorage khi khởi động
   useEffect(() => {
@@ -30,10 +32,6 @@ function App() {
       setIsLoggedIn(true);
       setUserRole(savedRole);
       setUserName(savedName);
-      // Nếu là thu ngân, luôn để activeTab là pos
-      if (savedRole === 'cashier') {
-        setActiveTab('pos');
-      }
     }
   }, []);
 
@@ -50,9 +48,9 @@ function App() {
     }
 
     if (role === 'cashier') {
-      setActiveTab('pos');
+      navigate('/pos');
     } else {
-      setActiveTab('dashboard');
+      navigate('/dashboard');
     }
   };
 
@@ -63,50 +61,27 @@ function App() {
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userName');
-    setActiveTab('dashboard'); // Reset về trang chủ sau khi logout
+    navigate('/');
   };
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'products':
-        return <ProductManagement />;
-      case 'tables':
-        return <TableManagement />;
-      case 'invoices':
-        return <InvoiceHistory />;
-      case 'expenses':
-        return <ExpenseManagement />;
-      case 'employees':
-        return <EmployeeManagement />;
-      case 'users':
-        return <UserManagement />;
-      case 'branches':
-        return <BranchManagement />;
-      case 'print-templates':
-        return <PrintTemplates />;
-      case 'profile':
-        return <ProfilePage />;
-      case 'settings':
-        return <SystemSettings setActiveTab={setActiveTab} />;
-      case 'pos':
-        return <POSPage setActiveTab={setActiveTab} userName={userName} userRole={userRole} />;
-      default:
-        return <Dashboard />;
-    }
-  };
-
-  // Nếu chưa đăng nhập, chỉ hiển thị trang Login
+  // Nếu chưa đăng nhập, chỉ cho phép ở trang Login
   if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <Routes>
+        <Route path="/" element={<LoginPage onLogin={handleLogin} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
   }
 
   // GIAO DIỆN THU NGÂN (Tách biệt hoàn toàn)
   if (userRole === 'cashier') {
     return (
       <div className="min-h-screen bg-[#f0f2f5]">
-        <POSPage setActiveTab={handleLogout} userName={userName} userRole={userRole} />
+        <Routes>
+          <Route path="/pos" element={<POSPage setActiveTab={() => {}} userName={userName} userRole={userRole} />} />
+          <Route path="*" element={<Navigate to="/pos" replace />} />
+        </Routes>
       </div>
     );
   }
@@ -115,14 +90,27 @@ function App() {
   return (
     <div className="min-h-screen bg-[#f0f2f5]">
       <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
         onLogout={handleLogout}
         userName={userName}
       />
 
       <main>
-        {renderContent()}
+        <Routes>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/products" element={<ProductManagement />} />
+          <Route path="/tables" element={<TableManagement />} />
+          <Route path="/invoices" element={<InvoiceHistory />} />
+          <Route path="/expenses" element={<ExpenseManagement />} />
+          <Route path="/employees" element={<EmployeeManagement />} />
+          <Route path="/users" element={<UserManagement />} />
+          <Route path="/branches" element={<BranchManagement />} />
+          <Route path="/print-templates" element={<PrintTemplates />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/settings" element={<SystemSettings />} />
+          <Route path="/pos" element={<POSPage setActiveTab={() => navigate('/dashboard')} userName={userName} userRole={userRole} />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
       </main>
     </div>
   );

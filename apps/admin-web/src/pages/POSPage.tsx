@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Grid, List, Utensils, ClipboardList, UserPlus, MoreVertical, Plus, Minus, Printer, History, Bell, RotateCcw, X, UtensilsCrossed, LayoutGrid, Loader2, QrCode, Banknote, CheckCircle2, MapPin, ChevronDown, LogIn } from 'lucide-react';
 import { API_URL } from '../config';
 
@@ -34,7 +35,7 @@ interface CartItem extends Product {
   note: string;
 }
 
-const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab: (tab: string) => void, userName?: string, userRole?: 'admin' | 'cashier' | null }) => {
+const POSPage = ({ onLogout, userName, userRole }: { onLogout: () => void, userName?: string, userRole?: 'admin' | 'cashier' | null }) => {
   const [posTab, setPosTab] = useState('menu');
   const [activeCategory, setActiveCategory] = useState('Tất cả');
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,6 +47,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
   const [paymentMethod, setPaymentMethod] = useState<'Tiền mặt' | 'Chuyển khoản'>('Tiền mặt');
   const [branchInfo, setBranchInfo] = useState<Branch | null>(null);
   const [allBranches, setAllBranches] = useState<Branch[]>([]);
+  const navigate = useNavigate();
 
   // State quản lý giỏ hàng riêng cho từng bàn
   // Key là tableId, value là mảng CartItem
@@ -312,7 +314,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
                     ))}
                     </div>
                     <div className="p-2 bg-gray-50 text-center border-t">
-                    <button onClick={() => setAppTab('branches')} className="text-[10px] text-blue-600 font-bold hover:underline">Quản lý danh sách chi nhánh</button>
+                    <button onClick={() => navigate('/branches')} className="text-[10px] text-blue-600 font-bold hover:underline">Quản lý danh sách chi nhánh</button>
                     </div>
                 </div>
              )}
@@ -414,7 +416,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
                   className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden cursor-pointer hover:shadow-md hover:border-blue-400 transition-all group"
                 >
                   <div className="aspect-square bg-gray-50 flex items-center justify-center relative">
-                    {product.imageUrl ? (
+                    {product.imageUrl && product.imageUrl !== 'string' ? (
                       <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
                     ) : (
                       <UtensilsCrossed size={32} className="text-gray-200 group-hover:text-blue-100 transition-colors" />
@@ -451,7 +453,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
           <div className="flex-1"></div>
           <div className="flex items-center space-x-3 pr-2">
              <button
-               onClick={() => setAppTab('dashboard')}
+               onClick={onLogout}
                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-[11px] font-bold flex items-center transition-all mr-2 shadow-lg border border-red-400"
                title="Đăng xuất khỏi phiên bán hàng"
              >

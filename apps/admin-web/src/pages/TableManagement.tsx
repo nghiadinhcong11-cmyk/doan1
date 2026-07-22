@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, MapPin, QrCode, Download, Upload, HelpCircle, LayoutGrid, CheckCircle2 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Table {
   id?: string;
@@ -51,7 +52,7 @@ const TableManagement = () => {
 
   const fetchBranches = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/Branch');
+      const response = await fetch(`${API_URL}/api/Branch`);
       const data = await response.json();
       setBranches(data);
     } catch (err) {
@@ -61,7 +62,7 @@ const TableManagement = () => {
 
   const fetchAreas = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/Area');
+      const response = await fetch(`${API_URL}/api/Area`);
       const data = await response.json();
       setAreas(data);
       if (data.length > 0 && !newTable.areaName) {
@@ -75,7 +76,7 @@ const TableManagement = () => {
   const fetchTables = async () => {
     try {
       setLoading(true);
-      let url = 'http://localhost:5000/api/Table';
+      let url = `${API_URL}/api/Table`;
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (filterArea) params.append('area', filterArea);
@@ -114,8 +115,8 @@ const TableManagement = () => {
     try {
       const isEditing = !!editingTable;
       const url = isEditing
-        ? `http://localhost:5000/api/Table/${editingTable.id}`
-        : 'http://localhost:5000/api/Table';
+        ? `${API_URL}/api/Table/${editingTable.id}`
+        : `${API_URL}/api/Table`;
 
       const response = await fetch(url, {
         method: isEditing ? 'PUT' : 'POST',
@@ -161,7 +162,7 @@ const TableManagement = () => {
   const handleDeleteTable = async (id: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa bàn này không?')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/Table/${id}`, {
+      const response = await fetch(`${API_URL}/api/Table/${id}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -176,7 +177,7 @@ const TableManagement = () => {
     const areaName = prompt('Nhập tên khu vực mới:');
     if (areaName) {
       try {
-        const response = await fetch('http://localhost:5000/api/Area', {
+        const response = await fetch(`${API_URL}/api/Area`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: areaName, displayOrder: areas.length + 1 })

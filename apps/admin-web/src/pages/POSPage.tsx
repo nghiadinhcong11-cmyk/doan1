@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Grid, List, Utensils, ClipboardList, UserPlus, MoreVertical, Plus, Minus, Printer, History, Bell, RotateCcw, X, UtensilsCrossed, LayoutGrid, Loader2, QrCode, Banknote, CheckCircle2, MapPin, ChevronDown, LogIn } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Product {
   id: string;
@@ -68,7 +69,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/Product');
+      const response = await fetch(`${API_URL}/api/Product`);
       const data: Product[] = await response.json();
       setProducts(data);
 
@@ -82,7 +83,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
   const fetchTables = async () => {
     try {
       if (!branchInfo?.id) return;
-      const response = await fetch(`http://localhost:5000/api/Table?isActive=true&branchId=${branchInfo.id}`);
+      const response = await fetch(`${API_URL}/api/Table?isActive=true&branchId=${branchInfo.id}`);
       const data: Table[] = await response.json();
       setTables(data);
     } catch (err) {
@@ -92,7 +93,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
 
   const fetchBranchInfo = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/Branch');
+      const response = await fetch(`${API_URL}/api/Branch`);
       const data: Branch[] = await response.json();
       setAllBranches(data);
 
@@ -144,7 +145,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
   const updateTableStatus = async (tableId: string, status: string) => {
     if (tableId === 'delivery') return;
     try {
-      await fetch(`http://localhost:5000/api/Table/${tableId}/status`, {
+      await fetch(`${API_URL}/api/Table/${tableId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(status)
@@ -231,7 +232,7 @@ const POSPage = ({ setActiveTab: setAppTab, userName, userRole }: { setActiveTab
         }))
       };
 
-      const response = await fetch('http://localhost:5000/api/Order', {
+      const response = await fetch(`${API_URL}/api/Order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(order)

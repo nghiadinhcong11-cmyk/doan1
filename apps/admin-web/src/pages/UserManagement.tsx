@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, User, Shield, ShieldCheck, Mail, Phone, Edit2, Trash2, Key, ChevronDown, CheckCircle2, Loader2, X } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface EmployeeUser {
   id: string;
@@ -20,7 +21,7 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5000/api/Employee');
+      const response = await fetch(`${API_URL}/api/Employee`);
       const data = await response.json();
       setUsers(data);
     } catch (err) {

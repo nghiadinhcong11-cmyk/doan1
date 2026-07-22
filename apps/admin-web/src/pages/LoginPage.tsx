@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, Eye, EyeOff, LogIn, Store, ShieldCheck, MapPin, ChevronRight, Loader2 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Branch {
   id: string;
@@ -29,7 +30,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const fetchBranches = async () => {
     try {
       setLoadingBranches(true);
-      const response = await fetch('http://localhost:5000/api/Branch');
+      const response = await fetch(`${API_URL}/api/Branch`);
       const data = await response.json();
       setBranches(data);
       if (data.length > 0) {
@@ -47,7 +48,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/Auth/login', {
+      const response = await fetch(`${API_URL}/api/Auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Store, MapPin, Phone, Globe, Edit2, Trash2, CheckCircle2, X, Loader2, Save, Lock, Unlock } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Branch {
   id?: string;
@@ -37,7 +38,7 @@ const BranchManagement = () => {
   const fetchBranches = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5000/api/Branch');
+      const response = await fetch(`${API_URL}/api/Branch`);
       const data = await response.json();
       setBranches(data);
     } catch (err) {
@@ -56,8 +57,8 @@ const BranchManagement = () => {
     try {
       const isEditing = !!editingBranch;
       const url = isEditing
-        ? `http://localhost:5000/api/Branch/${editingBranch.id}`
-        : 'http://localhost:5000/api/Branch';
+        ? `${API_URL}/api/Branch/${editingBranch.id}`
+        : `${API_URL}/api/Branch`;
 
       const payload = isEditing
         ? { ...newBranch, id: editingBranch.id, createdAt: editingBranch.createdAt }
@@ -114,7 +115,7 @@ const BranchManagement = () => {
   const handleDeleteBranch = async (id: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa chi nhánh này?')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/Branch/${id}`, {
+      const response = await fetch(`${API_URL}/api/Branch/${id}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -130,7 +131,7 @@ const BranchManagement = () => {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/Branch/${id}/toggle-status`, {
+      const response = await fetch(`${API_URL}/api/Branch/${id}/toggle-status`, {
         method: 'PATCH'
       });
       if (response.ok) {

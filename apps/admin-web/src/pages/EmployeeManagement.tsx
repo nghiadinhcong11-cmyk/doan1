@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronDown, User, Phone, Mail, MapPin, Briefcase, Calendar, CreditCard, Facebook, Info, Settings, Clock, DollarSign, Store, Key } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Employee {
   id?: string;
@@ -65,7 +66,7 @@ const EmployeeManagement = () => {
 
   const fetchBranches = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/Branch');
+      const response = await fetch(`${API_URL}/api/Branch`);
       const data = await response.json();
       setBranches(data);
       if (data.length > 0 && !newEmployee.branchName) {
@@ -79,7 +80,7 @@ const EmployeeManagement = () => {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      let url = 'http://localhost:5000/api/Employee';
+      let url = `${API_URL}/api/Employee`;
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (filterStatus === 'active') params.append('isActive', 'true');
@@ -114,8 +115,8 @@ const EmployeeManagement = () => {
     try {
       const isEditing = !!editingEmployee;
       const url = isEditing
-        ? `http://localhost:5000/api/Employee/${editingEmployee.id}`
-        : 'http://localhost:5000/api/Employee';
+        ? `${API_URL}/api/Employee/${editingEmployee.id}`
+        : `${API_URL}/api/Employee`;
 
       const payload = {
         ...(isEditing ? { ...editingEmployee, ...newEmployee } : newEmployee),
@@ -178,7 +179,7 @@ const EmployeeManagement = () => {
   const handleDeleteEmployee = async (id: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/Employee/${id}`, {
+      const response = await fetch(`${API_URL}/api/Employee/${id}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -191,7 +192,7 @@ const EmployeeManagement = () => {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/Employee/${id}/toggle-status`, {
+      const response = await fetch(`${API_URL}/api/Employee/${id}/toggle-status`, {
         method: 'PATCH'
       });
       if (response.ok) {

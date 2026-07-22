@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, FileText, Download, ChevronRight, Calendar, Loader2 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface OrderDetail {
   id: string;
@@ -30,7 +31,7 @@ const InvoiceHistory = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5000/api/Order');
+      const response = await fetch(`${API_URL}/api/Order`);
       const data = await response.json();
       setOrders(data);
     } catch (err) {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Info, ChevronRight, Zap, CreditCard, Landmark, LayoutGrid, Loader2, TrendingUp, Users, ShoppingBag, Clock, ArrowUpRight, MoreHorizontal } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface DashboardData {
   todayRevenue: number;
@@ -16,7 +17,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/Dashboard/summary')
+    fetch(`${API_URL}/api/Dashboard/summary`)
       .then(res => res.json())
       .then(json => {
         setData(json);

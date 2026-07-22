@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronDown, Image as ImageIcon, Download, Upload, HelpCircle } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface Product {
   id?: string;
@@ -40,7 +41,7 @@ const ProductManagement = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      let url = 'http://localhost:5000/api/Product';
+      let url = `${API_URL}/api/Product`;
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (filterGroup) params.append('group', filterGroup);
@@ -77,8 +78,8 @@ const ProductManagement = () => {
     try {
       const isEditing = !!editingProduct;
       const url = isEditing
-        ? `http://localhost:5000/api/Product/${editingProduct.id}`
-        : 'http://localhost:5000/api/Product';
+        ? `${API_URL}/api/Product/${editingProduct.id}`
+        : `${API_URL}/api/Product`;
 
       const response = await fetch(url, {
         method: isEditing ? 'PUT' : 'POST',
@@ -125,7 +126,7 @@ const ProductManagement = () => {
   const handleDeleteProduct = async (id: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa món này không?')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/Product/${id}`, {
+      const response = await fetch(`${API_URL}/api/Product/${id}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -138,7 +139,7 @@ const ProductManagement = () => {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/Product/${id}/toggle-status`, {
+      const response = await fetch(`${API_URL}/api/Product/${id}/toggle-status`, {
         method: 'PATCH'
       });
       if (response.ok) {

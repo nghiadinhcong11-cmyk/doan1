@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
+    /// <summary>Cung cấp các endpoint quản lý chi nhánh.</summary>
     [ApiController]
     [Route("api/[controller]")]
     public class BranchController : ControllerBase
@@ -20,6 +22,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             _context = context;
         }
 
+        /// <summary>Lấy danh sách chi nhánh.</summary>
         [HttpGet]
         public async Task<IActionResult> GetBranches()
         {
@@ -33,7 +36,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
         }
 
+        /// <summary>Tạo chi nhánh mới.</summary>
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateBranch([FromBody] Branch branch)
         {
             try
@@ -62,7 +67,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
         }
 
+        /// <summary>Cập nhật thông tin chi nhánh.</summary>
         [HttpPut("{id}")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> UpdateBranch(Guid id, [FromBody] Branch branch)
         {
             if (id != branch.Id) return BadRequest(new { message = "ID không khớp" });
@@ -81,6 +88,12 @@ namespace RestaurantPOS.WebAPI.Controllers
                 existingBranch.BankName = branch.BankName;
                 existingBranch.AccountNumber = branch.AccountNumber;
                 existingBranch.AccountHolder = branch.AccountHolder;
+                existingBranch.ImageUrl = branch.ImageUrl;
+                existingBranch.TaxCode = branch.TaxCode;
+                existingBranch.RepresentativeName = branch.RepresentativeName;
+                existingBranch.RepresentativeEmail = branch.RepresentativeEmail;
+                existingBranch.Industry = branch.Industry;
+                existingBranch.BusinessType = branch.BusinessType;
 
                 if (existingBranch.IsMain)
                 {
@@ -101,7 +114,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
         }
 
+        /// <summary>Bật hoặc tắt trạng thái hoạt động của chi nhánh.</summary>
         [HttpPatch("{id}/toggle-status")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> ToggleStatus(Guid id)
         {
             try
@@ -119,7 +134,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
         }
 
+        /// <summary>Xóa chi nhánh theo mã định danh.</summary>
         [HttpDelete("{id}")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> DeleteBranch(Guid id)
         {
             try

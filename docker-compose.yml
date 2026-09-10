@@ -1,18 +1,16 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: pos_postgres
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: pos_api
     restart: always
     environment:
-      POSTGRES_USER: pos_user
-      POSTGRES_PASSWORD: pos_password
-      POSTGRES_DB: restaurant_pos
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=${SUPABASE_CONNECTION_STRING:?SUPABASE_CONNECTION_STRING must be set}
+      - Jwt__Secret=${JWT_SECRET:?JWT_SECRET must be set}
+      - Gemini__ApiKey=${GEMINI_API_KEY:?GEMINI_API_KEY must be set}
     ports:
-      - "5432:5432"
-    volumes:
-      - pos_db_data:/var/lib/postgresql/data
-
-volumes:
-  pos_db_data:
+      - "5000:5000"

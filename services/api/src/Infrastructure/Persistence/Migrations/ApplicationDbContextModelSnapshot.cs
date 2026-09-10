@@ -43,6 +43,45 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("Areas");
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Attendance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CheckInTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CheckOutTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmployeeName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImagePath")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("Attendances");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Branch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -61,8 +100,17 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("BankName")
                         .HasColumnType("text");
 
+                    b.Property<string>("BusinessType")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Industry")
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -77,9 +125,77 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("text");
 
+                    b.Property<string>("RepresentativeEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TaxCode")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.ToTable("Branches");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Customer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("Birthday")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomerGroup")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Gender")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastOrderDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LoyaltyPoints")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Password")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("text");
+
+                    b.Property<int>("TotalOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalSpending")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique();
+
+                    b.ToTable("Customers");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Employee", b =>
@@ -97,6 +213,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("BirthDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("BranchName")
                         .HasColumnType("text");
 
@@ -112,6 +231,10 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("EmployeeCode")
                         .HasColumnType("text");
 
+                    b.Property<string>("EmployeeType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -125,18 +248,83 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("text");
 
+                    b.Property<string>("Password")
+                        .HasColumnType("text");
+
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("text");
 
                     b.Property<string>("Position")
                         .HasColumnType("text");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Username")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.ToTable("Employees");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.EmployeeSalaryProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Allowance")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmployeeType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("HourlyRate")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("MonthlySalary")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("OvertimeRate")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("StandardWorkDays")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("StandardWorkHours")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Employees");
+                    b.HasIndex("EmployeeId", "BranchId", "EffectiveFrom");
+
+                    b.ToTable("EmployeeSalaryProfiles");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Expense", b =>
@@ -148,12 +336,18 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -163,16 +357,107 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Note")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("PaymentMethod")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId", "ExpenseDate");
+
+                    b.ToTable("Expenses");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.LoyaltyTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BalanceAfter")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Expenses");
+                    b.HasIndex("CustomerId", "CreatedAt");
+
+                    b.HasIndex("OrderId", "Type")
+                        .IsUnique()
+                        .HasFilter("\"OrderId\" IS NOT NULL");
+
+                    b.ToTable("LoyaltyTransactions");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Route")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetRole")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TargetRole", "TargetUserId", "CreatedAt");
+
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Order", b =>
@@ -181,10 +466,28 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchName")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerEmail")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CustomerName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerPhone")
                         .HasColumnType("text");
 
                     b.Property<decimal>("Discount")
@@ -199,12 +502,24 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("PaidAmount")
                         .HasColumnType("numeric");
 
+                    b.Property<DateTime?>("PaymentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PaymentMethod")
                         .HasColumnType("text");
+
+                    b.Property<decimal?>("ServiceFeeAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("ServiceFeePercent")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<decimal?>("SubTotal")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("TableName")
                         .HasColumnType("text");
@@ -212,7 +527,15 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("TotalAmount")
                         .HasColumnType("numeric");
 
+                    b.Property<decimal?>("VatAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("VatPercent")
+                        .HasColumnType("numeric");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
 
                     b.ToTable("Orders");
                 });
@@ -223,10 +546,13 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Options")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("OrderId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("ProductId")
+                    b.Property<Guid?>("ProductId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ProductName")
@@ -236,6 +562,12 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
+                    b.Property<int>("SentQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ToppingId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal>("UnitPrice")
                         .HasColumnType("numeric");
 
@@ -243,7 +575,246 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrderId");
 
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ToppingId");
+
                     b.ToTable("OrderDetails");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PreparingAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProcessedBy")
+                        .HasColumnType("text");
+
+                    b.Property<int>("RequestNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("OrderRequests");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequestItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Options")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrderRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderRequestId");
+
+                    b.ToTable("OrderRequestItems");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Payroll", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ActualWorkDays")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Allowance")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("BaseSalary")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Bonus")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CalculatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Deduction")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmployeeType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("GrossSalary")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("HourlyRate")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("LockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("NetSalary")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("OvertimeHours")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("OvertimePay")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("RegularHours")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("RegularPay")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("StandardWorkDays")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("TotalHours")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId", "BranchId", "Month", "Year")
+                        .IsUnique();
+
+                    b.ToTable("Payrolls");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.PayrollAdjustment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PayrollId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayrollId", "CreatedAt");
+
+                    b.ToTable("PayrollAdjustments");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.PayrollSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("DefaultPartTimeHourlyRate")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("FullTimeDeductionPerMissingDay")
+                        .HasColumnType("numeric");
+
+                    b.Property<bool>("OvertimeEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("OvertimeMultiplier")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("StandardWorkDays")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("StandardWorkHoursPerDay")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId")
+                        .IsUnique();
+
+                    b.ToTable("PayrollSettings");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Product", b =>
@@ -251,6 +822,10 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AvailabilityStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Category")
                         .HasColumnType("text");
@@ -279,9 +854,145 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Price")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("SizesJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToppingsJson")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Promotion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("DiscountValue")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PromotionType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("RequiredPoints")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Promotions");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.ReceiptSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PaperWidth")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("ShowAddress")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowLogo")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowOrderNote")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowPaymentMethod")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowPhone")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowStaff")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowThankYou")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ThankYouText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId")
+                        .IsUnique();
+
+                    b.ToTable("ReceiptSettings");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Reservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomerName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerPhone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<int>("NumberOfGuests")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ReservationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("TableId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TableName")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Reservations");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.RestaurantTable", b =>
@@ -292,6 +1003,12 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("AreaName")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchName")
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
@@ -319,19 +1036,301 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BranchId");
+
                     b.ToTable("Tables");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Shift", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchName")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CashRevenue")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmployeeName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("EndTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("EndingCash")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("StartingCash")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("TotalRevenue")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("TransferRevenue")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Shifts");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.SystemSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("SystemSettings");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Topping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CostPrice")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ToppingType")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Toppings");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.WorkSchedule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmployeeName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EndTime")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ShiftName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StartTime")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("WorkSchedules");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Attendance", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Employee", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Expense", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.LoyaltyTransaction", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Order", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderDetail", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Order", null)
                         .WithMany("Details")
-                        .HasForeignKey("OrderId");
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId");
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Topping", null)
+                        .WithMany()
+                        .HasForeignKey("ToppingId");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequest", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequestItem", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.OrderRequest", null)
+                        .WithMany("Items")
+                        .HasForeignKey("OrderRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.PayrollAdjustment", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Payroll", null)
+                        .WithMany("Adjustments")
+                        .HasForeignKey("PayrollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.RestaurantTable", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.WorkSchedule", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId");
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Order", b =>
                 {
                     b.Navigation("Details");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequest", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Payroll", b =>
+                {
+                    b.Navigation("Adjustments");
                 });
 #pragma warning restore 612, 618
         }

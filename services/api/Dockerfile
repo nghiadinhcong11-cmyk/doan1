@@ -17,7 +17,6 @@ RUN dotnet publish "RestaurantPOS.api.csproj" -c Release -o /app/publish /p:UseA
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
-EXPOSE 80
-EXPOSE 443
+EXPOSE 5000
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "RestaurantPOS.api.dll"]

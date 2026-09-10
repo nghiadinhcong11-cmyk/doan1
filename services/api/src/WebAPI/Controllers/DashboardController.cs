@@ -1,130 +1,54 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using RestaurantPOS.Infrastructure.Persistence;
-using Microsoft.Extensions.Caching.Memory;
 using System;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Collections.Generic;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using RestaurantPOS.Application.Services;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
+    /// <summary>
+    /// API Thống kê báo cáo, doanh thu và số liệu tổng hợp cho Quản trị viên
+    /// </summary>
+    /// <summary>Cung cấp số liệu tổng quan cho màn hình dashboard.</summary>
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Roles = "admin,manager")]
     public class DashboardController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IMemoryCache _cache;
-        private const string DashboardCacheKey = "DashboardSummary";
+        private readonly IDashboardService _dashboardService;
 
-        public DashboardController(ApplicationDbContext context, IMemoryCache cache)
+        public DashboardController(IDashboardService dashboardService)
         {
-            _context = context;
-            _cache = cache;
+            _dashboardService = dashboardService;
         }
 
+        /// <summary>
+        /// Lấy số liệu tổng hợp dashboard: Doanh thu theo giờ/tuần/tháng, cơ cấu chi nhánh, top món bán chạy, nhân sự
+        /// </summary>
+        /// <param name="branchId">Tùy chọn lọc theo chi nhánh cụ thể (hoặc null nếu xem toàn chuỗi)</param>
         [HttpGet("summary")]
-        public async Task<IActionResult> GetSummary()
+        public async Task<IActionResult> GetSummary([FromQuery] string? branchId = null)
         {
-            // Kiểm tra cache trước để trả về ngay lập tức
-            if (_cache.TryGetValue(DashboardCacheKey, out object? cachedData))
+            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+            if (role != "admin" && role != "manager") return Forbid();
+
+            if (role == "manager")
             {
-                return Ok(cachedData);
+                var ownBranch = User.FindFirst("branchId")?.Value;
+                if (string.IsNullOrEmpty(ownBranch)) return Forbid();
+
+                // Manager chỉ được xem dashboard của chính mình
+                branchId = ownBranch;
             }
 
             try
             {
-                var now = DateTime.UtcNow;
-                var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
-                var todayEnd = todayStart.AddDays(1);
-
-                // EF Core DbContext KHÔNG hỗ trợ chạy song song trên cùng 1 instance.
-                // Chúng ta phải await tuần tự. Việc tối ưu tốc độ sẽ dựa vào IMemoryCache và AsNoTracking.
-
-                // 1. Doanh thu hôm nay
-                var todayRevenue = await _context.Orders.AsNoTracking()
-                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
-                    .SumAsync(o => (decimal?)o.PaidAmount) ?? 0m;
-
-                // 2. Số lượng đơn hôm nay
-                var totalOrders = await _context.Orders.AsNoTracking()
-                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd)
-                    .CountAsync();
-
-                // 3. Lượng khách hàng
-                var customerCount = await _context.Orders.AsNoTracking()
-                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.CustomerName != "Khách lẻ")
-                    .Select(o => o.CustomerName)
-                    .Distinct()
-                    .CountAsync();
-
-                // 4. Hoạt động gần đây
-                var recentOrders = await _context.Orders.AsNoTracking()
-                    .OrderByDescending(o => o.CreatedAt)
-                    .Take(5)
-                    .Select(o => new {
-                        o.InvoiceCode,
-                        o.CustomerName,
-                        o.TotalAmount,
-                        o.CreatedAt,
-                        o.TableName
-                    })
-                    .ToListAsync();
-
-                // 5. Top mặt hàng bán chạy
-                var topProducts = await _context.OrderDetails.AsNoTracking()
-                    .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId")
-                                                        && o.CreatedAt >= todayStart
-                                                        && o.CreatedAt < todayEnd
-                                                        && o.Status == "Hoàn thành"))
-                    .GroupBy(d => d.ProductName)
-                    .Select(g => new
-                    {
-                        Name = g.Key,
-                        Quantity = g.Sum(x => x.Quantity),
-                        Revenue = g.Sum(x => x.Quantity * x.UnitPrice)
-                    })
-                    .OrderByDescending(x => x.Quantity)
-                    .Take(5)
-                    .ToListAsync();
-
-                // 6. Dữ liệu biểu đồ
-                var ordersToday = await _context.Orders.AsNoTracking()
-                    .Where(o => o.CreatedAt >= todayStart && o.CreatedAt < todayEnd && o.Status == "Hoàn thành")
-                    .Select(o => new { o.CreatedAt, o.PaidAmount })
-                    .ToListAsync();
-
-                var chartData = ordersToday
-                    .GroupBy(o => o.CreatedAt.Hour)
-                    .Select(g => new
-                    {
-                        Time = g.Key + ":00",
-                        Amount = g.Sum(o => o.PaidAmount)
-                    })
-                    .OrderBy(g => g.Time)
-                    .ToList();
-
-                var result = new
-                {
-                    TodayRevenue = todayRevenue,
-                    TotalOrders = totalOrders,
-                    CustomerCount = customerCount,
-                    TopProducts = topProducts,
-                    ChartData = chartData,
-                    RecentOrders = recentOrders,
-                    EstimatedProfit = todayRevenue * 0.4m
-                };
-
-                // Lưu vào cache trong 2 phút để các lần load sau cực nhanh
-                var cacheOptions = new MemoryCacheEntryOptions()
-                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(2));
-                _cache.Set(DashboardCacheKey, result, cacheOptions);
-
-                return Ok(result);
+                var summary = await _dashboardService.GetSummaryAsync(branchId);
+                return Ok(summary);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Lỗi Dashboard", detail = ex.Message });
+                return StatusCode(500, new { message = ex.Message });
             }
         }
     }

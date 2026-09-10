@@ -1,54 +1,62 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Dashboard from './pages/Dashboard';
-import ProductManagement from './pages/ProductManagement';
-import TableManagement from './pages/TableManagement';
-import InvoiceHistory from './pages/InvoiceHistory';
-import ExpenseManagement from './pages/ExpenseManagement';
-import EmployeeManagement from './pages/EmployeeManagement';
-import UserManagement from './pages/UserManagement';
-import BranchManagement from './pages/BranchManagement';
-import PrintTemplates from './pages/PrintTemplates';
-import ProfilePage from './pages/ProfilePage';
-import SystemSettings from './pages/SystemSettings';
-import POSPage from './pages/POSPage';
-import LoginPage from './pages/LoginPage';
+import CashierNavbar from './components/CashierNavbar';
+import KitchenNavbar from './components/KitchenNavbar';
+import { Dashboard, InvoiceHistory } from './features/analytics';
+import { ProductManagement, ToppingManagement, PromotionManagement } from './features/catalog';
+import { TableManagement, ReservationManagement, CustomerManagement, ExpenseManagement } from './features/operations';
+import { EmployeeManagement, AttendanceManagement, ShiftManagement, WorkSchedulePage, EmployeeProfile, EmployeeAttendance, EmployeeSchedule, PayrollPage } from './features/hrm';
+import { BranchManagement, SystemSettings, SupportPage, ReceiptSettingsPage } from './features/settings';
+import { POSPage, TableStatusPage, PrintTemplates } from './features/pos';
+import { KitchenPage, KitchenHistoryPage } from './features/kitchen';
+import { LoginPage, ProfilePage } from './features/auth';
+import ChatBot from './components/ChatBot';
+import { installApiAuthInterceptor } from './apiClient';
+
+installApiAuthInterceptor();
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState<'admin' | 'cashier' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'manager' | 'cashier' | 'kitchen' | null>(null);
   const [userName, setUserName] = useState('');
+  const [userPosition, setUserPosition] = useState('');
   const navigate = useNavigate();
-  const location = useLocation();
 
   // Kiểm tra trạng thái đăng nhập từ localStorage khi khởi động
   useEffect(() => {
     const authStatus = localStorage.getItem('isLoggedIn');
-    const savedRole = localStorage.getItem('userRole') as 'admin' | 'cashier' | null;
+    const savedRole = localStorage.getItem('userRole') as 'admin' | 'manager' | 'cashier' | 'kitchen' | null;
     const savedName = localStorage.getItem('userName') || '';
+    const savedPosition = localStorage.getItem('userPosition') || '';
 
     if (authStatus === 'true' && savedRole) {
       setIsLoggedIn(true);
       setUserRole(savedRole);
       setUserName(savedName);
+      setUserPosition(savedPosition);
     }
   }, []);
 
-  const handleLogin = (role: 'admin' | 'cashier', fullName: string, branchId?: string) => {
+  const handleLogin = (role: 'admin' | 'manager' | 'cashier' | 'kitchen', fullName: string, branchId?: string, employeeId?: string, branchName?: string, position?: string, token?: string) => {
     setIsLoggedIn(true);
     setUserRole(role);
     setUserName(fullName);
+    setUserPosition(position || '');
     localStorage.setItem('isLoggedIn', 'true');
     localStorage.setItem('userRole', role);
     localStorage.setItem('userName', fullName);
+    if (position) localStorage.setItem('userPosition', position);
+    if (token) localStorage.setItem('token', token);
 
-    if (branchId) {
-      localStorage.setItem('selectedBranchId', branchId);
-    }
+    if (branchId) localStorage.setItem('selectedBranchId', branchId);
+    if (branchName) localStorage.setItem('selectedBranchName', branchName);
+    if (employeeId) localStorage.setItem('employeeId', employeeId);
 
     if (role === 'cashier') {
       navigate('/pos');
+    } else if (role === 'kitchen') {
+      navigate('/kitchen');
     } else {
       navigate('/dashboard');
     }
@@ -58,11 +66,26 @@ function App() {
     setIsLoggedIn(false);
     setUserRole(null);
     setUserName('');
+    setUserPosition('');
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userName');
+    localStorage.removeItem('userPosition');
+    localStorage.removeItem('token');
+    localStorage.removeItem('employeeId');
+    localStorage.removeItem('selectedBranchId');
+    localStorage.removeItem('selectedBranchName');
+    localStorage.removeItem('pos_table_carts');
+    localStorage.removeItem('pos_table_customers');
+    localStorage.removeItem('pos_selected_table_id');
     navigate('/');
   };
+
+  useEffect(() => {
+    const onUnauthorized = () => handleLogout();
+    window.addEventListener('pos:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('pos:unauthorized', onUnauthorized);
+  }, []);
 
   // Nếu chưa đăng nhập, chỉ cho phép ở trang Login
   if (!isLoggedIn) {
@@ -74,27 +97,57 @@ function App() {
     );
   }
 
-  // GIAO DIỆN THU NGÂN (Tách biệt hoàn toàn)
+  // GIAO DIỆN THU NGÂN
   if (userRole === 'cashier') {
     return (
       <div className="min-h-screen bg-[#f0f2f5]">
-        <Routes>
-          <Route path="/pos" element={<POSPage onLogout={handleLogout} userName={userName} userRole={userRole} />} />
-          <Route path="*" element={<Navigate to="/pos" replace />} />
-        </Routes>
+        <CashierNavbar onLogout={handleLogout} userName={userName} userPosition={userPosition} />
+        <main className="h-[calc(100dvh-48px)] min-h-0">
+          <Routes>
+            <Route path="/pos" element={<POSPage onLogout={handleLogout} userName={userName} userRole={userRole} userPosition={userPosition} />} />
+            <Route path="/pos/invoices" element={<InvoiceHistory />} />
+            <Route path="/pos/settings/receipt" element={<ReceiptSettingsPage />} />
+            <Route path="/pos/attendance" element={<EmployeeAttendance />} />
+            <Route path="/pos/schedule" element={<EmployeeSchedule />} />
+            <Route path="/pos/shifts" element={<ShiftManagement />} />
+            <Route path="/pos/reservations" element={<ReservationManagement />} />
+            <Route path="/pos/profile" element={<EmployeeProfile userName={userName} onLogout={handleLogout} />} />
+            <Route path="*" element={<Navigate to="/pos" replace />} />
+          </Routes>
+        </main>
+        <ChatBot />
       </div>
     );
   }
 
-  // GIAO DIỆN QUẢN TRỊ (Dành cho chủ quán)
+  // GIAO DIỆN NHÀ BẾP
+  if (userRole === 'kitchen') {
+    return (
+      <div className="min-h-screen bg-[#f0f2f5]">
+        <KitchenNavbar onLogout={handleLogout} userName={userName} />
+        <main className="h-[calc(100dvh-48px)] min-h-0">
+          <Routes>
+            <Route path="/kitchen" element={<KitchenPage />} />
+            <Route path="/kitchen/history" element={<KitchenHistoryPage />} />
+            <Route path="/kitchen/tables" element={<TableStatusPage />} />
+            <Route path="/kitchen/attendance" element={<EmployeeAttendance />} />
+            <Route path="/kitchen/schedule" element={<EmployeeSchedule />} />
+            <Route path="/kitchen/shifts" element={<ShiftManagement />} />
+            <Route path="/kitchen/reservations" element={<ReservationManagement readOnly={true} />} />
+            <Route path="/kitchen/profile" element={<EmployeeProfile userName={userName} onLogout={handleLogout} />} />
+            <Route path="*" element={<Navigate to="/kitchen" replace />} />
+          </Routes>
+        </main>
+        <ChatBot />
+      </div>
+    );
+  }
+
+  // GIAO DIỆN QUẢN TRỊ
   return (
     <div className="min-h-screen bg-[#f0f2f5]">
-      <Navbar
-        onLogout={handleLogout}
-        userName={userName}
-      />
-
-      <main>
+      <Navbar onLogout={handleLogout} userName={userName} userRole={userRole} />
+      <main className="h-[calc(100vh-48px)] overflow-auto">
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/products" element={<ProductManagement />} />
@@ -102,16 +155,28 @@ function App() {
           <Route path="/invoices" element={<InvoiceHistory />} />
           <Route path="/expenses" element={<ExpenseManagement />} />
           <Route path="/employees" element={<EmployeeManagement />} />
-          <Route path="/users" element={<UserManagement />} />
-          <Route path="/branches" element={<BranchManagement />} />
+          <Route path="/payroll" element={<PayrollPage />} />
+          <Route path="/attendance" element={<AttendanceManagement />} />
+          <Route path="/schedule" element={<WorkSchedulePage />} />
+          <Route path="/customers" element={<CustomerManagement />} />
+          <Route path="/promotions" element={<PromotionManagement />} />
+          <Route path="/branches" element={userRole === 'admin' ? <BranchManagement /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/shifts" element={<ShiftManagement />} />
+          <Route path="/reservations" element={<ReservationManagement />} />
           <Route path="/print-templates" element={<PrintTemplates />} />
+          <Route path="/settings/receipt" element={<ReceiptSettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/settings" element={<SystemSettings />} />
-          <Route path="/pos" element={<POSPage onLogout={() => navigate('/dashboard')} userName={userName} userRole={userRole} />} />
+          <Route path="/settings" element={userRole === 'admin' ? <SystemSettings /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/toppings" element={<ToppingManagement />} />
+          <Route path="/kitchen" element={<KitchenPage />} />
+          <Route path="/kitchen/history" element={<KitchenHistoryPage />} />
+          <Route path="/support" element={<SupportPage />} />
+          <Route path="/pos" element={<POSPage onLogout={() => navigate('/dashboard')} userName={userName} userRole={userRole} userPosition={userPosition} />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
+      <ChatBot />
     </div>
   );
 }

@@ -1,109 +1,161 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using RestaurantPOS.Domain.Entities;
-using RestaurantPOS.Infrastructure.Persistence;
+using RestaurantPOS.Application.Services;
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
+    /// <summary>Cung cấp các endpoint quản lý bàn phục vụ.</summary>
     [ApiController]
     [Route("api/[controller]")]
     public class TableController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
+        private readonly ITableService _tableService;
 
-        public TableController(ApplicationDbContext context)
+        public TableController(ITableService tableService)
         {
-            _context = context;
+            _tableService = tableService;
         }
 
+        /// <summary>Lấy danh sách bàn theo các bộ lọc.</summary>
         [HttpGet]
         public async Task<IActionResult> GetTables([FromQuery] string? search, [FromQuery] string? area, [FromQuery] bool? isActive, [FromQuery] Guid? branchId)
         {
-            var query = _context.Tables.AsQueryable();
+            // Nếu là staff, bắt buộc lọc theo chi nhánh của họ nếu họ không phải admin
+            if (User.Identity != null && User.Identity.IsAuthenticated && !IsCustomer())
+            {
+                if (!TryResolveBranch(branchId, out var effectiveBranchId))
+                    return Forbid();
 
-            if (!string.IsNullOrEmpty(search))
-                query = query.Where(t => t.Name.Contains(search) || (t.Description != null && t.Description.Contains(search)));
+                return Ok(await _tableService.GetTablesAsync(effectiveBranchId, search, area, isActive));
+            }
 
-            if (!string.IsNullOrEmpty(area))
-                query = query.Where(t => t.AreaName == area);
+            // Đối với khách vãng lai hoặc customer, cho phép xem bàn của một chi nhánh cụ thể
+            // (Không cho phép xem toàn bộ bàn của tất cả chi nhánh nếu không truyền branchId)
+            if (!branchId.HasValue)
+            {
+                // Nếu là Admin thì có thể xem tất cả, nhưng thường guest flow cần branchId
+                if (!IsAdmin())
+                    return BadRequest("Vui lòng cung cấp mã chi nhánh (branchId).");
+            }
 
-            if (isActive.HasValue)
-                query = query.Where(t => t.IsActive == isActive.Value);
-
-            if (branchId.HasValue)
-                query = query.Where(t => t.BranchId == branchId.Value);
-
-            return Ok(await query.OrderBy(t => t.Name).ToListAsync());
+            return Ok(await _tableService.GetTablesAsync(branchId, search, area, isActive));
         }
 
+        /// <summary>Lấy thông tin chi tiết một bàn.</summary>
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetTable(Guid id)
+        {
+            var branchId = GetUserBranchId();
+            var table = await _tableService.GetByIdAsync(id, IsAdmin() ? null : branchId);
+
+            if (table == null) return NotFound();
+            return Ok(table);
+        }
+
+        /// <summary>Tạo bàn mới.</summary>
         [HttpPost]
+        [Authorize(Roles = "admin,manager")]
         public async Task<IActionResult> CreateTable(RestaurantTable table)
         {
             try
             {
-                table.Id = Guid.NewGuid();
-                table.CreatedAt = DateTime.UtcNow;
+                var branchId = GetUserBranchId();
 
-                // Đảm bảo các giá trị mặc định nếu bị null từ frontend
-                if (string.IsNullOrEmpty(table.Status)) table.Status = "Trống";
+                // Manager/Employee không được phép tạo bàn cho chi nhánh khác
+                if (!IsAdmin())
+                {
+                    if (branchId == null) return Forbid();
+                    if (table.BranchId.HasValue && table.BranchId != branchId)
+                        return Forbid();
+                }
 
-                _context.Tables.Add(table);
-                await _context.SaveChangesAsync();
-                return Ok(table);
+                var result = await _tableService.CreateTableAsync(table, IsAdmin() ? null : branchId);
+                return Ok(result);
             }
             catch (Exception ex)
             {
                 return StatusCode(500, new {
                     message = "Lỗi khi lưu bàn vào database",
-                    error = ex.Message,
-                    inner = ex.InnerException?.Message
+                    error = ex.Message
                 });
             }
         }
 
+        /// <summary>Cập nhật thông tin bàn.</summary>
         [HttpPut("{id}")]
+        [Authorize(Roles = "admin,manager")]
         public async Task<IActionResult> UpdateTable(Guid id, RestaurantTable tableUpdate)
         {
-            var table = await _context.Tables.FindAsync(id);
-            if (table == null) return NotFound();
+            var branchId = GetUserBranchId();
 
-            table.Name = tableUpdate.Name;
-            table.AreaName = tableUpdate.AreaName;
-            table.SeatCount = tableUpdate.SeatCount;
-            table.IsActive = tableUpdate.IsActive;
-            table.Description = tableUpdate.Description;
-            table.Status = tableUpdate.Status;
-            table.BranchId = tableUpdate.BranchId;
-            table.BranchName = tableUpdate.BranchName;
+            // Không cho phép Manager đổi chi nhánh của bàn sang chi nhánh khác
+            if (!IsAdmin())
+            {
+                if (branchId == null) return Forbid();
+                if (tableUpdate.BranchId.HasValue && tableUpdate.BranchId != branchId)
+                    return Forbid();
+            }
 
-            await _context.SaveChangesAsync();
-            return Ok(table);
+            var result = await _tableService.UpdateTableAsync(id, tableUpdate, IsAdmin() ? null : branchId);
+            if (result == null) return NotFound();
+
+            return Ok(result);
         }
 
+        /// <summary>Cập nhật trạng thái sử dụng của bàn.</summary>
         [HttpPatch("{id}/status")]
+        [Authorize(Roles = "admin,manager,employee,cashier")]
         public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] string status)
         {
-            var table = await _context.Tables.FindAsync(id);
-            if (table == null) return NotFound();
+            var branchId = GetUserBranchId();
+            if (!IsAdmin() && branchId == null) return Forbid();
 
-            table.Status = status;
-            await _context.SaveChangesAsync();
-            return Ok(new { id = table.Id, status = table.Status });
+            var success = await _tableService.UpdateStatusAsync(id, status, IsAdmin() ? null : branchId);
+
+            if (!success) return NotFound();
+            return Ok(new { id, status });
         }
 
+        /// <summary>Xóa bàn theo mã định danh.</summary>
         [HttpDelete("{id}")]
+        [Authorize(Roles = "admin,manager")]
         public async Task<IActionResult> DeleteTable(Guid id)
         {
-            var table = await _context.Tables.FindAsync(id);
-            if (table == null) return NotFound();
+            var branchId = GetUserBranchId();
+            if (!IsAdmin() && branchId == null) return Forbid();
 
-            _context.Tables.Remove(table);
-            await _context.SaveChangesAsync();
+            var success = await _tableService.DeleteTableAsync(id, IsAdmin() ? null : branchId);
+
+            if (!success) return NotFound();
             return NoContent();
         }
+
+        private bool TryResolveBranch(Guid? requestedBranchId, out Guid? effectiveBranchId)
+        {
+            effectiveBranchId = requestedBranchId;
+            if (IsAdmin()) return true;
+
+            var userBranchId = GetUserBranchId();
+            if (userBranchId == null) return false;
+
+            if (requestedBranchId.HasValue && requestedBranchId.Value != userBranchId.Value)
+                return false;
+
+            effectiveBranchId = userBranchId;
+            return true;
+        }
+
+        private Guid? GetUserBranchId()
+        {
+            var claimValue = User.FindFirst("branchId")?.Value;
+            return Guid.TryParse(claimValue, out var userBranchId) ? userBranchId : null;
+        }
+
+        private bool IsAdmin() => User.IsInRole("admin");
+        private bool IsCustomer() => User.IsInRole("customer");
     }
 }

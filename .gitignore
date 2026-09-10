@@ -25,7 +25,19 @@ obj/
 .env.development.local
 .env.test.local
 .env.production.local
+*.local.json
+secrets.json
+.https/
 
 # Debug logs
 logs
 *.log
+output.txt
+output_utf8.txt
+
+# Hardening task artifacts
+.*-build/
+.*-output/
+.*-audit-build/
+.*-build-obj/
+TlsTest.cs

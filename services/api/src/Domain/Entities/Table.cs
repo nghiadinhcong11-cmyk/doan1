@@ -2,6 +2,7 @@ using System;
 
 namespace RestaurantPOS.Domain.Entities
 {
+    /// <summary>Bàn phục vụ trong nhà hàng.</summary>
     public class RestaurantTable
     {
         public Guid Id { get; set; }

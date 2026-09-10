@@ -59,13 +59,11 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                 oldClrType: typeof(string),
                 oldType: "text");
 
-            /* Cột Group đã tồn tại thủ công trong Database
             migrationBuilder.AddColumn<string>(
                 name: "Group",
                 table: "Products",
                 type: "text",
                 nullable: true);
-            */
 
             migrationBuilder.AlterColumn<string>(
                 name: "TableName",
@@ -171,15 +169,12 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                 oldClrType: typeof(string),
                 oldType: "text");
 
-            /* Cột BranchName đã tồn tại thủ công trong Database
             migrationBuilder.AddColumn<string>(
                 name: "BranchName",
                 table: "Employees",
                 type: "text",
                 nullable: true);
-            */
 
-            /* Bảng Areas và Branches đã tồn tại
             migrationBuilder.CreateTable(
                 name: "Areas",
                 columns: table => new
@@ -213,7 +208,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_Branches", x => x.Id);
                 });
-            */
         }
 
         /// <inheritdoc />

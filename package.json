@@ -1,6 +1,16 @@
 {
+  "name": "restaurant-pos",
+  "private": true,
+  "scripts": {
+    "codegen": "openapi-typescript http://localhost:5000/swagger/v1/swagger.json -o packages/shared/types/api.ts",
+    "codegen:file": "openapi-typescript packages/shared/swagger.json -o packages/shared/types/api.ts",
+    "codegen:check": "openapi-typescript packages/shared/swagger.json -o packages/shared/types/api.generated.ts && node -e \"const fs=require('fs'); const a=fs.readFileSync('packages/shared/types/api.ts','utf8'); const b=fs.readFileSync('packages/shared/types/api.generated.ts','utf8'); if(a!==b){console.error('Generated API types are stale. Run npm run codegen:file.'); process.exit(1)} fs.unlinkSync('packages/shared/types/api.generated.ts')\""
+  },
   "dependencies": {
     "lucide-react": "^1.25.0",
     "recharts": "^3.9.2"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.12.0"
   }
 }

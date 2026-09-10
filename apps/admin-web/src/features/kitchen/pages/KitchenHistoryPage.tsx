@@ -1,0 +1,30 @@
+import React, { useEffect, useState } from 'react';
+import { Search, X, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { API_URL } from '../../../config';
+
+type HistoryItem = { id: string; orderId: string; requestNumber: number; status: string; createdAt: string; acceptedAt?: string; preparingAt?: string; completedAt?: string; processedBy?: string; invoiceCode?: string; tableName?: string; items: { productName: string; quantity: number; options?: string; note?: string }[] };
+
+const KitchenHistoryPage = () => {
+  const [items, setItems] = useState<HistoryItem[]>([]);
+  const [selected, setSelected] = useState<HistoryItem | null>(null);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
+
+  const load = async () => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (search) params.set('search', search); if (status) params.set('status', status); if (from) params.set('from', from); if (to) params.set('to', to);
+    const branchId = localStorage.getItem('selectedBranchId'); if (branchId) params.set('branchId', branchId);
+    const response = await fetch(`${API_URL}/api/Order/kitchen/history?${params}`);
+    if (response.ok) { const data = await response.json(); setItems(data.items); setTotal(data.total); }
+  };
+  useEffect(() => { void load(); }, [page, status, from, to]);
+  const detail = async (id: string) => { const response = await fetch(`${API_URL}/api/Order/kitchen/requests/${id}`); if (response.ok) { const data = await response.json(); setSelected({ ...data.request, ...data.order, items: data.request.items }); } };
+  const format = (value?: string) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+  return <div className="min-h-screen bg-[#f5f7fb] p-4 text-slate-800 md:p-7"><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-3xl font-black text-slate-900">Lịch sử bếp</h1><p className="mt-1 text-sm text-slate-500">Các đợt gọi món đã xử lý và timeline chế biến.</p></div><div className="flex gap-2"><input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && (setPage(1), void load())} placeholder="Mã đơn / Order ID" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" /><button onClick={() => { setPage(1); void load(); }} className="rounded-xl bg-slate-900 px-3 py-2 text-white"><Search size={16}/></button></div></div><div className="mb-5 flex flex-wrap gap-2"><select value={status} onChange={e => setStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">Tất cả trạng thái</option><option value="Completed">Hoàn thành</option><option value="Cancelled">Đã hủy</option><option value="Ready">Sẵn sàng</option></select><input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"/><input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"/></div><div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="divide-y divide-slate-100">{items.map(item => <button key={item.id} onClick={() => void detail(item.id)} className="flex w-full flex-wrap items-center justify-between gap-3 p-5 text-left transition hover:bg-orange-50"><div><p className="font-black">{item.invoiceCode || item.orderId} · Bàn {item.tableName || '—'}</p><p className="mt-1 text-xs text-slate-400">Đợt gọi #{item.requestNumber} · {item.items?.length || 0} món</p></div><div className="text-right"><p className="text-xs font-bold text-slate-600">{item.status}</p><p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><Clock size={13}/> {format(item.createdAt)}</p></div></button>)}{items.length === 0 && <p className="p-12 text-center text-sm text-slate-400">Không có dữ liệu phù hợp.</p>}</div></div><div className="mt-4 flex items-center justify-between text-sm"><span className="text-slate-400">Tổng {total} đợt gọi</span><div className="flex gap-2"><button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="rounded-lg border p-2 disabled:opacity-30"><ChevronLeft size={16}/></button><span className="px-2 py-2 font-bold">{page}</span><button disabled={page * pageSize >= total} onClick={() => setPage(p => p + 1)} className="rounded-lg border p-2 disabled:opacity-30"><ChevronRight size={16}/></button></div></div>{selected && <div className="fixed inset-0 z-[300] flex items-start justify-center overflow-y-auto bg-black/50 p-4 md:items-center"><div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-black">Chi tiết đợt gọi #{selected.requestNumber}</h2><button onClick={() => setSelected(null)} className="rounded-full bg-slate-100 p-2"><X size={18}/></button></div><div className="grid grid-cols-2 gap-3 text-sm"><p><b>Order:</b> {selected.invoiceCode || selected.orderId}</p><p><b>Bàn:</b> {selected.tableName || '—'}</p><p><b>Trạng thái:</b> {selected.status}</p><p><b>Xử lý:</b> {selected.processedBy || '—'}</p></div><div className="my-5 space-y-2">{selected.items?.map((item, index) => <div key={index} className="flex justify-between rounded-xl bg-slate-50 p-3"><span className="font-bold">{item.productName}{item.options && <small className="ml-2 font-normal text-slate-400">{item.options}</small>}</span><span className="font-black text-orange-600">×{item.quantity}</span></div>)}</div><div className="grid gap-2 text-xs text-slate-500"><p>Created: {format(selected.createdAt)}</p><p>Accepted: {format(selected.acceptedAt)}</p><p>Preparing: {format(selected.preparingAt)}</p><p>Completed: {format(selected.completedAt)}</p></div></div></div>}</div>;
+};
+export default KitchenHistoryPage;

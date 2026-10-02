@@ -6,14 +6,24 @@ namespace RestaurantPOS.AI.Utils
 {
     public static class AiToolValidator
     {
+        private static void EnsureObject(JsonElement arguments)
+        {
+            if (arguments.ValueKind != JsonValueKind.Object)
+            {
+                throw new ArgumentException("Cấu trúc tham số không hợp lệ. Phải là một JSON Object.");
+            }
+        }
+
         public static void ValidateRequired(JsonElement arguments, params string[] requiredProps)
         {
             if (arguments.ValueKind == JsonValueKind.Undefined || arguments.ValueKind == JsonValueKind.Null)
             {
                 if (requiredProps.Length > 0)
-                    throw new ArgumentException("Thiếu các tham số bắt buộc.");
+                    throw new ArgumentException("Thiếu toàn bộ tham số bắt buộc.");
                 return;
             }
+
+            EnsureObject(arguments);
 
             foreach (var prop in requiredProps)
             {
@@ -26,7 +36,13 @@ namespace RestaurantPOS.AI.Utils
 
         public static string GetString(JsonElement arguments, string propertyName, bool required = true)
         {
-            if (arguments.TryGetProperty(propertyName, out var prop))
+            if (arguments.ValueKind != JsonValueKind.Object && arguments.ValueKind != JsonValueKind.Undefined && arguments.ValueKind != JsonValueKind.Null)
+            {
+                 if (required) throw new ArgumentException($"Tham số {propertyName} không thể được trích xuất vì cấu trúc dữ liệu sai.");
+                 return "";
+            }
+
+            if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(propertyName, out var prop))
             {
                 if (prop.ValueKind == JsonValueKind.Null)
                 {
@@ -52,7 +68,7 @@ namespace RestaurantPOS.AI.Utils
 
         public static decimal GetDecimal(JsonElement arguments, string propertyName, decimal? min = null, decimal? max = null)
         {
-            if (arguments.TryGetProperty(propertyName, out var prop))
+            if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(propertyName, out var prop))
             {
                 if (prop.ValueKind != JsonValueKind.Number)
                 {
@@ -76,7 +92,7 @@ namespace RestaurantPOS.AI.Utils
 
         public static int GetInt32(JsonElement arguments, string propertyName, int? min = null, int? max = null)
         {
-            if (arguments.TryGetProperty(propertyName, out var prop))
+            if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(propertyName, out var prop))
             {
                 if (prop.ValueKind != JsonValueKind.Number)
                 {

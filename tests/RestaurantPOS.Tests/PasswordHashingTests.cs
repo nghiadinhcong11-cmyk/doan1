@@ -42,7 +42,7 @@ public sealed class PasswordHashingTests
         {
             Username = "testuser",
             Password = "plaintextpassword",
-            Mode = "admin"
+            Mode = "management"
         });
 
         // Assert
@@ -51,6 +51,15 @@ public sealed class PasswordHashingTests
         var updatedEmployee = await context.Employees.AsNoTracking().FirstAsync(e => e.Id == employee.Id);
         Assert.NotEqual("plaintextpassword", updatedEmployee!.Password);
         Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(updatedEmployee, updatedEmployee.Password!, "plaintextpassword"));
+
+        var secondLogin = await authController.Login(new AuthController.LoginRequest
+        {
+            Username = "testuser",
+            Password = "plaintextpassword",
+            Mode = "management"
+        });
+
+        Assert.IsType<OkObjectResult>(secondLogin);
     }
 
     [Fact]
@@ -61,7 +70,7 @@ public sealed class PasswordHashingTests
         await using var __ = connection;
 
         var hasher = new PasswordHasher<Employee>();
-        var controller = new EmployeeController(context, hasher);
+        var controller = new EmployeeController(context, hasher, Mock.Of<RestaurantPOS.Application.Services.IEmployeeService>());
         SetUser(controller, "admin");
 
         var newEmployee = new Employee

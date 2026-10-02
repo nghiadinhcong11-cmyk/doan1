@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, Loader2, CheckCircle2, ShieldCheck, User } from 'lucide-react';
+import { Lock, CheckCircle2 } from 'lucide-react';
 import { API_URL } from '../config';
+import { Button, Feedback, FormField } from './ui';
 
 const ChangePassword = ({ id, type, onClose }: { id: string, type: 'Employee' | 'Customer', onClose: () => void }) => {
   const [oldPassword, setOldPassword] = useState('');
@@ -19,6 +20,10 @@ const ChangePassword = ({ id, type, onClose }: { id: string, type: 'Employee' | 
       setError('Mật khẩu mới không khớp!');
       return;
     }
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      setError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -26,7 +31,7 @@ const ChangePassword = ({ id, type, onClose }: { id: string, type: 'Employee' | 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {})
+          ...(localStorage.getItem('adminToken') ? { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } : {})
         },
         body: JSON.stringify({ id, type, oldPassword, newPassword })
       });
@@ -68,59 +73,30 @@ const ChangePassword = ({ id, type, onClose }: { id: string, type: 'Employee' | 
       </div>
 
       <div className="space-y-4">
-        <div>
-           <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Mật khẩu hiện tại</label>
-           <div className="relative">
-              <input 
-                type={showPass ? 'text' : 'password'}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/10 outline-none"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                required
-              />
-           </div>
-        </div>
-
-        <div>
-           <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Mật khẩu mới</label>
-           <input 
-              type={showPass ? 'text' : 'password'}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/10 outline-none"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-           />
-        </div>
-
-        <div>
-           <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nhập lại mật khẩu mới</label>
-           <input 
-              type={showPass ? 'text' : 'password'}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/10 outline-none"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-           />
-        </div>
+        <FormField label="Mật khẩu hiện tại" type={showPass ? 'text' : 'password'} value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} required maxLength={128} />
+        <FormField label="Mật khẩu mới" type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} maxLength={128} helperText="Sử dụng từ 8 đến 128 ký tự." />
+        <FormField label="Nhập lại mật khẩu mới" type={showPass ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} maxLength={128} />
       </div>
 
-      {error && <p className="text-[10px] font-black text-red-500 uppercase text-center">{error}</p>}
+      {error && <Feedback tone="error">{error}</Feedback>}
 
       <div className="flex items-center justify-between pt-4">
-         <button 
+         <Button
            type="button"
            onClick={() => setShowPass(!showPass)}
-           className="text-[10px] font-black text-gray-400 uppercase hover:text-blue-600 transition-colors"
+           variant="ghost"
+           size="sm"
+           aria-pressed={showPass}
          >
            {showPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-         </button>
-         <button 
+         </Button>
+         <Button
            type="submit"
-           disabled={loading}
-           className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center"
+           loading={loading}
+           size="md"
          >
-           {loading ? <Loader2 className="animate-spin mr-2" size={16} /> : 'Cập nhật ngay'}
-         </button>
+           Cập nhật ngay
+         </Button>
       </div>
     </form>
   );

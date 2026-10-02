@@ -14,7 +14,7 @@ namespace RestaurantPOS.AI.Tools.Employee
         private readonly IOrderService _orderService;
         public string Name => "update_order_status";
         public string Description => "Cập nhật trạng thái của một đơn hàng (Ví dụ: Đang chế biến, Đã phục vụ, Hoàn thành).";
-        public string[] AllowedRoles => new[] { "admin", "manager", "employee" };
+        public string[] AllowedRoles => new[] { "admin", "manager", "employee", "cashier", "kitchen" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Write;
 
         public UpdateOrderStatusTool(IOrderService orderService)

@@ -17,7 +17,7 @@ namespace RestaurantPOS.Domain.Entities
         public int TotalOrders { get; set; } = 0;
         public int LoyaltyPoints { get; set; } = 0;
         public bool IsActive { get; set; } = true;
-        public string? Password { get; set; } = "123456"; // Mật khẩu mặc định
+        public string? Password { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastOrderDate { get; set; }

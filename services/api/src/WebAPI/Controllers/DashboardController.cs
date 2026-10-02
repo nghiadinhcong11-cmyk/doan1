@@ -35,10 +35,10 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (role == "manager")
             {
                 var ownBranch = User.FindFirst("branchId")?.Value;
-                if (string.IsNullOrEmpty(ownBranch)) return Forbid();
+                if (!Guid.TryParse(ownBranch, out var managerBranchId)) return Forbid();
 
                 // Manager chỉ được xem dashboard của chính mình
-                branchId = ownBranch;
+                branchId = managerBranchId.ToString();
             }
 
             try

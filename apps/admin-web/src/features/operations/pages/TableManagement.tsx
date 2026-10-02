@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, MapPin, QrCode, Download, Upload, HelpCircle, LayoutGrid, CheckCircle2, Eye, Printer, AlertTriangle, Settings2, Store, Utensils } from 'lucide-react';
 import { API_URL, CUSTOMER_WEB_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Table {
   id?: string;
@@ -34,6 +35,7 @@ const TableManagement = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [viewingQr, setViewingQr] = useState<Table | null>(null);
+  const [viewingQrToken, setViewingQrToken] = useState<string | null>(null);
   const [isManageAreasMode, setIsManageAreasMode] = useState(false);
 
   // Filter states
@@ -84,6 +86,21 @@ const TableManagement = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (!viewingQr?.id) {
+      setViewingQrToken(null);
+      return;
+    }
+
+    fetch(`${API_URL}/api/Table/${viewingQr.id}/qr-token`)
+      .then(response => response.ok ? response.json() : Promise.reject())
+      .then(data => setViewingQrToken(data.qrToken))
+      .catch(() => {
+        setViewingQrToken(null);
+        notifyFeedback('Không thể tải mã QR của bàn.', 'error');
+      });
+  }, [viewingQr?.id]);
+
   const filteredTables = useMemo(() => {
     return tables.filter(t => {
       const matchSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -124,11 +141,11 @@ const TableManagement = () => {
         setEditingTable(null);
         resetForm();
         fetchData();
-      } else {
-        alert('Lỗi khi lưu thông tin bàn.');
+      } else if (response.status !== 403) {
+        notifyFeedback('Lỗi khi lưu thông tin bàn.');
       }
     } catch (err) {
-      alert('Lỗi kết nối đến server.');
+      notifyFeedback('Lỗi kết nối đến server.');
     }
   };
 
@@ -163,10 +180,14 @@ const TableManagement = () => {
     try {
       const response = await fetch(`${API_URL}/api/Table/${id}`, { method: 'DELETE' });
       if (response.ok) fetchData();
-    } catch (err) { alert('Lỗi khi xóa bàn'); }
+    } catch (err) { notifyFeedback('Lỗi khi xóa bàn'); }
   };
 
   const handleAddArea = async () => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     const areaName = prompt('Nhập tên khu vực mới:');
     if (areaName) {
       try {
@@ -176,11 +197,15 @@ const TableManagement = () => {
           body: JSON.stringify({ name: areaName, displayOrder: areas.length + 1 })
         });
         if (response.ok) fetchData();
-      } catch (err) { alert('Lỗi khi thêm khu vực'); }
+      } catch (err) { notifyFeedback('Lỗi khi thêm khu vực'); }
     }
   };
 
   const handleEditArea = async (area: Area) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     const newName = prompt('Nhập tên mới cho khu vực:', area.name);
     if (newName && newName !== area.name) {
       try {
@@ -190,22 +215,26 @@ const TableManagement = () => {
           body: JSON.stringify({ ...area, name: newName })
         });
         if (response.ok) fetchData();
-        else alert('Lỗi khi cập nhật khu vực');
-      } catch (err) { alert('Lỗi kết nối server'); }
+        else if (response.status !== 403) notifyFeedback('Lỗi khi cập nhật khu vực');
+      } catch (err) { notifyFeedback('Lỗi kết nối server'); }
     }
   };
 
   const handleDeleteArea = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     if (!window.confirm('Xóa khu vực này? Tất cả bàn thuộc khu vực này phải được xóa hoặc chuyển đi trước.')) return;
     try {
       const response = await fetch(`${API_URL}/api/Area/${id}`, { method: 'DELETE' });
       if (response.ok) {
         fetchData();
-      } else {
+      } else if (response.status !== 403) {
         const error = await response.json();
-        alert(error.message || 'Lỗi khi xóa khu vực');
+        notifyFeedback(error.message || 'Lỗi khi xóa khu vực');
       }
-    } catch (err) { alert('Lỗi kết nối server'); }
+    } catch (err) { notifyFeedback('Lỗi kết nối server'); }
   };
 
   return (
@@ -336,7 +365,14 @@ const TableManagement = () => {
           </div>
           <div className="flex space-x-3">
             <button
-              onClick={() => { resetForm(); setEditingTable(null); setIsModalOpen(true); }}
+              onClick={() => {
+                const role = localStorage.getItem('userRole');
+                if (role !== 'admin' && role !== 'manager') {
+                  notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+                  return;
+                }
+                resetForm(); setEditingTable(null); setIsModalOpen(true);
+              }}
               className="bg-[#0070f4] text-white px-8 py-2.5 rounded-xl flex items-center font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 active:scale-95"
             >
               <Plus size={16} className="mr-2" /> THÊM PHÒNG/BÀN
@@ -413,7 +449,7 @@ const TableManagement = () => {
               <p className="text-xs text-gray-400 mb-10 uppercase font-black tracking-[0.2em] opacity-60">{viewingQr.areaName} — {viewingQr.branchName}</p>
 
               <div className="bg-gray-50 p-10 rounded-[3rem] border-4 border-white shadow-2xl mb-10 group relative overflow-hidden">
-                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${CUSTOMER_WEB_URL}?tableId=${viewingQr.id}`)}`} alt="QR" className="w-full aspect-square" />
+                 {viewingQrToken && <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${CUSTOMER_WEB_URL}?qr=${viewingQrToken}`)}`} alt="QR" className="w-full aspect-square" />}
                  <div className="absolute inset-0 bg-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <QrCode size={48} className="text-blue-100 opacity-20" />
                  </div>

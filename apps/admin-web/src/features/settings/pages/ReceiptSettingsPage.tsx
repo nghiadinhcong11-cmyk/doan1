@@ -2,8 +2,32 @@ import React, { useEffect, useState } from 'react';
 import { Eye, Printer, Save } from 'lucide-react';
 import { API_URL } from '../../../config';
 
-type Settings = { paperWidth: 58 | 80; showLogo: boolean; showAddress: boolean; showPhone: boolean; showStaff: boolean; showPaymentMethod: boolean; showOrderNote: boolean; showThankYou: boolean; thankYouText: string };
-const defaults: Settings = { paperWidth: 80, showLogo: true, showAddress: true, showPhone: true, showStaff: true, showPaymentMethod: true, showOrderNote: true, showThankYou: true, thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!' };
+type Settings = {
+  paperWidth: 58 | 80;
+  showLogo: boolean;
+  showAddress: boolean;
+  showPhone: boolean;
+  showStaff: boolean;
+  showPaymentMethod: boolean;
+  showOrderNote: boolean;
+  showThankYou: boolean;
+  thankYouText: string;
+  fontFamily: string;
+  fontSize: number;
+};
+const defaults: Settings = {
+  paperWidth: 80,
+  showLogo: true,
+  showAddress: true,
+  showPhone: true,
+  showStaff: true,
+  showPaymentMethod: true,
+  showOrderNote: true,
+  showThankYou: true,
+  thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!',
+  fontFamily: 'font-mono',
+  fontSize: 11
+};
 const money = (value: number) => value.toLocaleString('vi-VN');
 
 const ReceiptSettingsPage = () => {
@@ -11,7 +35,8 @@ const ReceiptSettingsPage = () => {
   const [branch, setBranch] = useState<any>(null);
   const [saved, setSaved] = useState(false);
   const branchId = localStorage.getItem('selectedBranchId') || '';
-  const canEdit = localStorage.getItem('userRole') === 'admin' || localStorage.getItem('userPosition') === 'Quản lý';
+  const userRole = localStorage.getItem('userRole');
+  const canEdit = userRole === 'admin' || userRole === 'manager';
 
   useEffect(() => {
     void Promise.all([

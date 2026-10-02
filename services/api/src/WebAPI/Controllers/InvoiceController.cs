@@ -8,7 +8,7 @@ namespace RestaurantPOS.WebAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "admin,cashier,employee")]
+[Authorize(Roles = "admin,manager,cashier,employee")]
 public class InvoiceController : ControllerBase
 {
     private readonly ApplicationDbContext _context;

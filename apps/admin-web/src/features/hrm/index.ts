@@ -5,4 +5,3 @@ export { default as WorkSchedulePage } from './pages/WorkSchedulePage';
 export { default as EmployeeAttendance } from './pages/EmployeeAttendance';
 export { default as EmployeeSchedule } from './pages/EmployeeSchedule';
 export { default as EmployeeProfile } from './pages/EmployeeProfile';
-export { default as PayrollPage } from './pages/PayrollPage';

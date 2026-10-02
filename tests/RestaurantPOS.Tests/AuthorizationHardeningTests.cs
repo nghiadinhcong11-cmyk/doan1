@@ -19,10 +19,13 @@ public sealed class AuthorizationHardeningTests
         var dashboard = typeof(DashboardController).GetMethod(nameof(DashboardController.GetSummary));
         var orderStatus = typeof(OrderController).GetMethod(nameof(OrderController.UpdateStatus));
         var kitchenRequests = typeof(OrderController).GetMethod(nameof(OrderController.GetActiveKitchenRequests));
+        var productAvailability = typeof(ProductController).GetMethod(nameof(ProductController.UpdateAvailability));
 
         Assert.Equal("admin,manager", GetAuthorizeRoles(dashboard!));
         Assert.Equal("admin,manager,employee,cashier,kitchen", GetAuthorizeRoles(orderStatus!));
         Assert.Equal("admin,manager,kitchen", GetAuthorizeRoles(kitchenRequests!));
+        Assert.Equal("admin,manager,kitchen", GetAuthorizeRoles(productAvailability!));
+        Assert.Equal("admin,manager", GetAuthorizeRolesForType(typeof(ExpenseController)));
     }
 
     [Fact]
@@ -192,6 +195,9 @@ public sealed class AuthorizationHardeningTests
     private static string? GetAuthorizeRoles(MethodInfo method) =>
         method.GetCustomAttribute<AuthorizeAttribute>()?.Roles ??
         method.DeclaringType?.GetCustomAttribute<AuthorizeAttribute>()?.Roles;
+
+    private static string? GetAuthorizeRolesForType(Type type) =>
+        type.GetCustomAttribute<AuthorizeAttribute>()?.Roles;
 
     private static readonly Guid BranchA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid BranchB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");

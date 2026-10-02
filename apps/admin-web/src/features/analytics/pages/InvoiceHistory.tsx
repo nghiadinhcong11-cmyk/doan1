@@ -85,7 +85,7 @@ const InvoiceHistory = () => {
   useEffect(() => {
     fetchOrders();
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('token') || '' })
+      .withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' })
       .withAutomaticReconnect()
       .build();
     const refresh = () => { void fetchOrders(); };

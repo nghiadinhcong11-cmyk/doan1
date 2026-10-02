@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Edit2, Loader2, X, Settings2, Search, Image as ImageIcon, Camera, CheckCircle2, MoreHorizontal, Filter, Utensils } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Topping {
   id?: string;
@@ -86,6 +87,10 @@ const ToppingManagement = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     try {
       const url = editingTopping ? `${API_URL}/api/Topping/${editingTopping.id}` : `${API_URL}/api/Topping`;
       const method = editingTopping ? 'PUT' : 'POST';
@@ -100,17 +105,27 @@ const ToppingManagement = () => {
         setIsModalOpen(false);
         resetForm();
         fetchToppings();
+      } else if (response.status !== 403) {
+        notifyFeedback("Lỗi khi lưu Topping");
       }
-    } catch (err) { alert('Lỗi kết nối'); }
+    } catch (err) { notifyFeedback('Lỗi kết nối'); }
   };
 
   const deleteTopping = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     if (!window.confirm('Xóa Topping này?')) return;
-    await fetch(`${API_URL}/api/Topping/${id}`, { method: 'DELETE' });
-    fetchToppings();
+    const response = await fetch(`${API_URL}/api/Topping/${id}`, { method: 'DELETE' });
+    if (response.ok) fetchToppings();
   };
 
   const openEditModal = (topping: Topping) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     setEditingTopping(topping);
     setFormData({ ...topping });
     setIsModalOpen(true);
@@ -141,7 +156,7 @@ const ToppingManagement = () => {
   const handleDeleteGroup = (groupName: string) => {
     const hasToppings = toppings.some(t => t.category === groupName);
     if (hasToppings) {
-      alert('Không thể xóa nhóm này vì vẫn còn Topping đang thuộc nhóm. Hãy đổi nhóm cho Topping trước.');
+      notifyFeedback('Không thể xóa nhóm này vì vẫn còn Topping đang thuộc nhóm. Hãy đổi nhóm cho Topping trước.');
       return;
     }
     if (window.confirm(`Bạn có chắc chắn muốn xóa nhóm "${groupName}"?`)) {
@@ -250,7 +265,13 @@ const ToppingManagement = () => {
             />
           </div>
           <button
-            onClick={() => { resetForm(); setIsModalOpen(true); }}
+            onClick={() => {
+              if (localStorage.getItem('userRole') !== 'admin') {
+                notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+                return;
+              }
+              resetForm(); setIsModalOpen(true);
+            }}
             className="bg-[#0070f4] text-white px-6 py-2.5 rounded-xl flex items-center font-black uppercase tracking-widest text-[11px] shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95"
           >
             <Plus size={18} className="mr-2" /> Thêm Topping mới

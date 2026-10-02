@@ -16,6 +16,7 @@ namespace RestaurantPOS.AI.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [EnableRateLimiting("ai-limiter")]
+    [Authorize]
     public class AiController : ControllerBase
     {
         private readonly IAiOrchestrator _orchestrator;
@@ -34,7 +35,7 @@ namespace RestaurantPOS.AI.Controllers
         {
             try
             {
-                string userRole = "customer";
+                string userRole = "";
                 Guid userId = Guid.Empty;
                 string userName = "Khách vãng lai";
                 Guid? branchId = null;
@@ -72,20 +73,28 @@ namespace RestaurantPOS.AI.Controllers
                     userName = "Khách hàng";
                 }
 
+                if (string.Equals(userRole, "customer", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(User.FindFirst("customerSessionType")?.Value, "guest", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Forbid();
+                }
+
                 var userContext = new AiUserContext
                 {
                     UserId = userId,
                     Role = userRole,
                     UserName = userName,
-                    BranchId = branchId
+                    BranchId = branchId,
+                    CustomerId = string.Equals(userRole, "customer", StringComparison.OrdinalIgnoreCase) ? userId : null,
+                    PhoneNumber = string.Equals(userRole, "customer", StringComparison.OrdinalIgnoreCase) ? User.Identity?.Name : null
                 };
 
                 var result = await _orchestrator.ProcessAsync(request, userContext);
                 return Ok(result);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new AiResponse { Success = false, Error = ex.Message });
+                return StatusCode(500, new AiResponse { Success = false, Error = "AI request could not be processed." });
             }
         }
     }

@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Users, Calendar as CalendarIcon, Clock, Filter, Loader2, X, Search, Trash2, MapPin, Store } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Schedule {
   id: string;
@@ -19,6 +20,8 @@ interface WorkSchedulePageProps {
 }
 
 const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false }) => {
+  const userRole = localStorage.getItem('userRole');
+  const assignedBranchId = localStorage.getItem('selectedBranchId');
   const [employees, setEmployees] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +73,9 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
 
       const resBranch = await fetch(`${API_URL}/api/Branch`);
       const dataBranch = await resBranch.json();
-      setBranches(dataBranch);
+      setBranches(userRole === 'manager'
+        ? dataBranch.filter((branch: any) => branch.id === assignedBranchId)
+        : dataBranch);
 
       const savedBranchId = localStorage.getItem('selectedBranchId');
       if (savedBranchId && filterBranchId === 'all') {
@@ -107,7 +112,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
         fetchSchedules();
       }
     } catch (err) {
-      alert("Lỗi lưu lịch làm");
+      notifyFeedback("Lỗi lưu lịch làm");
     }
   };
 
@@ -161,7 +166,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                   value={filterBranchId}
                   onChange={(e) => setFilterBranchId(e.target.value)}
                >
-                  <option value="all">Toàn bộ chi nhánh</option>
+                  {userRole === 'admin' && <option value="all">Toàn bộ chi nhánh</option>}
                   {branches.map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}

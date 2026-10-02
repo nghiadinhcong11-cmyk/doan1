@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, User, Phone, MapPin, Mail, Edit2, Trash2, Loader2, Download, X, Star, History, Save, TrendingUp, Users } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Customer {
   id?: string;
@@ -80,7 +81,7 @@ const CustomerManagement = () => {
         fetchCustomers();
       }
     } catch (err) {
-      alert('Lỗi lưu thông tin khách hàng');
+      notifyFeedback('Lỗi lưu thông tin khách hàng');
     }
   };
 
@@ -103,7 +104,7 @@ const CustomerManagement = () => {
       setHistoryLoading(true);
       const response = await fetch(`${API_URL}/api/Customer/${customerId}/loyalty-history`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
         }
       });
       const data = await response.json();

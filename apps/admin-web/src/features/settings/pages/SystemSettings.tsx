@@ -2,6 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Search, ChevronRight, Settings, Users, Store, Printer, CreditCard, ShieldCheck, Bell, Database, Lock, Trash2, ShoppingBag, Utensils, ClipboardList, Users2, BarChart3, Receipt, QrCode, Truck, MessageSquare, Info, Smartphone, Eye, Save, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 const SystemSettings = () => {
   const [activeSubTab, setActiveSubTab] = useState('store-info');
@@ -47,7 +48,7 @@ const SystemSettings = () => {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken');
       const response = await fetch(`${API_URL}/api/SystemSettings?branchId=${selectedBranchId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -91,7 +92,7 @@ const SystemSettings = () => {
     if (!mainBranch) return;
     try {
       setLoadingBranch(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken');
       const response = await fetch(`${API_URL}/api/Branch/${mainBranch.id}`, {
         method: 'PUT',
         headers: {
@@ -105,7 +106,7 @@ const SystemSettings = () => {
         setTimeout(() => setShowSaveSuccess(false), 3000);
       }
     } catch (err) {
-      alert("Lỗi cập nhật thông tin cửa hàng");
+      notifyFeedback("Lỗi cập nhật thông tin cửa hàng");
     } finally {
       setLoadingBranch(false);
     }
@@ -124,7 +125,7 @@ const SystemSettings = () => {
       { id: 'invoice-out', icon: <Receipt size={14}/>, label: 'Hóa đơn đầu ra' },
     ]},
     { group: 'Cửa hàng', items: [
-      userRole === 'admin' && { id: 'store-info', icon: <Settings size={14}/>, label: 'Thông tin cửa hàng' },
+      (userRole === 'admin' || userRole === 'manager') && { id: 'store-info', icon: <Settings size={14}/>, label: 'Thông tin cửa hàng' },
       { id: 'emp-mgmt', icon: <Users size={14}/>, label: 'Quản lý nhân viên' },
       userRole === 'admin' && { id: 'branch-mgmt', icon: <Store size={14}/>, label: 'Quản lý chi nhánh' },
     ].filter(Boolean) as any },
@@ -136,7 +137,7 @@ const SystemSettings = () => {
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken');
 
       // Convert all values to strings for the API
       const payload: Record<string, string> = {};
@@ -157,11 +158,11 @@ const SystemSettings = () => {
         setShowSaveSuccess(true);
         setTimeout(() => setShowSaveSuccess(false), 3000);
       } else {
-        alert("Lỗi lưu thiết lập hệ thống");
+        notifyFeedback("Lỗi lưu thiết lập hệ thống");
       }
     } catch (err) {
       console.error("Lỗi lưu thiết lập:", err);
-      alert("Lỗi kết nối máy chủ");
+      notifyFeedback("Lỗi kết nối máy chủ");
     } finally {
       setIsSaving(false);
     }
@@ -360,7 +361,7 @@ const SystemSettings = () => {
                    <ToggleItem title="Quản lý theo bảng giá" desc="Sử dụng nhiều bảng giá khác nhau cho từng nhóm khách hàng hoặc khung giờ vàng." settingKey="priceBookEnabled" />
                    <ToggleItem title="Cho phép trả hàng" desc="Người dùng có thể tạo phiếu trả hàng từ hóa đơn đã thanh toán." settingKey="allowReturn" />
                    <ToggleItem title="Cảnh báo khi hết hàng" desc="Hiển thị thông báo trên màn hình POS khi sản phẩm trong kho sắp hết." settingKey="stockWarning" />
-                   {userRole === 'admin' && (
+                   {(userRole === 'admin' || userRole === 'manager') && (
                      <div className="pt-6 flex justify-end">
                         <button
                           onClick={handleSave}
@@ -412,7 +413,7 @@ const SystemSettings = () => {
                       </div>
                    </div>
                    <ToggleItem title="Cho phép thay đổi giá bán" desc="Nhân viên có thể sửa giá trực tiếp trên màn hình POS (Cần thận trọng)." settingKey="allowPriceChange" />
-                   {userRole === 'admin' && (
+                   {(userRole === 'admin' || userRole === 'manager') && (
                      <div className="pt-6 flex justify-end">
                         <button
                           onClick={handleSave}

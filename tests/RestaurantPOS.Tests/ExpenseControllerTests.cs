@@ -5,6 +5,7 @@ using Moq;
 using RestaurantPOS.Application.DTOs.Expenses;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Domain.Entities;
+using RestaurantPOS.Domain.Finance;
 using RestaurantPOS.Infrastructure.Persistence;
 using RestaurantPOS.WebAPI.Controllers;
 
@@ -16,28 +17,30 @@ public sealed class ExpenseControllerTests
     private static readonly Guid BranchB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
     [Fact]
-    public async Task Employee_can_create_expense_only_for_own_branch()
+    public async Task Manager_can_create_expense_only_for_own_branch()
     {
         var (context, connection) = TestDbContextFactory.Create();
         await using var _ = context; await using var __ = connection;
         context.Branches.Add(new Branch { Id = BranchA, Name = "A", IsActive = true });
         await context.SaveChangesAsync();
-        var controller = Create(context, "employee", BranchA);
+        var controller = Create(context, "manager", BranchA);
 
         var result = await controller.CreateExpense(new ExpenseCreateDto { BranchId = BranchA, Category = "Nguyên liệu", Description = "Mua đường", Amount = 500000, ExpenseDate = DateTime.UtcNow });
 
         Assert.IsType<CreatedAtActionResult>(result);
         Assert.Single(context.Expenses);
+        Assert.Equal(ExpensePaymentMethods.Cash, context.Expenses.Single().PaymentMethod);
+        Assert.Equal(string.Empty, context.Expenses.Single().Note);
     }
 
     [Fact]
-    public async Task Employee_cannot_create_or_read_expense_from_another_branch()
+    public async Task Manager_cannot_create_or_read_expense_from_another_branch()
     {
         var (context, connection) = TestDbContextFactory.Create();
         await using var _ = context; await using var __ = connection;
         context.Branches.AddRange(new Branch { Id = BranchA, Name = "A", IsActive = true }, new Branch { Id = BranchB, Name = "B", IsActive = true });
         await context.SaveChangesAsync();
-        var controller = Create(context, "employee", BranchA);
+        var controller = Create(context, "manager", BranchA);
 
         Assert.IsType<ForbidResult>(await controller.CreateExpense(new ExpenseCreateDto { BranchId = BranchB, Category = "Gas", Description = "Gas", Amount = 100, ExpenseDate = DateTime.UtcNow }));
         Assert.IsType<ForbidResult>(await controller.GetExpenses(BranchB, null, null, null));
@@ -51,7 +54,7 @@ public sealed class ExpenseControllerTests
         var (context, connection) = TestDbContextFactory.Create();
         await using var _ = context; await using var __ = connection;
         context.Branches.Add(new Branch { Id = BranchA, Name = "A", IsActive = true }); await context.SaveChangesAsync();
-        var result = await Create(context, "employee", BranchA).CreateExpense(new ExpenseCreateDto { BranchId = BranchA, Category = "Gas", Description = "Gas", Amount = amount, ExpenseDate = DateTime.UtcNow });
+        var result = await Create(context, "manager", BranchA).CreateExpense(new ExpenseCreateDto { BranchId = BranchA, Category = "Gas", Description = "Gas", Amount = amount, ExpenseDate = DateTime.UtcNow });
         var bad = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(message, bad.Value);
     }

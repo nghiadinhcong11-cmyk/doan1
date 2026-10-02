@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Loader2, X, Gift, Search, Percent, Calendar, CheckCircle2 } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Promotion {
   id?: string;
@@ -48,6 +49,10 @@ const PromotionManagement = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     try {
       const url = editingPromo ? `${API_URL}/api/Promotion/${editingPromo.id}` : `${API_URL}/api/Promotion`;
       const method = editingPromo ? 'PUT' : 'POST';
@@ -62,12 +67,12 @@ const PromotionManagement = () => {
         setIsModalOpen(false);
         resetForm();
         fetchPromotions();
-      } else {
-        alert("Lỗi khi lưu chương trình");
+      } else if (response.status !== 403) {
+        notifyFeedback("Lỗi khi lưu chương trình");
       }
     } catch (err) {
       console.error(err);
-      alert("Lỗi kết nối server");
+      notifyFeedback("Lỗi kết nối server");
     }
   };
 
@@ -84,6 +89,10 @@ const PromotionManagement = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     if (!window.confirm("Xóa chương trình này?")) return;
     try {
       const res = await fetch(`${API_URL}/api/Promotion/${id}`, { method: 'DELETE' });
@@ -92,12 +101,20 @@ const PromotionManagement = () => {
   };
 
   const openEditModal = (p: Promotion) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     setEditingToEdit(p);
     setFormData({ ...p });
     setIsModalOpen(true);
   };
 
   const toggleStatus = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     try {
       await fetch(`${API_URL}/api/Promotion/${id}/toggle`, { method: 'PATCH' });
       fetchPromotions();
@@ -112,7 +129,13 @@ const PromotionManagement = () => {
           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Thiết lập các chương trình ưu đãi dành cho khách hàng thân thiết</p>
         </div>
         <button
-          onClick={() => { setEditingToEdit(null); setIsModalOpen(true); }}
+          onClick={() => {
+            if (localStorage.getItem('userRole') !== 'admin') {
+              notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+              return;
+            }
+            setEditingToEdit(null); setIsModalOpen(true);
+          }}
           className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all active:scale-95 flex items-center"
         >
           <Plus size={18} className="mr-2"/> TẠO CHƯƠNG TRÌNH MỚI

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, LogOut, Package, Star, TrendingUp, ChevronRight, Clock, MapPin, Loader2, X, Edit3, Save, CheckCircle2, Lock, Calendar, Users, LayoutGrid } from 'lucide-react';
+import { User, LogOut, Package, Star, TrendingUp, ChevronRight, Clock, MapPin, Loader2, X, Edit3, Save, CheckCircle2, Calendar, Users, LayoutGrid } from 'lucide-react';
 import { API_URL } from '../config';
+import { Button, Feedback, FormField } from '../components/ui';
 
 const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
   const [customer, setCustomer] = useState<any>(null);
@@ -29,6 +30,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
   });
   const [updating, setUpdating] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+  const [updateError, setUpdateError] = useState('');
 
   useEffect(() => {
     const savedCustomer = localStorage.getItem('customerInfo');
@@ -55,7 +57,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
 
   const fetchLatestProfile = async (phone: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('customerToken');
       const response = await fetch(`${API_URL}/api/Customer/${phone}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -83,7 +85,15 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
   };
 
   const handleUpdateProfile = async () => {
-    if (!editData.fullName.trim()) return;
+    setUpdateError('');
+    if (!editData.fullName.trim()) {
+      setUpdateError('Vui lòng nhập họ và tên.');
+      return;
+    }
+    if (editData.newPassword && (editData.newPassword.length < 8 || editData.newPassword.length > 128)) {
+      setUpdateError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
+      return;
+    }
 
     setUpdating(true);
     try {
@@ -91,7 +101,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {})
+          ...(localStorage.getItem('customerToken') ? { Authorization: `Bearer ${localStorage.getItem('customerToken')}` } : {})
         },
         body: JSON.stringify(editData)
       });
@@ -103,9 +113,12 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
         setIsEditModalOpen(false);
         setShowUpdateSuccess(true);
         setTimeout(() => setShowUpdateSuccess(false), 3000);
+      } else {
+        const body = await response.json().catch(() => ({}));
+        setUpdateError(body.message || 'Không thể cập nhật thông tin.');
       }
     } catch (err) {
-      alert("Lỗi cập nhật thông tin");
+      setUpdateError('Lỗi kết nối máy chủ khi cập nhật thông tin.');
     } finally {
       setUpdating(false);
     }
@@ -113,7 +126,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
 
   const fetchOrderHistory = async (phone: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('customerToken');
       const response = await fetch(`${API_URL}/api/Order?customerPhone=${encodeURIComponent(phone)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -126,7 +139,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
 
   const fetchLoyaltyHistory = async (customerId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('customerToken');
       const response = await fetch(`${API_URL}/api/Customer/${customerId}/loyalty-history`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -141,7 +154,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
 
   const fetchReservationHistory = async (phone: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('customerToken');
       const response = await fetch(`${API_URL}/api/Reservation?customerPhone=${encodeURIComponent(phone)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -717,34 +730,40 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
                     />
                  </div>
 
-                 <div className="pt-4 border-t border-gray-100">
-                    <label className="block text-[10px] font-black text-red-400 uppercase tracking-widest mb-2 ml-2">Đổi mật khẩu (nếu cần)</label>
-                    <div className="relative">
-                        <input
-                        type="password"
-                        className="w-full px-6 py-3 bg-red-50/30 border-none rounded-2xl outline-none focus:ring-2 focus:ring-red-500/20 font-bold text-gray-700"
-                        value={editData.newPassword}
-                        onChange={(e) => setEditData({...editData, newPassword: e.target.value})}
-                        placeholder="Mật khẩu mới..."
-                        />
-                        <Lock className="absolute right-4 top-3.5 text-red-200" size={16} />
-                    </div>
+                 <div className="border-t border-gray-100 pt-4">
+                    <FormField
+                      label="Đổi mật khẩu (nếu cần)"
+                      type="password"
+                      value={editData.newPassword}
+                      onChange={(e) => setEditData({...editData, newPassword: e.target.value})}
+                      placeholder="Mật khẩu mới..."
+                      minLength={8}
+                      maxLength={128}
+                      helperText="Sử dụng từ 8 đến 128 ký tự."
+                      className="bg-red-50/30"
+                    />
                  </div>
 
+                 {updateError && <Feedback tone="error">{updateError}</Feedback>}
+
                  <div className="flex space-x-3 pt-4">
-                    <button
+                    <Button
+                      type="button"
                       onClick={() => setIsEditModalOpen(false)}
-                      className="flex-1 py-4 bg-gray-100 text-gray-400 rounded-2xl font-black uppercase tracking-widest text-xs"
+                      variant="secondary"
+                      className="flex-1 uppercase tracking-widest"
                     >
                        Hủy
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      type="button"
                       onClick={handleUpdateProfile}
                       disabled={updating || !editData.fullName.trim()}
-                      className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center"
+                      loading={updating}
+                      className="flex-[2] uppercase tracking-widest"
                     >
-                       {updating ? <Loader2 className="animate-spin" size={18} /> : <><Save size={18} className="mr-2"/> Lưu thay đổi</>}
-                    </button>
+                       <Save aria-hidden="true" size={18}/> Lưu thay đổi
+                    </Button>
                  </div>
               </div>
            </div>

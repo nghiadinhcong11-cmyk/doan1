@@ -2486,10 +2486,6 @@
           "isActive": {
             "type": "boolean"
           },
-          "basicSalary": {
-            "type": "number",
-            "format": "double"
-          },
           "note": {
             "type": "string",
             "nullable": true

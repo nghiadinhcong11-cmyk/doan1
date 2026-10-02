@@ -306,7 +306,35 @@ namespace RestaurantPOS.Application.Services
             var startUtc = TimeZoneInfo.ConvertTimeToUtc(start, VietnamZone);
             var endUtc = TimeZoneInfo.ConvertTimeToUtc(end, VietnamZone);
 
-            var query = _context.Orders
+            var report = await GetRevenueReportAsync(startUtc, endUtc, branchId);
+            return report.Revenue;
+        }
+
+        public async Task<List<TopProductDto>> GetBestSellersAsync(DateTime startUtc, DateTime endUtc, Guid? branchId, int limit)
+        {
+            var query = _context.OrderDetails.AsNoTracking()
+                .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId") &&
+                    (!branchId.HasValue || o.BranchId == branchId.Value) &&
+                    o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành"));
+
+            var topProducts = await query
+                .GroupBy(d => d.ProductName)
+                .Select(g => new TopProductDto
+                {
+                    ProductName = g.Key,
+                    TotalQuantity = g.Sum(x => x.Quantity),
+                    TotalRevenue = g.Sum(x => x.Quantity * x.UnitPrice)
+                })
+                .OrderByDescending(x => x.TotalQuantity)
+                .Take(limit)
+                .ToListAsync();
+
+            return topProducts;
+        }
+
+        public async Task<(decimal Revenue, int OrderCount)> GetRevenueReportAsync(DateTime startUtc, DateTime endUtc, Guid? branchId)
+        {
+            var query = _context.Orders.AsNoTracking()
                 .Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0);
 
             if (branchId.HasValue)
@@ -314,9 +342,89 @@ namespace RestaurantPOS.Application.Services
                 query = query.Where(o => o.BranchId == branchId.Value);
             }
 
-            var revenue = await query.SumAsync(o => (decimal?)o.PaidAmount) ?? 0;
+            var data = await query
+                .Select(o => o.PaidAmount)
+                .ToListAsync();
 
-            return revenue;
+            return (data.Sum(), data.Count);
+        }
+
+        public async Task<BusinessSummaryDto> GetBusinessSummaryAsync(DateTime startUtc, DateTime endUtc, Guid? branchId)
+        {
+            var ordersQuery = _context.Orders.AsNoTracking()
+                .Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0);
+
+            if (branchId.HasValue)
+            {
+                ordersQuery = ordersQuery.Where(o => o.BranchId == branchId.Value);
+            }
+
+            var orders = await ordersQuery
+                .Select(o => new { o.Id, o.PaidAmount })
+                .ToListAsync();
+
+            decimal revenue = orders.Sum(o => o.PaidAmount);
+            int count = orders.Count;
+            decimal aov = count > 0 ? revenue / count : 0;
+
+            var expensesQuery = _context.Expenses.AsNoTracking()
+                .Where(e => e.ExpenseDate >= startUtc && e.ExpenseDate < endUtc);
+            if (branchId.HasValue)
+            {
+                expensesQuery = expensesQuery.Where(e => e.BranchId == branchId.Value);
+            }
+
+            decimal totalExpenses = _context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true
+                ? (await expensesQuery.Select(e => e.Amount).ToListAsync()).Sum()
+                : await expensesQuery.Select(e => (decimal?)e.Amount).SumAsync() ?? 0m;
+
+            var expenseItems = await expensesQuery.Select(e => new { e.Category, e.Amount }).ToListAsync();
+            var expenseBreakdown = expenseItems
+                .GroupBy(e => e.Category)
+                .Select(g => new ExpenseCategoryDto
+                {
+                    Category = g.Key,
+                    Amount = g.Sum(x => x.Amount),
+                    Percentage = totalExpenses > 0 ? Math.Round(g.Sum(x => x.Amount) / totalExpenses * 100, 2) : 0
+                })
+                .OrderByDescending(x => x.Amount)
+                .ToList();
+
+            // COGS Calculation (Estimated)
+            var orderIds = orders.Select(o => o.Id).ToList();
+            var costDetails = await _context.OrderDetails.AsNoTracking()
+                .Where(d => orderIds.Contains(EF.Property<Guid>(d, "OrderId")))
+                .Select(d => new { d.Quantity, d.ProductId, d.ToppingId })
+                .ToListAsync();
+
+            var productIds = costDetails.Where(d => d.ProductId.HasValue).Select(d => d.ProductId!.Value).Distinct().ToList();
+            var toppingIds = costDetails.Where(d => d.ToppingId.HasValue).Select(d => d.ToppingId!.Value).Distinct().ToList();
+
+            var productCosts = await _context.Products.AsNoTracking()
+                .Where(p => productIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.CostPrice);
+            var toppingCosts = await _context.Toppings.AsNoTracking()
+                .Where(t => toppingIds.Contains(t.Id))
+                .ToDictionaryAsync(t => t.Id, t => t.CostPrice);
+
+            decimal cogs = costDetails.Sum(d =>
+                d.Quantity * (d.ProductId.HasValue && productCosts.TryGetValue(d.ProductId.Value, out var pc) ? pc : 0m) +
+                d.Quantity * (d.ToppingId.HasValue && toppingCosts.TryGetValue(d.ToppingId.Value, out var tc) ? tc : 0m));
+
+            var topProducts = await GetBestSellersAsync(startUtc, endUtc, branchId, 5);
+
+            return new BusinessSummaryDto
+            {
+                Revenue = revenue,
+                OrderCount = count,
+                AverageOrderValue = Math.Round(aov, 0),
+                TotalExpenses = totalExpenses,
+                CostOfGoodsSold = cogs,
+                NetProfit = revenue - totalExpenses - cogs,
+                ProfitMargin = revenue > 0 ? Math.Round((revenue - totalExpenses - cogs) / revenue * 100, 2) : 0,
+                ExpenseBreakdown = expenseBreakdown,
+                TopProducts = topProducts
+            };
         }
     }
 }

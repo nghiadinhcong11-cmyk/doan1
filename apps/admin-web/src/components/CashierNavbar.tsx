@@ -3,84 +3,59 @@ import * as signalR from '@microsoft/signalr';
 import { Link, useLocation } from 'react-router-dom';
 import { Utensils, User, Camera, Calendar, LogOut, ChevronDown, Store, ShieldCheck, Clock, ChevronRight, Bell, BellRing, Loader2, Receipt } from 'lucide-react';
 import { API_URL } from '../config';
+import { fetchPendingWebOrderCount, PENDING_ORDER_CHANGED_EVENT } from '../features/notifications/pendingOrderQuery';
 
 interface CashierNavbarProps {
   onLogout: () => void;
   userName?: string;
+  userRole?: string | null;
   userPosition?: string;
 }
 
-const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userPosition }) => {
+const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userRole, userPosition }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [loadingNoti, setLoadingNoti] = useState(false);
   const location = useLocation();
   const branchName = localStorage.getItem('selectedBranchName') || 'Toàn hệ thống';
-  const branchId = localStorage.getItem('selectedBranchId');
+
+  const refreshPendingOrderCount = async () => {
+    try {
+      setPendingOrderCount(await fetchPendingWebOrderCount());
+    } catch (err) {
+      console.error('Lỗi lấy số đơn web đang chờ:', err);
+    }
+  };
 
   useEffect(() => {
     fetchPersistentNotifications();
     const interval = setInterval(fetchPersistentNotifications, 30000); // 30s cập nhật 1 lần
-    const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('token') || '' }).withAutomaticReconnect().build();
+    refreshPendingOrderCount();
+    const pendingInterval = setInterval(refreshPendingOrderCount, 30000);
+    const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
     const onNotification = (notification: any) => setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
     connection.on('NotificationCreated', onNotification);
+    const onPendingOrderChanged = () => { void refreshPendingOrderCount(); };
+    connection.on('PendingOrderChanged', onPendingOrderChanged);
     void connection.start().catch(() => undefined);
 
     // Lắng nghe sự kiện yêu cầu cập nhật thông báo ngay lập tức
-    const handleRefresh = () => fetchNotifications();
+    const handleRefresh = () => { void fetchPersistentNotifications(); };
     window.addEventListener('refresh-notifications', handleRefresh);
+    window.addEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
 
     return () => {
       clearInterval(interval);
+      clearInterval(pendingInterval);
       connection.off('NotificationCreated', onNotification);
+      connection.off('PendingOrderChanged', onPendingOrderChanged);
       void connection.stop();
       window.removeEventListener('refresh-notifications', handleRefresh);
+      window.removeEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
     };
   }, []);
-
-  const fetchNotifications = async () => {
-    try {
-      setLoadingNoti(true);
-      // Chỉ lấy đơn hàng/lịch hẹn của chi nhánh hiện tại mà nhân viên đang trực
-      const branchParam = branchId ? `branchId=${branchId}` : '';
-
-      const orderRes = await fetch(`${API_URL}/api/Order?status=Đang xử lý&${branchParam}`);
-      const orders = await orderRes.json();
-
-      const resvRes = await fetch(`${API_URL}/api/Reservation?status=Pending&${branchParam}`);
-      const reservations = await resvRes.json();
-
-      // Chỉ lấy đơn từ Web (không có createdBy)
-      const webOrdersOnly = Array.isArray(orders) ? orders.filter((o: any) => !o.createdBy || o.createdBy === '') : [];
-
-      const orderNotis = webOrdersOnly.map((o: any) => ({
-        id: o.id,
-        title: 'Đơn hàng mới',
-        desc: `Bàn ${o.tableName || 'vãng lai'} vừa đặt món: ${o.totalAmount.toLocaleString()}đ`,
-        time: new Date(o.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        type: 'order',
-        tableName: o.tableName || 'vãng lai',
-        link: `/pos?reviewOrderId=${o.id}`
-      }));
-
-      const resvNotis = reservations.map((r: any) => ({
-        id: r.id,
-        title: 'Lịch hẹn mới',
-        desc: `Khách ${r.customerName} đặt bàn vào ${new Date(r.reservationTime).toLocaleString('vi-VN', {hour:'2-digit', minute:'2-digit'})}`,
-        time: new Date(r.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        type: 'reservation',
-        link: '/pos/reservations'
-      }));
-
-      const combined = [...orderNotis, ...resvNotis].sort((a, b) => b.id.localeCompare(a.id));
-      setNotifications(combined);
-    } catch (err) {
-      console.error("Lỗi lấy thông báo:", err);
-    } finally {
-      setLoadingNoti(false);
-    }
-  };
 
   const fetchPersistentNotifications = async () => {
     try {
@@ -94,7 +69,7 @@ const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userP
   const navItems = [
     { path: '/pos', label: 'Màn hình bán hàng', icon: <Utensils size={16} className="text-blue-500" /> },
     { path: '/pos/invoices', label: 'Lịch sử hóa đơn', icon: <Receipt size={16} className="text-emerald-500" /> },
-    ...(userPosition === 'Quản lý' ? [{ path: '/pos/settings/receipt', label: 'Cấu hình in bill', icon: <Receipt size={16} className="text-purple-500" /> }] : []),
+    ...(userRole === 'manager' || userRole === 'admin' ? [{ path: '/pos/settings/receipt', label: 'Cấu hình in bill', icon: <Receipt size={16} className="text-purple-500" /> }] : []),
     { path: '/pos/attendance', label: 'Chấm công nhận diện', icon: <Camera size={16} className="text-orange-500" /> },
     { path: '/pos/reservations', label: 'Lịch đặt bàn trước', icon: <Calendar size={16} className="text-blue-500" /> },
     { path: '/pos/schedule', label: 'Lịch làm việc toàn quán', icon: <Calendar size={16} className="text-green-500" /> },
@@ -128,11 +103,12 @@ const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userP
                 setIsMenuOpen(false);
               }}
               className={`p-2 hover:bg-blue-600 rounded-xl transition-colors relative ${isNotificationsOpen ? 'bg-blue-700' : ''}`}
+              aria-label={pendingOrderCount > 0 ? `${pendingOrderCount} đơn đang chờ xử lý` : 'Thông báo và đơn đang chờ xử lý'}
             >
               <Bell size={20} />
-              {notifications.filter(n => !n.isRead).length > 0 && (
+              {pendingOrderCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 rounded-full border-2 border-[#0070f4] text-[9px] flex items-center justify-center font-black animate-pulse">
-                  {notifications.filter(n => !n.isRead).length}
+                  {pendingOrderCount}
                 </span>
               )}
             </button>

@@ -35,6 +35,10 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             var query = _context.Products.AsQueryable();
 
+            // Public and customer-facing menu reads must not expose disabled products.
+            if (User.Identity?.IsAuthenticated != true || User.IsInRole("customer"))
+                query = query.Where(p => p.IsActive);
+
             if (!string.IsNullOrEmpty(search))
                 query = query.Where(p => p.Name.Contains(search) || p.Code.Contains(search));
 
@@ -162,7 +166,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         }
 
         [HttpPatch("{id}/availability")]
-        [Authorize(Roles = "admin,kitchen")]
+        [Authorize(Roles = "admin,manager,kitchen")]
         public async Task<IActionResult> UpdateAvailability(Guid id, [FromBody] AvailabilityRequest request)
         {
             var allowed = new[] { "Available", "TemporarilyUnavailable", "OutOfStock" };

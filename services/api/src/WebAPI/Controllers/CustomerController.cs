@@ -11,6 +11,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using RestaurantPOS.Application.DTOs.Customers;
+using RestaurantPOS.Application.Common.Security;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -131,6 +132,8 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 if (!string.IsNullOrEmpty(customer.Password))
                 {
+                    var passwordError = PasswordPolicy.Validate(customer.Password);
+                    if (passwordError != null) return BadRequest(new { message = passwordError });
                     customer.Password = _passwordHasher.HashPassword(customer, customer.Password);
                 }
 
@@ -181,6 +184,8 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
             if (!string.IsNullOrEmpty(update.NewPassword))
             {
+                var passwordError = PasswordPolicy.Validate(update.NewPassword);
+                if (passwordError != null) return BadRequest(new { message = passwordError });
                 existing.Password = _passwordHasher.HashPassword(existing, update.NewPassword);
             }
 

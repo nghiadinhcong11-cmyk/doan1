@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, ChevronRight, Star, Plus, Minus, Search, Loader2, CheckCircle2, Clock, MapPin, X, Gift, Percent } from 'lucide-react';
 import { API_URL } from '../config';
+import Feedback, { FeedbackTone } from '../components/ui/Feedback';
 
 interface Product {
   id: string;
@@ -32,6 +33,8 @@ const DigitalMenu = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartPulse, setCartPulse] = useState(false);
   const [isOrderSuccess, setIsOrderSuccess] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>('error');
   const [tableInfo, setTableInfo] = useState<{id: string, name: string, branchId?: string, branchName?: string} | null>(null);
   const [branches, setBranches] = useState<any[]>([]);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
@@ -54,7 +57,7 @@ const DigitalMenu = () => {
 
   // Lấy tableId từ URL ?tableId=...
   const urlParams = new URLSearchParams(window.location.search);
-  const tableId = urlParams.get('tableId');
+  const qrToken = urlParams.get('qr');
 
   useEffect(() => {
     fetchProducts();
@@ -87,15 +90,15 @@ const DigitalMenu = () => {
 
   // Cập nhật thông tin bàn và xóa giỏ hàng nếu quét mã bàn mới
   useEffect(() => {
-    if (tableId) {
+    if (qrToken) {
       // Nếu tableId thay đổi so với ID đang lưu, ta xóa giỏ hàng để tránh đặt nhầm
-      if (tableInfo && tableInfo.id !== tableId) {
+      if (tableInfo) {
         setCart([]);
         setIsOrderSuccess(false);
       }
       fetchTableInfo();
     }
-  }, [tableId]);
+  }, [qrToken]);
 
   const fetchPromotions = async () => {
     try {
@@ -155,6 +158,7 @@ const DigitalMenu = () => {
       setCategories(['Tất cả', ...cats]);
     } catch (err) {
       console.error(err);
+      setFeedbackMessage('Không thể tải thực đơn. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }
@@ -176,28 +180,37 @@ const DigitalMenu = () => {
   };
 
   const fetchTableInfo = async () => {
-    if (!tableId) return;
+    if (!qrToken) return;
     try {
-      const response = await fetch(`${API_URL}/api/Table/${tableId}`);
+      const response = await fetch(`${API_URL}/api/guest/bootstrap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qrToken })
+      });
       if (response.ok) {
-        const currentTable = await response.json();
+        const bootstrap = await response.json();
+        localStorage.setItem('guestToken', bootstrap.token);
+        sessionStorage.setItem('guestQrSession', 'true');
         setTableInfo({
-          id: currentTable.id,
-          name: currentTable.name,
-          branchId: currentTable.branchId,
-          branchName: currentTable.branchName
+          id: '',
+          name: bootstrap.table.name,
+          branchId: bootstrap.branch.id,
+          branchName: bootstrap.branch.name
         });
+        setFeedbackMessage('');
 
         // Cố định chi nhánh theo bàn
-        if (currentTable.branchId) {
-          setSelectedBranch({ id: currentTable.branchId, name: currentTable.branchName });
+        if (bootstrap.branch.id) {
+          setSelectedBranch({ id: bootstrap.branch.id, name: bootstrap.branch.name });
         }
       } else {
          // Nếu tableId không tồn tại hoặc lỗi, reset thông tin
          setTableInfo(null);
+         setFeedbackMessage('Không thể xác định bàn từ mã QR. Vui lòng quét lại mã hợp lệ.');
       }
     } catch (err) {
       console.error(err);
+      setFeedbackMessage('Không thể xác định bàn từ mã QR. Vui lòng thử lại.');
     }
   };
 
@@ -318,7 +331,6 @@ const DigitalMenu = () => {
         customerInfo = {};
       }
       const order = {
-        tableName: tableInfo?.name || 'Khách vãng lai',
         totalAmount: totalAmount,
         paidAmount: 0,
         status: 'Đang xử lý',
@@ -326,8 +338,6 @@ const DigitalMenu = () => {
         customerPhone: customerInfo.phoneNumber,
         customerEmail: customerInfo.email,
         customerId: customerInfo.id,
-        branchId: branch.id,
-        branchName: branch.name,
         details: cart.map(item => ({
           productId: (item as any).isStandaloneTopping ? null : item.id,
           toppingId: (item as any).isStandaloneTopping ? item.id : null,
@@ -355,24 +365,14 @@ const DigitalMenu = () => {
         throw new Error(message);
       }
 
-      // Cập nhật trạng thái bàn nếu có tableId. Order đã được lưu thành công;
-      // lỗi phụ ở trạng thái bàn không được làm mất thông báo đặt món.
-      if (tableId) {
-        const tableResponse = await fetch(`${API_URL}/api/Table/${tableId}/status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify('Có khách')
-        });
-        if (!tableResponse.ok) console.warn('Could not update table status after order creation.');
-      }
-
       setCart([]);
       setIsBranchModalOpen(false);
       setIsOrderSuccess(true);
+      setFeedbackMessage('');
       setTimeout(() => setIsOrderSuccess(false), 5000);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Lỗi đặt món. Vui lòng thử lại!';
-      alert(message);
+      setFeedbackMessage(message);
     } finally {
       setIsSubmittingOrder(false);
     }
@@ -381,7 +381,8 @@ const DigitalMenu = () => {
   const handleRedeem = async (promo: any) => {
     const customerInfo = JSON.parse(localStorage.getItem('customerInfo') || '{}');
     if (!customerInfo.phoneNumber) {
-      alert("Vui lòng đăng nhập để đổi quà!");
+      setFeedbackTone('warning');
+      setFeedbackMessage('Vui lòng đăng nhập để đổi quà!');
       return;
     }
 
@@ -411,12 +412,14 @@ const DigitalMenu = () => {
       });
 
       if (res.ok) {
-        alert("Yêu cầu đổi quà đã được gửi! Vui lòng đợi nhân viên xác nhận.");
+        setFeedbackTone('success');
+        setFeedbackMessage('Yêu cầu đổi quà đã được gửi! Vui lòng đợi nhân viên xác nhận.');
         setIsPromoModalOpen(false);
       }
     } catch (e) {
       console.error(e);
-      alert("Lỗi khi đổi quà.");
+      setFeedbackTone('error');
+      setFeedbackMessage('Lỗi khi đổi quà.');
     }
   };
 
@@ -440,13 +443,16 @@ const DigitalMenu = () => {
           <h1 className="text-3xl font-black uppercase italic tracking-tighter drop-shadow-lg">
              {tableInfo ? `Bàn: ${tableInfo.name}` : 'Thực đơn điện tử'}
           </h1>
+          {tableInfo?.branchName && <p className="mt-1 text-[10px] font-bold uppercase tracking-widest opacity-80">{tableInfo.branchName}</p>}
           <p className="text-xs opacity-90 flex items-center mt-1">
              <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span> Đang mở cửa • Đặt món nhanh
           </p>
         </div>
         {promotions.length > 0 && (
           <button
+            type="button"
             onClick={() => setIsPromoModalOpen(true)}
+            aria-label="Xem ưu đãi và đổi quà"
             className="absolute top-6 right-6 bg-orange-500 text-white p-3 rounded-2xl shadow-lg gift-wiggle border-2 border-white/20"
           >
             <Gift size={24} />
@@ -454,13 +460,20 @@ const DigitalMenu = () => {
         )}
       </div>
 
+      {feedbackMessage && (
+        <div className="mx-4 mt-4" role="status">
+          <Feedback tone={feedbackTone} onDismiss={() => setFeedbackMessage('')}>{feedbackMessage}</Feedback>
+        </div>
+      )}
+
       {/* Categories */}
       <div className="flex space-x-3 p-4 overflow-x-auto no-scrollbar sticky top-0 bg-white/80 backdrop-blur-lg z-20 border-b shadow-sm">
         {categories.map((cat) => (
           <button
+            type="button"
             key={cat}
             onClick={() => setActiveCategory(cat)}
-            className={`whitespace-nowrap px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+            className={`min-h-11 touch-manipulation whitespace-nowrap px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
               activeCategory === cat ? 'category-active bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:-translate-y-0.5'
             }`}
           >
@@ -483,9 +496,15 @@ const DigitalMenu = () => {
              <Loader2 className="animate-spin mb-2 text-blue-600" />
              <p className="text-xs font-bold uppercase tracking-widest">Đang tải thực đơn...</p>
           </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="rounded-3xl border-2 border-dashed border-gray-200 bg-white px-6 py-16 text-center">
+             <ShoppingBag size={42} className="mx-auto mb-3 text-gray-200" />
+             <p className="font-bold text-gray-500">Không có món trong danh mục này</p>
+             <p className="mt-1 text-xs text-gray-400">Hãy thử chọn danh mục khác.</p>
+          </div>
         ) : filteredProducts.map((p) => (
-          <div key={p.id} style={{ animationDelay: `${Math.min(filteredProducts.indexOf(p), 8) * 55}ms` }} className="product-card bg-white p-4 rounded-3xl shadow-xl shadow-blue-500/5 flex space-x-4 border border-gray-100 group transition-all active:scale-[0.98] hover:-translate-y-1 hover:shadow-2xl">
-            <div className="w-28 h-28 bg-gray-50 rounded-2xl flex-shrink-0 relative overflow-hidden border border-gray-100">
+          <div key={p.id} style={{ animationDelay: `${Math.min(filteredProducts.indexOf(p), 8) * 55}ms` }} className="product-card bg-white p-4 rounded-3xl shadow-xl shadow-blue-500/5 flex gap-3 sm:space-x-4 border border-gray-100 group transition-all active:scale-[0.98] hover:-translate-y-1 hover:shadow-2xl">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-50 rounded-2xl flex-shrink-0 relative overflow-hidden border border-gray-100">
                {p.imageUrl ? (
                  <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
                ) : (
@@ -494,7 +513,7 @@ const DigitalMenu = () => {
                  </div>
                )}
             </div>
-            <div className="flex-1 flex flex-col justify-between">
+            <div className="min-w-0 flex-1 flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-start">
                   <div>
@@ -522,32 +541,38 @@ const DigitalMenu = () => {
                  {cart.find(item => item.id === p.id) ? (
                     <>
                        <button
+                         type="button"
                          onClick={() => removeFromCart(p.id)}
-                         className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                         aria-label={`Xóa ${p.name} khỏi giỏ hàng`}
+                         className="min-h-10 min-w-10 touch-manipulation p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                          title="Hủy món"
                        >
                           <X size={18} />
                        </button>
                        <div className="flex items-center bg-blue-50 rounded-xl p-1 border border-blue-100">
                           <button
+                            type="button"
                             onClick={() => {
                                const item = cart.find(i => i.id === p.id);
                                if (item) updateQuantityByItem(item, -1);
                             }}
-                            className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-lg"
+                            aria-label={`Giảm số lượng ${p.name}`}
+                            className="min-h-10 min-w-10 touch-manipulation flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                           >
                              <Minus size={14}/>
                           </button>
                           <span className="px-3 text-xs font-black text-blue-700">
                              {cart.filter(item => item.id === p.id).reduce((sum, i) => sum + i.quantity, 0)}
                           </span>
-                          <button onClick={() => addToCart(p)} className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-lg"><Plus size={14}/></button>
+                          <button type="button" onClick={() => addToCart(p)} aria-label={`Tăng số lượng ${p.name}`} className="min-h-10 min-w-10 touch-manipulation flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><Plus size={14}/></button>
                        </div>
                     </>
                  ) : (
                     <button
+                      type="button"
                       onClick={() => addToCart(p)}
-                      className="add-button bg-blue-600 text-white w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20 active:scale-90 transition-all hover:rotate-6 hover:bg-orange-500"
+                      aria-label={`Thêm ${p.name} vào giỏ hàng`}
+                      className="add-button min-h-11 min-w-11 touch-manipulation bg-blue-600 text-white w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20 active:scale-90 transition-all hover:rotate-6 hover:bg-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                     >
                       <Plus size={20} />
                     </button>
@@ -562,18 +587,18 @@ const DigitalMenu = () => {
       {isOrderSuccess && (
         <div className="fixed top-24 left-6 right-6 z-[100] bg-green-600 text-white p-4 rounded-2xl shadow-2xl flex items-center space-x-3 animate-in slide-in-from-top-10 duration-500">
            <div className="bg-white/20 p-2 rounded-full"><CheckCircle2 size={24}/></div>
-           <div>
+           <div role="status">
               <p className="font-black uppercase text-xs tracking-widest">Đặt món thành công!</p>
-              <p className="text-[10px] opacity-80">Nhân viên đang chuẩn bị món cho bạn.</p>
+              <p className="text-[10px] opacity-80">Đơn của bạn đã được ghi nhận.</p>
            </div>
         </div>
       )}
 
       {/* Floating Cart Button */}
       {cart.length > 0 && (
-        <div className={`fixed bottom-20 left-6 right-6 bg-blue-600 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center z-50 animate-in slide-in-from-bottom-10 border-b-4 border-blue-800 ${cartPulse ? 'cart-pulse' : ''}`}>
-          <div className="flex items-center">
-            <div className="bg-white/20 p-3 rounded-2xl mr-4 relative">
+        <div className={`fixed bottom-20 left-3 right-3 sm:left-6 sm:right-6 bg-blue-600 text-white p-3 sm:p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center gap-3 z-50 animate-in slide-in-from-bottom-10 border-b-4 border-blue-800 safe-bottom ${cartPulse ? 'cart-pulse' : ''}`}>
+          <div className="min-w-0 flex items-center">
+            <div className="bg-white/20 p-2 sm:p-3 rounded-2xl mr-3 sm:mr-4 relative shrink-0">
               <ShoppingBag size={24} />
               <span className="absolute -top-1 -right-1 bg-white text-blue-600 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-blue-600">{totalItems}</span>
             </div>
@@ -595,12 +620,14 @@ const DigitalMenu = () => {
                    )}
                 </div>
               </div>
-              <p className="font-black text-xl tracking-tighter italic">{totalAmount.toLocaleString()}đ</p>
+              <p className="font-black text-lg sm:text-xl tracking-tighter italic">{totalAmount.toLocaleString()}đ</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={handleOrder}
-            className="bg-white text-blue-600 px-8 py-3.5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center"
+            aria-label="Mở giỏ hàng và đặt món"
+            className="shrink-0 min-h-11 touch-manipulation bg-white text-blue-600 px-4 sm:px-8 py-3.5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600"
           >
             ĐẶT MÓN NGAY
             <ChevronRight size={16} className="ml-1" />
@@ -620,8 +647,8 @@ const DigitalMenu = () => {
       {/* PROMOTION MODAL */}
       {isPromoModalOpen && (
         <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-6 animate-in fade-in duration-300 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[80vh] flex flex-col">
-              <button onClick={() => setIsPromoModalOpen(false)} className="absolute top-6 right-6 text-gray-300 hover:text-gray-600"><X size={20}/></button>
+           <div className="bg-white w-full max-w-sm rounded-[3rem] p-4 sm:p-8 shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[90dvh] flex flex-col">
+              <button type="button" onClick={() => setIsPromoModalOpen(false)} aria-label="Đóng ưu đãi" className="absolute top-6 right-6 min-h-11 min-w-11 touch-manipulation text-gray-300 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X size={20}/></button>
 
               <div className="text-center mb-6 flex-shrink-0">
                  <div className="w-20 h-20 bg-orange-50 rounded-[2rem] flex items-center justify-center text-orange-600 mx-auto mb-4 border-4 border-white shadow-xl">
@@ -647,11 +674,13 @@ const DigitalMenu = () => {
                           </div>
                        </div>
                        <button
+                          type="button"
                           onClick={() => {
                              const customerInfo = JSON.parse(localStorage.getItem('customerInfo') || '{}');
                              const points = customerInfo.loyaltyPoints || 0;
                              if (points < p.requiredPoints) {
-                                alert(`Bạn cần thêm ${p.requiredPoints - points} điểm để đổi quà này!`);
+                                setFeedbackTone('warning');
+                                setFeedbackMessage(`Bạn cần thêm ${p.requiredPoints - points} điểm để đổi quà này!`);
                              } else {
                                 handleRedeem(p);
                              }
@@ -665,6 +694,7 @@ const DigitalMenu = () => {
               </div>
 
               <button
+                 type="button"
                  onClick={() => setIsPromoModalOpen(false)}
                  className="w-full py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-all flex-shrink-0"
               >
@@ -677,13 +707,13 @@ const DigitalMenu = () => {
       {/* BRANCH SELECTION MODAL */}
       {isBranchModalOpen && (
         <div className="fixed inset-0 bg-black/80 z-[200] flex items-end justify-center animate-in fade-in duration-300 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-lg rounded-t-[3rem] p-8 pb-12 shadow-2xl animate-in slide-in-from-bottom-20 duration-500">
+           <div className="bg-white w-full max-w-lg max-h-[100dvh] overflow-y-auto rounded-t-[3rem] p-4 sm:p-8 pb-12 shadow-2xl animate-in slide-in-from-bottom-20 duration-500">
               <div className="flex justify-between items-start mb-6">
                  <div>
                     <h3 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">Xác nhận đơn hàng</h3>
                     <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mt-1">Kiểm tra lại món & chọn cơ sở</p>
                  </div>
-                 <button onClick={() => setIsBranchModalOpen(false)} className="bg-gray-100 p-3 rounded-full hover:bg-gray-200 transition-all text-gray-400"><X size={24}/></button>
+                 <button type="button" onClick={() => setIsBranchModalOpen(false)} aria-label="Đóng xác nhận đơn hàng" className="min-h-11 min-w-11 touch-manipulation bg-gray-100 p-3 rounded-full hover:bg-gray-200 transition-all text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X size={24}/></button>
               </div>
 
               <div className="mb-6">
@@ -723,6 +753,7 @@ const DigitalMenu = () => {
                              <p className="text-[10px] text-gray-400 font-bold">{item.totalItemPrice.toLocaleString()}đ</p>
                              <p className="text-xs font-black text-gray-700 tracking-tighter">{(item.totalItemPrice * item.quantity).toLocaleString()}đ</p>
                              <button
+                                type="button"
                                 onClick={() => removeFromCart(item)}
                                 className="text-[9px] font-bold text-red-400 hover:text-red-600 mt-1 uppercase"
                              >
@@ -741,6 +772,7 @@ const DigitalMenu = () => {
                  <div className="space-y-3 max-h-[25vh] overflow-y-auto pr-2 no-scrollbar">
                     {branches.filter(b => !tableInfo || b.id === tableInfo.branchId).map((b) => (
                        <button
+                         type="button"
                          key={b.id}
                          disabled={!!tableInfo}
                          onClick={() => setSelectedBranch(b)}
@@ -798,9 +830,11 @@ const DigitalMenu = () => {
                  </div>
 
                  <button
+                   type="button"
                    disabled={!selectedBranch || isSubmittingOrder}
                    onClick={() => confirmOrder(selectedBranch)}
-                   className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale flex items-center justify-center"
+                   aria-label="Gửi yêu cầu gọi món"
+                   className="w-full min-h-12 touch-manipulation py-5 bg-blue-600 text-white rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-30 disabled:grayscale flex items-center justify-center"
                  >
                    {isSubmittingOrder ? 'ĐANG GỬI YÊU CẦU...' : 'GỬI YÊU CẦU GỌI MÓN'}
                    {isSubmittingOrder ? <Loader2 size={20} className="ml-2 animate-spin" /> : <ChevronRight size={20} className="ml-2" />}
@@ -813,7 +847,7 @@ const DigitalMenu = () => {
       {/* OPTIONS MODAL (SIZE & TOPPING) */}
       {isOptionsModalOpen && currentCustomizingProduct && (
         <div className="fixed inset-0 bg-black/80 z-[300] flex items-end justify-center animate-in fade-in duration-300 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-lg rounded-t-[3rem] shadow-2xl animate-in slide-in-from-bottom-20 duration-500 max-h-[95vh] flex flex-col">
+           <div className="bg-white w-full max-w-lg rounded-t-[3rem] shadow-2xl animate-in slide-in-from-bottom-20 duration-500 max-h-[100dvh] flex flex-col">
               {/* Sticky Header */}
               <div className="relative h-48 flex-shrink-0">
                  <img
@@ -823,8 +857,10 @@ const DigitalMenu = () => {
                  />
                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                  <button
+                    type="button"
+                    aria-label="Đóng cấu hình món"
                     onClick={() => setIsOptionsModalOpen(false)}
-                    className="absolute top-6 right-6 bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/40 transition-all"
+                    className="absolute top-6 right-6 min-h-11 min-w-11 touch-manipulation bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                  >
                     <X size={20}/>
                  </button>
@@ -835,7 +871,7 @@ const DigitalMenu = () => {
               </div>
 
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-8 pt-6 no-scrollbar space-y-10">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-6 no-scrollbar space-y-10">
                  {/* Size Selection */}
                  {currentCustomizingProduct.sizesJson && JSON.parse(currentCustomizingProduct.sizesJson).length > 0 && (
                     <div className="space-y-4">
@@ -846,6 +882,7 @@ const DigitalMenu = () => {
                        <div className="grid grid-cols-1 gap-3">
                           {JSON.parse(currentCustomizingProduct.sizesJson).map((s: any, i: number) => (
                              <button
+                                type="button"
                                 key={i}
                                 onClick={() => setSelectedSize(s)}
                                 className={`p-4 rounded-[1.5rem] border-2 transition-all flex items-center justify-between group ${
@@ -884,6 +921,7 @@ const DigitalMenu = () => {
                              const isSelected = selectedToppings.find(x => x.name === t.name);
                              return (
                                 <button
+                                   type="button"
                                    key={i}
                                    onClick={() => {
                                       if (isSelected) {
@@ -910,19 +948,23 @@ const DigitalMenu = () => {
               </div>
 
               {/* Sticky Footer */}
-              <div className="p-8 pt-6 border-t border-gray-100 bg-white/80 backdrop-blur-md rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
+              <div className="p-4 sm:p-8 pt-6 border-t border-gray-100 bg-white/80 backdrop-blur-md rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
                  <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center bg-gray-100 rounded-2xl p-1.5 border border-gray-200">
                        <button
+                        type="button"
+                        aria-label="Giảm số lượng món đang cấu hình"
                         onClick={() => setCustomizingQuantity(Math.max(1, customizingQuantity - 1))}
-                        className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-blue-600"
+                        className="min-h-11 min-w-11 touch-manipulation w-10 h-10 flex items-center justify-center text-gray-400 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                        >
                           <Minus size={18}/>
                        </button>
                        <span className="px-5 font-black text-lg text-gray-800">{customizingQuantity.toString().padStart(2, '0')}</span>
                        <button
+                        type="button"
+                        aria-label="Tăng số lượng món đang cấu hình"
                         onClick={() => setCustomizingQuantity(customizingQuantity + 1)}
-                        className="w-10 h-10 flex items-center justify-center text-blue-600"
+                        className="min-h-11 min-w-11 touch-manipulation w-10 h-10 flex items-center justify-center text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                        >
                           <Plus size={18}/>
                        </button>
@@ -935,6 +977,7 @@ const DigitalMenu = () => {
                     </div>
                  </div>
                  <button
+                    type="button"
                     onClick={handleConfirmOptions}
                     className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-blue-500/40 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
                  >

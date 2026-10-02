@@ -139,6 +139,119 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("Branches");
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.BranchInventory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("CurrentQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("MinimumStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InventoryItemId");
+
+                    b.HasIndex("BranchId", "InventoryItemId")
+                        .IsUnique();
+
+                    b.ToTable("BranchInventories", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BranchInventories_CurrentQuantity_NonNegative", "\"CurrentQuantity\" >= 0");
+
+                            t.HasCheckConstraint("CK_BranchInventories_MinimumStock_NonNegative", "\"MinimumStock\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.BusinessInsight", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AiExplanation")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AiRecommendation")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ComparisonPeriodEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ComparisonPeriodStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeduplicationKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("DetectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("PeriodEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("PeriodStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("DeduplicationKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("BusinessInsights");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -274,59 +387,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("Employees");
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.EmployeeSalaryProfile", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Allowance")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("BranchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("EffectiveFrom")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("EffectiveTo")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("EmployeeType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("HourlyRate")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("MonthlySalary")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("OvertimeRate")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("StandardWorkDays")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("StandardWorkHours")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmployeeId", "BranchId", "EffectiveFrom");
-
-                    b.ToTable("EmployeeSalaryProfiles");
-                });
-
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Expense", b =>
                 {
                     b.Property<Guid>("Id")
@@ -357,19 +417,67 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Note")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("PaymentMethod")
+                        .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("StockReceiptId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StockReceiptId")
+                        .IsUnique()
+                        .HasFilter("\"StockReceiptId\" IS NOT NULL");
+
                     b.HasIndex("BranchId", "ExpenseDate");
 
                     b.ToTable("Expenses");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.InventoryItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UnitCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\" = TRUE");
+
+                    b.ToTable("InventoryItems", (string)null);
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.LoyaltyTransaction", b =>
@@ -537,6 +645,8 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("BranchId", "CreatedAt", "Status");
+
                     b.ToTable("Orders");
                 });
 
@@ -655,168 +765,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("OrderRequestItems");
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Payroll", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("ActualWorkDays")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("Allowance")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("BaseSalary")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("Bonus")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("BranchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CalculatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("Deduction")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("EmployeeType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("GrossSalary")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("HourlyRate")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime?>("LockedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Month")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("NetSalary")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("OvertimeHours")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("OvertimePay")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("RegularHours")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("RegularPay")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("StandardWorkDays")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("TotalHours")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Year")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmployeeId", "BranchId", "Month", "Year")
-                        .IsUnique();
-
-                    b.ToTable("Payrolls");
-                });
-
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.PayrollAdjustment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PayrollId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PayrollId", "CreatedAt");
-
-                    b.ToTable("PayrollAdjustments");
-                });
-
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.PayrollSettings", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BranchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("DefaultPartTimeHourlyRate")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("FullTimeDeductionPerMissingDay")
-                        .HasColumnType("numeric");
-
-                    b.Property<bool>("OvertimeEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<decimal>("OvertimeMultiplier")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("StandardWorkDays")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("StandardWorkHoursPerDay")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BranchId")
-                        .IsUnique();
-
-                    b.ToTable("PayrollSettings");
-                });
-
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -910,6 +858,13 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("BranchId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("FontFamily")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("FontSize")
+                        .HasColumnType("integer");
 
                     b.Property<int>("PaperWidth")
                         .HasColumnType("integer");
@@ -1027,6 +982,11 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("QrCodeUrl")
                         .HasColumnType("text");
 
+                    b.Property<string>("QrToken")
+                        .IsRequired()
+                        .HasMaxLength(43)
+                        .HasColumnType("character varying(43)");
+
                     b.Property<int>("SeatCount")
                         .HasColumnType("integer");
 
@@ -1037,6 +997,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BranchId");
+
+                    b.HasIndex("QrToken")
+                        .IsUnique();
 
                     b.ToTable("Tables");
                 });
@@ -1092,6 +1055,248 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Shifts");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockIssue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ConfirmedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId", "CreatedAtUtc");
+
+                    b.HasIndex("BranchId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.ToTable("StockIssues", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockIssues_Status", "\"Status\" IN ('Draft', 'Confirmed', 'Cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockIssueItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid>("StockIssueId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InventoryItemId");
+
+                    b.HasIndex("StockIssueId", "InventoryItemId");
+
+                    b.ToTable("StockIssueItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockIssueItems_Quantity_Positive", "\"Quantity\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ConfirmedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("PurchaseDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SupplierName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId", "CreatedAtUtc");
+
+                    b.HasIndex("BranchId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.ToTable("StockReceipts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockReceipts_Status", "\"Status\" IN ('Draft', 'Confirmed', 'Cancelled')");
+
+                            t.HasCheckConstraint("CK_StockReceipts_TotalAmount_NonNegative", "\"TotalAmount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockReceiptItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid>("StockReceiptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InventoryItemId");
+
+                    b.HasIndex("StockReceiptId", "InventoryItemId");
+
+                    b.ToTable("StockReceiptItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockReceiptItems_Quantity_Positive", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_StockReceiptItems_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AfterQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<decimal>("BeforeQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid>("ReferenceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReferenceType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InventoryItemId");
+
+                    b.HasIndex("ReferenceType", "ReferenceId");
+
+                    b.HasIndex("BranchId", "InventoryItemId", "CreatedAtUtc");
+
+                    b.ToTable("StockTransactions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockTransactions_AfterQuantity_NonNegative", "\"AfterQuantity\" >= 0");
+
+                            t.HasCheckConstraint("CK_StockTransactions_BeforeQuantity_NonNegative", "\"BeforeQuantity\" >= 0");
+
+                            t.HasCheckConstraint("CK_StockTransactions_Quantity_Positive", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_StockTransactions_ReferenceType", "\"ReferenceType\" IN ('StockReceipt', 'StockIssue', 'StockAdjustment')");
+
+                            t.HasCheckConstraint("CK_StockTransactions_Type", "\"Type\" IN ('IN', 'OUT', 'ADJUSTMENT')");
+                        });
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.SystemSetting", b =>
@@ -1219,6 +1424,25 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.BranchInventory", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.InventoryItem", "InventoryItem")
+                        .WithMany("BranchInventories")
+                        .HasForeignKey("InventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("InventoryItem");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Employee", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
@@ -1233,6 +1457,13 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.StockReceipt", "StockReceipt")
+                        .WithOne()
+                        .HasForeignKey("RestaurantPOS.Domain.Entities.Expense", "StockReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("StockReceipt");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.LoyaltyTransaction", b =>
@@ -1289,20 +1520,90 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.PayrollAdjustment", b =>
-                {
-                    b.HasOne("RestaurantPOS.Domain.Entities.Payroll", null)
-                        .WithMany("Adjustments")
-                        .HasForeignKey("PayrollId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.RestaurantTable", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
                         .WithMany()
                         .HasForeignKey("BranchId");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockIssue", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockIssueItem", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.InventoryItem", "InventoryItem")
+                        .WithMany()
+                        .HasForeignKey("InventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.StockIssue", "StockIssue")
+                        .WithMany("Items")
+                        .HasForeignKey("StockIssueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("InventoryItem");
+
+                    b.Navigation("StockIssue");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockReceipt", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockReceiptItem", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.InventoryItem", "InventoryItem")
+                        .WithMany()
+                        .HasForeignKey("InventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.StockReceipt", "StockReceipt")
+                        .WithMany("Items")
+                        .HasForeignKey("StockReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("InventoryItem");
+
+                    b.Navigation("StockReceipt");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockTransaction", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.InventoryItem", "InventoryItem")
+                        .WithMany()
+                        .HasForeignKey("InventoryItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("InventoryItem");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.WorkSchedule", b =>
@@ -1318,6 +1619,11 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.InventoryItem", b =>
+                {
+                    b.Navigation("BranchInventories");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Order", b =>
                 {
                     b.Navigation("Details");
@@ -1328,9 +1634,14 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Navigation("Items");
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.Payroll", b =>
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockIssue", b =>
                 {
-                    b.Navigation("Adjustments");
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.StockReceipt", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

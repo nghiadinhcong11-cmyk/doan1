@@ -406,13 +406,18 @@ Never expose another branch's data.
 Current authorized roles are:
 
 * `admin`: Super Admin / Global scope. Có quyền quản lý toàn chuỗi và các thiết lập hệ thống.
-* `manager`: Quản lý chi nhánh. Chỉ có quyền trong phạm vi chi nhánh được gán.
+* `manager`: Quản lý chi nhánh. Có quyền quản lý nhân sự, đơn hàng, báo cáo và thiết lập trong phạm vi chi nhánh được gán.
 * `employee`: Nhân viên.
 * `cashier`: Thu ngân.
 * `kitchen`: Nhân viên bếp.
 * `customer`: Khách hàng.
 
-Role `manager` is planned for future implementation but is not currently used in the codebase.
+Role `manager` is an ACTIVE role, primarily used for branch-level management and data isolation. Branch access is enforced server-side using authenticated branch context from JWT.
+
+**Role vs Position Rule**:
+- **Role** is the authoritative source for authorization and security boundaries.
+- **Position** is for business description and UI display only.
+- Never infer security permissions from a `Position` string.
 
 ---
 
@@ -1911,7 +1916,6 @@ The following issues are identified in the current baseline. They must not be ig
 * **Hardcoded CORS**: `Program.cs` contains a hardcoded LAN IP (`192.168.11.172`). Future changes should move this to configuration.
 * **Security**: Employee and Customer passwords are currently stored in clear-text.
 * **AI Validation**: There is no centralized schema validator for AI Tool inputs yet. Every tool must perform its own rigorous input validation.
-* **Branch Isolation in HRM**: The `EmployeeController` is currently `admin`-only.
 * **SystemSettings**: Global fallback (`BranchId IS NULL`) is not yet implemented in `SystemSettingService`.
 * **Testing**: Automated frontend tests are currently missing.
 # 91. WORKSPACE SAFETY

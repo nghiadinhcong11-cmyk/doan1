@@ -7,9 +7,11 @@ import {
   Plus, Minus, Printer, History, Bell, RotateCcw, X, UtensilsCrossed,
   LayoutGrid, Loader2, QrCode, Banknote, CheckCircle2, MapPin,
   ChevronDown, LogIn, Trash2, ChevronRight, Clock, Store, Calendar as CalendarIcon,
-  Star
+  Star, Signal, WifiOff
 } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
+import { PENDING_ORDER_CHANGED_EVENT } from '../../notifications/pendingOrderQuery';
 
 interface Product {
   id: string;
@@ -97,6 +99,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   const [showNotification, setShowNotification] = useState(false);
   const [notifType, setNotifType] = useState<'order' | 'res'>('order');
   const [orderToAccept, setOrderToAccept] = useState<any>(null);
+  const [isSignalRConnected, setIsSignalRConnected] = useState(false);
 
   // Quản lý ca làm việc (Shift)
   const [activeShift, setActiveShift] = useState<any>(null);
@@ -129,7 +132,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
        }
        try {
           const response = await fetch(`${API_URL}/api/Order/${selectedHistoryOrder.id}/loyalty`, {
-             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+             headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }
           });
           if (response.ok) {
              const data = await response.json();
@@ -291,8 +294,8 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   }, [activeOrderIds]);
 
   const checkActiveShift = async () => {
-    // Chỉ "Thu ngân" mới cần mở/đóng ca (Quản lý và Admin có thể xem menu mà không cần mở ca)
-    if (userRole !== 'cashier' || userPosition !== 'Thu ngân') {
+    // Chỉ "cashier" mới cần mở/đóng ca (Quản lý và Admin có thể xem menu mà không cần mở ca)
+    if (userRole !== 'cashier') {
       setIsCheckingShift(false);
       return;
     }
@@ -325,7 +328,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     const branchId = localStorage.getItem('selectedBranchId');
 
     if (!empId || !branchId) {
-      alert('Thiếu thông tin nhân viên hoặc chi nhánh!');
+      notifyFeedback('Thiếu thông tin nhân viên hoặc chi nhánh!');
       return;
     }
 
@@ -346,10 +349,10 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         const data = await response.json();
         setActiveShift(data);
         setIsShiftModalOpen(false);
-        alert('Mở ca thành công! Bắt đầu phiên bán hàng.');
+        notifyFeedback('Mở ca thành công! Bắt đầu phiên bán hàng.', 'success');
       }
     } catch (err) {
-      alert('Lỗi kết nối khi mở ca.');
+      notifyFeedback('Lỗi kết nối khi mở ca.');
     }
   };
 
@@ -367,13 +370,13 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       });
 
       if (response.ok) {
-        alert('Kết thúc ca thành công! Phiên làm việc đã được đóng.');
+        notifyFeedback('Kết thúc ca thành công! Phiên làm việc đã được đóng.', 'success');
         setIsCloseShiftModalOpen(false);
         setActiveShift(null);
         onLogout(); // Đăng xuất sau khi chốt ca
       }
     } catch (err) {
-      alert('Lỗi kết nối khi chốt ca.');
+      notifyFeedback('Lỗi kết nối khi chốt ca.');
     }
   };
 
@@ -606,14 +609,15 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         }
         // Phát sự kiện để Navbar cập nhật lại số lượng chuông thông báo ngay lập tức
         window.dispatchEvent(new CustomEvent('refresh-notifications'));
+        window.dispatchEvent(new Event(PENDING_ORDER_CHANGED_EVENT));
         await fetchPendingOrders();
       } else {
         const errorData = await response.json().catch(() => ({}));
-        alert(`Lỗi khi hủy đơn hàng: ${errorData.message || response.statusText}`);
+        notifyFeedback(`Lỗi khi hủy đơn hàng: ${errorData.message || response.statusText}`);
       }
     } catch (err) {
       console.error('Lỗi khi hủy đơn hàng:', err);
-      alert('Không thể kết nối đến máy chủ để hủy đơn hàng.');
+      notifyFeedback('Không thể kết nối đến máy chủ để hủy đơn hàng.');
     }
   };
   const selectedTable = tables.find(t => t.id === selectedTableId) || null;
@@ -750,7 +754,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   useEffect(() => {
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_URL}/kitchenHub`, {
-        accessTokenFactory: () => localStorage.getItem('token') || ''
+        accessTokenFactory: () => localStorage.getItem('adminToken') || ''
       })
       .withAutomaticReconnect()
       .build();
@@ -777,7 +781,14 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     connection.on('RequestStatusUpdated', onRequestStatusUpdated);
     const onPaymentCompleted = () => { void fetchInvoiceHistory(); };
     connection.on('PaymentCompleted', onPaymentCompleted);
-    connection.start().catch(err => console.warn('Kitchen status connection failed.', err));
+
+    connection.onreconnecting(() => setIsSignalRConnected(false));
+    connection.onreconnected(() => setIsSignalRConnected(true));
+    connection.onclose(() => setIsSignalRConnected(false));
+
+    connection.start()
+      .then(() => setIsSignalRConnected(true))
+      .catch(err => console.warn('Kitchen status connection failed.', err));
 
     return () => {
       connection.off('RequestStatusUpdated', onRequestStatusUpdated);
@@ -881,7 +892,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         } else if (newQty === 0 && minQty === 0) {
           cart.splice(index, 1);
         } else if (newQty < minQty) {
-          alert(`Món này đã gửi bếp ${minQty} phần, không thể giảm thêm. Vui lòng dùng chức năng Hủy món nếu cần.`);
+          notifyFeedback(`Món này đã gửi bếp ${minQty} phần, không thể giảm thêm. Vui lòng dùng chức năng Hủy món nếu cần.`, 'warning');
           return prev;
         }
       }
@@ -899,7 +910,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       const cart = [...(prev[selectedTableId] || [])];
       if (cart[index] && cart[index].id === productId) {
         if ((cart[index].sentQuantity || 0) > 0) {
-          alert("Món ăn đã được gửi xuống bếp, không thể xóa trực tiếp. Vui lòng dùng chức năng Hủy món.");
+          notifyFeedback("Món ăn đã được gửi xuống bếp, không thể xóa trực tiếp. Vui lòng dùng chức năng Hủy món.", 'warning');
           return prev;
         }
         cart.splice(index, 1);
@@ -925,7 +936,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     if (phone.length < 10) return;
     try {
       setIsCheckingPhone(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken');
       const response = await fetch(`${API_URL}/api/Customer/${phone}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -960,14 +971,14 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
         },
         body: JSON.stringify({ customerId: customer.id, points: pointsToRedeem })
       });
 
       if (response.ok) {
         const data = await response.json();
-        alert(data.message);
+        notifyFeedback(data.message, 'success');
         setPointsToRedeem(0);
         // Refresh order data
         handleSelectTable(selectedTableId, true);
@@ -975,11 +986,11 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         checkCustomer(customer.phone);
       } else {
         const error = await response.json();
-        alert(error.message || 'Lỗi khi đổi điểm');
+        notifyFeedback(error.message || 'Lỗi khi đổi điểm');
       }
     } catch (err) {
       console.error(err);
-      alert('Lỗi kết nối khi đổi điểm');
+      notifyFeedback('Lỗi kết nối khi đổi điểm');
     } finally {
       setIsSaving(false);
     }
@@ -999,7 +1010,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
       if (acceptResponse.status === 409) {
         const conflict = await acceptResponse.json().catch(() => ({}));
-        alert(conflict.message || 'Đơn này đã được nhân viên khác tiếp nhận hoặc không còn chờ xử lý.');
+        notifyFeedback(conflict.message || 'Đơn này đã được nhân viên khác tiếp nhận hoặc không còn chờ xử lý.', 'warning');
         await Promise.all([fetchPendingOrders(), fetchTables()]);
         return;
       }
@@ -1044,10 +1055,11 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       await Promise.all([fetchTables(), fetchPendingOrders()]);
 
       window.dispatchEvent(new CustomEvent('refresh-notifications'));
-      alert(`Đã chấp nhận đơn hàng và chuyển vào ${tableName}`);
+      window.dispatchEvent(new Event(PENDING_ORDER_CHANGED_EVENT));
+      notifyFeedback(`Đã chấp nhận đơn hàng và chuyển vào ${tableName}`, 'success');
     } catch (err: any) {
       console.error("Lỗi khi chấp nhận đơn:", err);
-      alert(`Lỗi hệ thống: ${err.message}`);
+      notifyFeedback(`Lỗi hệ thống: ${err.message}`);
     } finally {
       setIsSaving(false);
       setOrderToAccept(null);
@@ -1056,7 +1068,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
   const handlePayment = async () => {
     if (currentCart.length === 0) {
-      alert('Vui lòng chọn món trước khi thanh toán!');
+      notifyFeedback('Vui lòng chọn món trước khi thanh toán!', 'warning');
       return;
     }
     setIsPaymentModalOpen(true);
@@ -1201,7 +1213,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
            setAuthoritativeTotals(prev => ({ ...prev, [selectedTableId]: Number(savedOrder.totalAmount) }));
          }
         if (!isAuto) {
-          alert('Đã đồng bộ đơn hàng lên hệ thống!');
+          notifyFeedback('Đã đồng bộ đơn hàng lên hệ thống!', 'success');
         }
 
         // Tự động cập nhật trạng thái bàn nếu cần
@@ -1213,10 +1225,10 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         }
         return true;
       }
-      if (!isAuto) alert('Lỗi khi gửi đơn vào hệ thống.');
+      if (!isAuto) notifyFeedback('Lỗi khi gửi đơn vào hệ thống.');
       return false;
     } catch (err) {
-      if (!isAuto) alert('Lỗi khi gửi đơn vào hệ thống.');
+      if (!isAuto) notifyFeedback('Lỗi khi gửi đơn vào hệ thống.');
       return false;
     } finally {
       setIsSaving(false);
@@ -1225,7 +1237,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
   const confirmPayment = async () => {
     if (isSaving) {
-       alert('Hệ thống đang lưu dữ liệu, vui lòng đợi giây lát...');
+       notifyFeedback('Hệ thống đang lưu dữ liệu, vui lòng đợi giây lát.', 'warning');
        return;
     }
 
@@ -1292,7 +1304,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
         if (!paymentResponse.ok) {
           const error = await paymentResponse.json().catch(() => ({}));
-          alert(`Lỗi thanh toán: ${error.message || 'Không thể thanh toán hóa đơn'}`);
+          notifyFeedback(`Lỗi thanh toán: ${error.message || 'Không thể thanh toán hóa đơn'}`);
           return;
         }
 
@@ -1315,15 +1327,15 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
            return updated;
         });
 
-        alert('Thanh toán thành công!');
+        notifyFeedback('Thanh toán thành công!', 'success');
         setIsPaymentModalOpen(false);
         setSelectedTableId('delivery');
       } else {
         const error = await response.json();
-        alert(`Lỗi: ${error.message || 'Không thể lưu hóa đơn'}`);
+        notifyFeedback(`Lỗi: ${error.message || 'Không thể lưu hóa đơn'}`);
       }
     } catch (err) {
-      alert('Lỗi kết nối đến server.');
+      notifyFeedback('Lỗi kết nối đến server.');
     } finally {
       setIsSaving(false);
     }
@@ -1548,13 +1560,15 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
                       <div className="h-px bg-blue-100 flex-1 ml-4"></div>
                     </h3>
                     <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
-                       {tables.filter(t => t.areaName === area).map((table, idx) => {
+              {tables.filter(t => t.areaName === area).map((table, idx) => {
                           const hasItems = (tableCarts[table.id] || []).length > 0;
                           const itemCount = (tableCarts[table.id] || []).reduce((sum, item) => sum + item.quantity, 0);
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={`${table.id}-${idx}`}
                               onClick={() => handleSelectTable(table.id)}
+                              aria-label={`Chọn ${table.areaName || 'khu vực'} ${table.name}`}
                               className={`rounded-2xl shadow-sm aspect-square flex flex-col items-center justify-center cursor-pointer transition-all border-2 relative ${
                                 selectedTableId === table.id
                                   ? 'bg-blue-50 border-[#0070f4] text-[#0070f4] ring-4 ring-blue-100 scale-105 z-10 shadow-xl'
@@ -1576,7 +1590,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
                                 {table.status === 'Có khách' && (
                                    <div className="absolute -bottom-2 bg-[#0070f4] text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter shadow-sm">Đang dùng</div>
                                 )}
-                            </div>
+                            </button>
                           );
                        })}
                     </div>
@@ -1586,9 +1600,11 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
           ) : (
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {filteredProducts.map((product, idx) => (
-                <div
+                <button
+                  type="button"
                   key={`${product.id}-${idx}`}
                   onClick={() => addToCart(product)}
+                  aria-label={`Thêm ${product.name} vào đơn`}
                   className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden cursor-pointer hover:shadow-md hover:border-blue-400 transition-all group"
                 >
                   <div className="aspect-square bg-gray-50 flex items-center justify-center relative">
@@ -1604,7 +1620,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
                   <div className="p-2 text-center border-t">
                     <p className="text-[11px] font-bold text-gray-700 truncate capitalize">{product.name}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -1643,7 +1659,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
         {/* Order Info Bar */}
         <div className="p-2 flex items-center border-b space-x-2">
-          {activeShift && userPosition === 'Thu ngân' && (
+          {activeShift && userRole === 'cashier' && (
             <div className="flex space-x-1">
                <button
                 onClick={() => setIsCloseShiftModalOpen(true)}
@@ -1661,6 +1677,11 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
           )}
           <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-xs font-bold flex items-center whitespace-nowrap">
              <Utensils size={14} className="mr-1" /> {selectedTable ? `${selectedTable.areaName || 'Khu vực chưa đặt tên'} · ${selectedTable.name}` : 'Mang về'}
+          </div>
+
+          <div className={`hidden sm:flex items-center px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${isSignalRConnected ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+             {isSignalRConnected ? <Signal size={10} className="mr-1" /> : <WifiOff size={10} className="mr-1" />}
+             {isSignalRConnected ? 'Đang trực tuyến' : 'Mất kết nối'}
           </div>
 
           {selectedTable?.status === 'Có khách' && (
@@ -1725,9 +1746,9 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
             />
             <button onClick={() => customerPhoneInputRef.current?.focus()} title="Nhập thông tin khách hàng" aria-label="Nhập thông tin khách hàng" className="absolute right-2 top-1.5 rounded p-1 text-blue-600 hover:bg-blue-50"><UserPlus size={16} /></button>
           </div>
-          <button onClick={() => {
+          <button type="button" onClick={() => {
             if (currentCart.some(item => item.sentQuantity > 0)) {
-              alert('Món đã gửi bếp không thể xóa bằng thao tác này.');
+              notifyFeedback('Món đã gửi bếp không thể xóa bằng thao tác này.', 'warning');
               return;
             }
             if (currentCart.length > 0 && window.confirm('Xóa toàn bộ món chưa gửi trong đơn?')) setTableCarts(prev => ({ ...prev, [selectedTableId]: [] }));
@@ -1740,7 +1761,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
              <div key={`${item.id}-${idx}`} className="flex items-start py-3 border-b border-gray-100 group transition-all">
                 <div className="flex-1">
                    <div className="flex items-center">
-                      <button onClick={() => removeFromCart(item.id, idx)} className="mr-2 text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button type="button" onClick={() => removeFromCart(item.id, idx)} aria-label={`Xóa ${item.name} khỏi đơn`} title={`Xóa ${item.name}`} className="mr-2 min-w-8 min-h-8 flex items-center justify-center text-red-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                          <X size={14} />
                       </button>
                       <div>
@@ -1787,9 +1808,9 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
                 </div>
                 <div className="flex items-center space-x-4">
                    <div className="flex items-center border rounded-md overflow-hidden bg-gray-50">
-                      <button onClick={() => updateQuantity(item.id, -1, idx)} className="px-1.5 py-1 hover:bg-gray-200 text-gray-400 transition-colors"><Minus size={12} /></button>
+                      <button type="button" onClick={() => updateQuantity(item.id, -1, idx)} aria-label={`Giảm số lượng ${item.name}`} className="min-w-9 min-h-9 px-1.5 py-1 hover:bg-gray-200 text-gray-400 transition-colors"><Minus size={12} /></button>
                       <input type="text" className="w-8 bg-transparent text-center text-xs font-bold outline-none" value={item.quantity} readOnly />
-                      <button onClick={() => updateQuantity(item.id, 1, idx)} className="px-1.5 py-1 hover:bg-gray-200 text-blue-600 transition-colors"><Plus size={12} /></button>
+                      <button type="button" onClick={() => updateQuantity(item.id, 1, idx)} aria-label={`Tăng số lượng ${item.name}`} className="min-w-9 min-h-9 px-1.5 py-1 hover:bg-gray-200 text-blue-600 transition-colors"><Plus size={12} /></button>
                    </div>
                    <div className="text-right w-20">
                       <p className="text-[11px] text-gray-400 font-medium">{item.totalItemPrice.toLocaleString()}</p>

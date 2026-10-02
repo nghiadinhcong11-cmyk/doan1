@@ -15,5 +15,7 @@ public class ReceiptSettings
     public bool ShowOrderNote { get; set; } = true;
     public bool ShowThankYou { get; set; } = true;
     public string ThankYouText { get; set; } = "Cảm ơn quý khách và hẹn gặp lại!";
+    public string FontFamily { get; set; } = "font-mono";
+    public int FontSize { get; set; } = 11;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

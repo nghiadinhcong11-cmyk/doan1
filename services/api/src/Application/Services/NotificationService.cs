@@ -39,8 +39,21 @@ public sealed class NotificationService : INotificationService
         await _context.SaveChangesAsync();
 
         var groups = new List<string>();
-        if (!string.IsNullOrWhiteSpace(notification.TargetRole)) groups.Add($"role:{notification.TargetRole}");
-        if (notification.BranchId.HasValue) groups.Add($"branch:{notification.BranchId.Value}");
+        if (!string.IsNullOrWhiteSpace(notification.TargetRole) && notification.BranchId.HasValue)
+        {
+            groups.Add($"branch:{notification.BranchId.Value}:role:{notification.TargetRole}");
+            // Admins should also receive business insights
+            if (notification.Type == "BusinessInsight")
+            {
+                groups.Add("role:admin");
+            }
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(notification.TargetRole)) groups.Add($"role:{notification.TargetRole}");
+            if (notification.BranchId.HasValue) groups.Add($"branch:{notification.BranchId.Value}");
+        }
+
         if (groups.Count == 0) await _hub.Clients.All.SendAsync("NotificationCreated", notification);
         else await _hub.Clients.Groups(groups).SendAsync("NotificationCreated", notification);
         return notification;

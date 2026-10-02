@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
-import { User, Store, Package, History, Shield, Settings, LogOut, ChevronRight, Moon, Globe, Camera, Save, CheckCircle2, X, CreditCard, Lock, Eye, EyeOff, AlertCircle, MapPin, Phone, Zap } from 'lucide-react';
+import { User, Store, Package, History, Shield, Settings, LogOut, ChevronRight, Moon, Globe, Camera, Save, CheckCircle2, X, CreditCard, Lock, AlertCircle, MapPin, Phone, Zap } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { Button, Feedback, FormField } from '../../../components/ui';
 
 interface ProfileData {
   businessType: string;
@@ -43,6 +44,8 @@ const ProfilePage = () => {
   const [authUserId, setAuthUserId] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [branchData, setBranchData] = useState<any>(null);
   const userRole = localStorage.getItem('userRole');
@@ -54,7 +57,7 @@ const ProfilePage = () => {
         setIsLoading(true);
         // 1. Lấy thông tin User hiện tại
         const meRes = await fetch(`${API_URL}/api/Auth/me`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }
         });
         const user = meRes.ok ? await meRes.json() : null;
         if (user) setAuthUserId(user.userId || '');
@@ -91,6 +94,7 @@ const ProfilePage = () => {
 
   const handleSave = async () => {
     if (!branchData) return;
+    setProfileError('');
 
     try {
       const payload = {
@@ -110,7 +114,7 @@ const ProfilePage = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
         },
         body: JSON.stringify(payload)
       });
@@ -121,10 +125,10 @@ const ProfilePage = () => {
         setTimeout(() => setShowSuccess(false), 3000);
       } else {
         const err = await response.json();
-        alert("Lỗi: " + (err.message || "Không thể lưu thay đổi"));
+        setProfileError(err.message || 'Không thể lưu thay đổi.');
       }
     } catch (err) {
-      alert("Lỗi kết nối máy chủ khi lưu hồ sơ");
+      setProfileError('Lỗi kết nối máy chủ khi lưu hồ sơ.');
     }
   };
 
@@ -142,7 +146,7 @@ const ProfilePage = () => {
   const handleChangePassword = async () => {
     setPasswordError('');
     if (!authUserId) return setPasswordError('Không xác định được tài khoản. Vui lòng đăng nhập lại.');
-    if (passwords.new.length < 8) return setPasswordError('Mật khẩu mới phải có ít nhất 8 ký tự.');
+    if (passwords.new.length < 8 || passwords.new.length > 128) return setPasswordError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
     if (passwords.new !== passwords.confirm) return setPasswordError('Mật khẩu xác nhận không khớp.');
     try {
       setPasswordSaving(true);
@@ -155,8 +159,9 @@ const ProfilePage = () => {
         throw new Error(body.message || 'Không thể cập nhật mật khẩu.');
       }
       setPasswords({ current: '', new: '', confirm: '' });
+      setPasswordSuccess(true);
       setShowSuccess(true);
-      window.setTimeout(() => setShowSuccess(false), 3000);
+      window.setTimeout(() => { setShowSuccess(false); setPasswordSuccess(false); }, 3000);
     } catch (error: any) { setPasswordError(error.message || 'Không thể kết nối máy chủ.'); }
     finally { setPasswordSaving(false); }
   };
@@ -384,31 +389,30 @@ const ProfilePage = () => {
                 { label: 'Mật khẩu mới', key: 'new' as const },
                 { label: 'Xác nhận mật khẩu mới', key: 'confirm' as const }
              ].map((f) => (
-                <div key={f.key} className="space-y-2">
-                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{f.label}</label>
-                   <div className="relative group">
-                      <input
-                        type={showPass[f.key] ? "text" : "password"}
-                        className="w-full border-b-2 border-gray-100 py-2.5 focus:border-blue-500 outline-none font-black text-gray-700 bg-transparent pr-12 transition-all"
-                        value={passwords[f.key]}
-                        onChange={e => setPasswords({...passwords, [f.key]: e.target.value})}
-                        placeholder="••••••••"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPass({...showPass, [f.key]: !showPass[f.key]})}
-                        className="absolute right-2 top-2.5 text-gray-300 hover:text-blue-500 transition-colors"
-                      >
-                         {showPass[f.key] ? <EyeOff size={18}/> : <Eye size={18}/>}
-                      </button>
-                   </div>
-                </div>
+                <FormField
+                  key={f.key}
+                  label={f.label}
+                  type={showPass[f.key] ? 'text' : 'password'}
+                  value={passwords[f.key]}
+                  onChange={e => setPasswords({...passwords, [f.key]: e.target.value})}
+                  placeholder="••••••••"
+                  required
+                  maxLength={128}
+                  minLength={f.key === 'current' ? undefined : 8}
+                  helperText={f.key === 'new' ? 'Sử dụng từ 8 đến 128 ký tự.' : undefined}
+                />
              ))}
 
-             {passwordError && <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600">{passwordError}</div>}
-             <button onClick={() => void handleChangePassword()} disabled={passwordSaving} className="w-full py-5 bg-[#0070f4] text-white rounded-2xl font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all uppercase tracking-[0.2em] text-[10px] mt-6 active:scale-95 disabled:cursor-wait disabled:opacity-60">
-                {passwordSaving ? 'ĐANG CẬP NHẬT...' : 'CẬP NHẬT MẬT KHẨU'}
-             </button>
+             {passwordError && <Feedback tone="error">{passwordError}</Feedback>}
+             {passwordSuccess && <Feedback tone="success">Mật khẩu đã được cập nhật.</Feedback>}
+             <div className="flex items-center justify-between gap-3 pt-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowPass({ current: !showPass.current, new: !showPass.new, confirm: !showPass.confirm })} aria-pressed={showPass.current}>
+                  {showPass.current ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                </Button>
+                <Button type="button" loading={passwordSaving} onClick={() => void handleChangePassword()}>
+                  Cập nhật mật khẩu
+                </Button>
+             </div>
           </div>
        </section>
 
@@ -417,7 +421,7 @@ const ProfilePage = () => {
              <AlertCircle size={18} className="text-blue-500 mt-0.5 shrink-0"/>
              <div>
                 <p className="text-[10px] font-black text-gray-800 uppercase mb-1">Mẹo bảo mật</p>
-                <p className="text-[11px] text-gray-500 italic leading-relaxed font-medium">Mật khẩu mạnh nên có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt (@, !, #...) để bảo vệ dữ liệu kinh doanh của bạn tốt nhất.</p>
+                <p className="text-[11px] text-gray-500 italic leading-relaxed font-medium">Mật khẩu cần có từ 8 đến 128 ký tự. Không yêu cầu bắt buộc về chữ hoa, chữ thường, số hoặc ký tự đặc biệt.</p>
              </div>
           </div>
        </div>
@@ -528,6 +532,7 @@ const ProfilePage = () => {
                   )
                 )}
              </div>
+             {profileError && <div className="mt-4"><Feedback tone="error" onDismiss={() => setProfileError('')}>{profileError}</Feedback></div>}
           </div>
 
           <div className="bg-white rounded-[3rem] shadow-2xl shadow-blue-500/5 border border-white overflow-hidden min-h-[600px]">

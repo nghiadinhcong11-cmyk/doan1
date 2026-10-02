@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Plus, Search, Store, MapPin, Phone, Globe, Edit2, Trash2, CheckCircle2, X, Loader2, Save, Lock, Unlock } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Branch {
   id?: string;
@@ -65,6 +66,10 @@ const BranchManagement = () => {
 
   const handleSaveBranch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+      return;
+    }
     try {
       const isEditing = !!editingBranch;
       const url = isEditing
@@ -81,6 +86,11 @@ const BranchManagement = () => {
         body: JSON.stringify(payload)
       });
 
+      if (response.status === 403) {
+        notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+        return;
+      }
+
       if (response.ok) {
         setIsModalOpen(false);
         setEditingBranch(null);
@@ -88,10 +98,10 @@ const BranchManagement = () => {
         fetchBranches();
       } else {
         const error = await response.json();
-        alert(error.message || 'Lỗi khi lưu chi nhánh');
+        notifyFeedback(error.message || 'Lỗi khi lưu chi nhánh');
       }
     } catch (err) {
-      alert('Lỗi kết nối đến server');
+      notifyFeedback('Lỗi kết nối đến server');
     }
   };
 
@@ -115,6 +125,10 @@ const BranchManagement = () => {
   };
 
   const openEditModal = (branch: Branch) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+      return;
+    }
     setEditingBranch(branch);
     setNewBranch({
       name: branch.name,
@@ -136,32 +150,48 @@ const BranchManagement = () => {
   };
 
   const handleDeleteBranch = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+      return;
+    }
     if (!window.confirm('Bạn có chắc chắn muốn xóa chi nhánh này?')) return;
     try {
       const response = await fetch(`${API_URL}/api/Branch/${id}`, {
         method: 'DELETE'
       });
+      if (response.status === 403) {
+        notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+        return;
+      }
       if (response.ok) {
         fetchBranches();
       } else {
         const error = await response.json();
-        alert(error.message || 'Lỗi khi xóa chi nhánh');
+        notifyFeedback(error.message || 'Lỗi khi xóa chi nhánh');
       }
     } catch (err) {
-      alert('Lỗi khi xóa chi nhánh');
+      notifyFeedback('Lỗi khi xóa chi nhánh');
     }
   };
 
   const handleToggleStatus = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+      return;
+    }
     try {
       const response = await fetch(`${API_URL}/api/Branch/${id}/toggle-status`, {
         method: 'PATCH'
       });
+      if (response.status === 403) {
+        notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+        return;
+      }
       if (response.ok) {
         fetchBranches();
       }
     } catch (err) {
-      alert('Lỗi khi cập nhật trạng thái');
+      notifyFeedback('Lỗi khi cập nhật trạng thái');
     }
   };
 
@@ -256,7 +286,13 @@ const BranchManagement = () => {
             />
           </div>
           <button
-            onClick={() => { resetForm(); setEditingBranch(null); setIsModalOpen(true); }}
+            onClick={() => {
+              if (localStorage.getItem('userRole') !== 'admin') {
+                notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+                return;
+              }
+              resetForm(); setEditingBranch(null); setIsModalOpen(true);
+            }}
             className="bg-[#0070f4] text-white px-5 py-2 rounded-xl flex items-center font-black text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 active:scale-95 uppercase tracking-widest"
           >
             <Plus size={16} className="mr-2" /> Thêm chi nhánh

@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronDown, User, Phone, Mail, MapPin, Briefcase, Calendar, CreditCard, Facebook, Info, Settings, Clock, DollarSign, Store, Key, UserCheck, ShieldCheck } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { Feedback, FormField, notifyFeedback } from '../../../components/ui';
 
 interface Employee {
   id?: string;
@@ -17,7 +18,6 @@ interface Employee {
   address?: string;
   startDate: string;
   isActive: boolean;
-  basicSalary: number;
   role: string;
   note?: string;
   username?: string;
@@ -33,6 +33,7 @@ const EmployeeManagement = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [formError, setFormError] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -80,7 +81,6 @@ const EmployeeManagement = () => {
     address: '',
     startDate: new Date().toISOString().split('T')[0],
     isActive: true,
-    basicSalary: 0,
     role: 'employee',
     note: '',
     username: '',
@@ -130,6 +130,11 @@ const EmployeeManagement = () => {
 
   const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
+    if (newEmployee.password && (newEmployee.password.length < 8 || newEmployee.password.length > 128)) {
+      setFormError('Mật khẩu phải dài từ 8 đến 128 ký tự.');
+      return;
+    }
     try {
       const isEditing = !!editingEmployee;
       const url = isEditing
@@ -139,7 +144,6 @@ const EmployeeManagement = () => {
       const payload = {
         ...(isEditing ? { ...editingEmployee, ...newEmployee } : newEmployee),
         birthDate: newEmployee.birthDate || null,
-        basicSalary: Number(newEmployee.basicSalary) || 0,
         branchName: branches.find(b => b.id === newEmployee.branchId)?.name
       };
 
@@ -156,10 +160,10 @@ const EmployeeManagement = () => {
         fetchEmployees();
       } else {
         const errorData = await response.json();
-        alert(`Lỗi: ${errorData.message || 'Không thể lưu nhân viên'}`);
+        setFormError(errorData.message || 'Không thể lưu nhân viên.');
       }
     } catch (err) {
-      alert('Lỗi kết nối đến server.');
+      setFormError('Lỗi kết nối đến máy chủ.');
     }
   };
 
@@ -177,7 +181,6 @@ const EmployeeManagement = () => {
       address: '',
       startDate: new Date().toISOString().split('T')[0],
       isActive: true,
-      basicSalary: 0,
       role: 'employee',
       note: '',
       username: '',
@@ -207,7 +210,7 @@ const EmployeeManagement = () => {
         fetchEmployees();
       }
     } catch (err) {
-      alert('Lỗi khi xóa nhân viên');
+      notifyFeedback('Lỗi khi xóa nhân viên');
     }
   };
 
@@ -220,7 +223,7 @@ const EmployeeManagement = () => {
         fetchEmployees();
       }
     } catch (err) {
-      alert('Lỗi khi cập nhật trạng thái');
+      notifyFeedback('Lỗi khi cập nhật trạng thái');
     }
   };
 
@@ -327,19 +330,18 @@ const EmployeeManagement = () => {
                     <th className="px-8 py-5">Mã nhân sự</th>
                     <th className="px-8 py-5">Tên nhân viên</th>
                     <th className="px-8 py-5">Chức danh</th>
-                    <th className="px-8 py-5 text-right">Lương cơ bản</th>
                     <th className="px-8 py-5">Cơ sở làm việc</th>
                     <th className="px-8 py-5 text-center">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {loading ? (
-                    <tr><td colSpan={6} className="py-20 text-center flex flex-col items-center justify-center">
+                    <tr><td colSpan={5} className="py-20 text-center flex flex-col items-center justify-center">
                        <Loader2 className="animate-spin text-blue-600 mb-2" size={32} />
                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Đang truy xuất hồ sơ...</p>
                     </td></tr>
                   ) : employees.length === 0 ? (
-                    <tr><td colSpan={6} className="py-32 text-center text-gray-300 italic font-bold uppercase tracking-widest text-[10px]">Chưa có hồ sơ nhân viên nào</td></tr>
+                    <tr><td colSpan={5} className="py-32 text-center text-gray-300 italic font-bold uppercase tracking-widest text-[10px]">Chưa có hồ sơ nhân viên nào</td></tr>
                   ) : employees.map(e => (
                     <React.Fragment key={e.id}>
                       <tr
@@ -356,7 +358,6 @@ const EmployeeManagement = () => {
                            </div>
                         </td>
                         <td className="px-8 py-5 text-xs font-black uppercase text-gray-400">{e.position || '---'}</td>
-                        <td className="px-8 py-5 text-right font-black text-gray-800 tracking-tighter">{e.basicSalary.toLocaleString()}đ</td>
                         <td className="px-8 py-5 text-[11px] font-bold text-gray-400 italic">{e.branchName || 'Toàn hệ thống'}</td>
                         <td className="px-8 py-5 text-center">
                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter shadow-sm border ${
@@ -368,7 +369,7 @@ const EmployeeManagement = () => {
                       </tr>
                       {expandedRow === e.id && (
                         <tr className="bg-white">
-                          <td colSpan={6} className="p-0">
+                          <td colSpan={5} className="p-0">
                             <div className="border-l-4 border-blue-500 m-4 shadow-inner bg-gray-50 p-8 rounded-3xl animate-in slide-in-from-top-2 duration-300">
                               <div className="flex space-x-12">
                                  <div className="w-32 h-32 bg-white rounded-[2rem] flex items-center justify-center border-2 border-dashed border-gray-200 shrink-0 shadow-sm relative overflow-hidden">
@@ -472,14 +473,6 @@ const EmployeeManagement = () => {
                     </div>
 
                     <div className="border-b-2 border-gray-100 focus-within:border-blue-500 transition-all pb-1">
-                       <label className="block text-[10px] text-gray-400 font-black uppercase tracking-widest">Lương cơ bản (Tháng)</label>
-                       <div className="flex items-center">
-                          <input type="number" className="w-full py-2 outline-none font-black text-blue-700 text-lg bg-transparent" value={newEmployee.basicSalary} onChange={ev => setNewEmployee({...newEmployee, basicSalary: parseInt(ev.target.value) || 0})}/>
-                          <span className="text-gray-400 text-[10px] font-black uppercase ml-3">VNĐ</span>
-                       </div>
-                    </div>
-
-                    <div className="border-b-2 border-gray-100 focus-within:border-blue-500 transition-all pb-1">
                        <label className="block text-[10px] text-gray-400 font-black uppercase tracking-widest">Quyền hệ thống</label>
                        <select className="w-full py-2 outline-none bg-transparent font-black text-blue-600" value={newEmployee.role} onChange={ev => setNewEmployee({...newEmployee, role: ev.target.value})}>
                           {roles.map(r => (
@@ -493,6 +486,7 @@ const EmployeeManagement = () => {
                        <input type="date" className="w-full py-2 outline-none font-bold text-gray-700 bg-transparent" value={newEmployee.startDate} onChange={ev => setNewEmployee({...newEmployee, startDate: ev.target.value})}/>
                     </div>
 
+                    {formError && <div className="col-span-1 md:col-span-2"><Feedback tone="error" onDismiss={() => setFormError('')}>{formError}</Feedback></div>}
                     <div className="col-span-1 md:col-span-2 bg-blue-50/50 p-8 rounded-[2rem] border border-blue-100 grid grid-cols-2 gap-8 mt-4 shadow-inner">
                        <div className="col-span-2 flex items-center text-blue-700 font-black text-xs uppercase tracking-[0.2em] italic">
                           <Key size={16} className="mr-3" /> Tài khoản truy cập
@@ -501,10 +495,17 @@ const EmployeeManagement = () => {
                           <label className="block text-[9px] text-blue-500 font-black uppercase tracking-widest">Tên đăng nhập</label>
                           <input type="text" className="w-full py-2 outline-none font-black bg-transparent text-gray-800" placeholder="VD: t_nghia" value={newEmployee.username} onChange={ev => setNewEmployee({...newEmployee, username: ev.target.value})}/>
                        </div>
-                       <div className="border-b-2 border-blue-200">
-                          <label className="block text-[9px] text-blue-500 font-black uppercase tracking-widest">Mật khẩu</label>
-                          <input type="password" placeholder="••••••••" className="w-full py-2 outline-none font-black bg-transparent text-gray-800" value={newEmployee.password} onChange={ev => setNewEmployee({...newEmployee, password: ev.target.value})}/>
-                       </div>
+                       <FormField
+                         label="Mật khẩu"
+                         type="password"
+                         placeholder="••••••••"
+                         value={newEmployee.password}
+                         onChange={ev => setNewEmployee({...newEmployee, password: ev.target.value})}
+                         minLength={8}
+                         maxLength={128}
+                         helperText="8-128 ký tự; để trống khi giữ mật khẩu hiện tại."
+                         className="bg-transparent"
+                       />
                     </div>
                  </div>
 

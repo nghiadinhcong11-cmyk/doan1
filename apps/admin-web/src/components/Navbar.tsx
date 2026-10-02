@@ -3,6 +3,7 @@ import * as signalR from '@microsoft/signalr';
 import { Link, useLocation } from 'react-router-dom';
 import { Bell, Settings, User, Search, HelpCircle, ChevronRight, Globe, LogOut, Printer, Users, Store, ShieldCheck, CreditCard, BellRing, Users2, ChevronDown, Clock, Calendar, Info, Loader2, Book, Banknote, Utensils, Settings2, QrCode, X } from 'lucide-react';
 import { API_URL, CUSTOMER_WEB_URL } from '../config';
+import { fetchPendingWebOrderCount, PENDING_ORDER_CHANGED_EVENT } from '../features/notifications/pendingOrderQuery';
 
 interface Branch {
   id: string;
@@ -24,9 +25,11 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [loadingNoti, setLoadingNoti] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const [insightToast, setInsightToast] = useState<any | null>(null);
   const location = useLocation();
 
   const fetchBranches = async () => {
@@ -40,6 +43,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
       if (branch) {
         setSelectedBranch(branch);
         localStorage.setItem('selectedBranchId', branch.id);
+        void refreshPendingOrderCount();
       }
     } catch (err) {
       console.error(err);
@@ -51,6 +55,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   }, []);
 
   const handleBranchChange = (branch: Branch) => {
+    if (userRole === 'manager') return;
     setSelectedBranch(branch);
     localStorage.setItem('selectedBranchId', branch.id);
     // Trigger a page reload or event to update other components
@@ -61,13 +66,14 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
 
   const navItems = [
     { id: 'dashboard', label: 'TỔNG QUAN', path: '/dashboard' },
+    { id: 'insights', label: 'CẢNH BÁO', path: '/business-insights' },
     { id: 'pos', label: 'BÁN HÀNG', path: '/pos' },
     { id: 'kitchen', label: 'NHÀ BẾP', path: '/kitchen' },
     { id: 'reservations', label: 'ĐẶT BÀN', path: '/reservations' },
     { id: 'tables', label: 'PHÒNG BÀN', path: '/tables' },
     { id: 'invoices', label: 'HÓA ĐƠN', path: '/invoices' },
     { id: 'expenses', label: 'CHI PHÍ', path: '/expenses' },
-    { id: 'payroll', label: 'TIỀN LƯƠNG', path: '/payroll' },
+    ...(userRole === 'admin' || userRole === 'manager' ? [{ id: 'inventory', label: 'KHO HÀNG', path: '/inventory' }] : []),
   ];
 
   const fetchNotifications = async () => {
@@ -110,23 +116,50 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
     finally { setLoadingNoti(false); }
   };
 
+  const refreshPendingOrderCount = async () => {
+    try {
+      setPendingOrderCount(await fetchPendingWebOrderCount());
+    } catch (err) {
+      console.error('Lỗi lấy số đơn web đang chờ:', err);
+    }
+  };
+
   useEffect(() => {
     fetchPersistentNotifications();
     const interval = setInterval(fetchPersistentNotifications, 30000);
-    const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('token') || '' }).withAutomaticReconnect().build();
-    const onNotification = (notification: any) => setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
+    refreshPendingOrderCount();
+    const pendingInterval = setInterval(refreshPendingOrderCount, 30000);
+    const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
+    const onNotification = (notification: any) => {
+      setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
+
+      // Special handling for Business Insights - Show Toast
+      if (notification.type === 'BusinessInsight') {
+        setInsightToast(notification);
+        setTimeout(() => setInsightToast(null), 10000); // Auto hide after 10s
+
+        // Notify BusinessInsights page if open
+        window.dispatchEvent(new CustomEvent('business-insight-created', { detail: notification }));
+      }
+    };
     connection.on('NotificationCreated', onNotification);
+    const onPendingOrderChanged = () => { void refreshPendingOrderCount(); };
+    connection.on('PendingOrderChanged', onPendingOrderChanged);
     void connection.start().catch(() => undefined);
 
     // Lắng nghe sự kiện yêu cầu cập nhật thông báo ngay lập tức
     const handleRefresh = () => fetchPersistentNotifications();
     window.addEventListener('refresh-notifications', handleRefresh);
+    window.addEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
 
     return () => {
       clearInterval(interval);
+      clearInterval(pendingInterval);
       connection.off('NotificationCreated', onNotification);
+      connection.off('PendingOrderChanged', onPendingOrderChanged);
       void connection.stop();
       window.removeEventListener('refresh-notifications', handleRefresh);
+      window.removeEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
     };
   }, []);
 
@@ -169,7 +202,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hệ thống chi nhánh</p>
                  </div>
                  <div className="max-h-80 overflow-y-auto">
-                    {branches.map(b => (
+                    {(userRole === 'manager' ? branches.filter(b => b.id === selectedBranch?.id) : branches).map(b => (
                        <button
                           key={b.id}
                           onClick={() => handleBranchChange(b)}
@@ -278,7 +311,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                   <Users size={16} className="mr-3 text-blue-500"/>
                   <div>
                      <p className="text-[13px] font-bold text-gray-700 uppercase tracking-tight">Hồ sơ nhân viên</p>
-                     <p className="text-[10px] text-gray-400 font-medium uppercase">Quản lý lý lịch, lương bổng</p>
+                     <p className="text-[10px] text-gray-400 font-medium uppercase">Quản lý hồ sơ và lịch làm</p>
                   </div>
                </Link>
                <Link to="/attendance" className="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-50">
@@ -358,11 +391,12 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
               }}
               className={`p-1 hover:bg-blue-600 rounded transition-colors relative ${isNotificationsOpen ? 'bg-blue-700' : ''}`}
               title="Thông báo"
+              aria-label={pendingOrderCount > 0 ? `${pendingOrderCount} đơn đang chờ xử lý` : 'Thông báo và đơn đang chờ xử lý'}
             >
               <Bell size={18} />
-              {notifications.filter(n => !n.isRead).length > 0 && (
+              {pendingOrderCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-blue-600 text-[9px] flex items-center justify-center font-bold animate-pulse">
-                  {notifications.filter(n => !n.isRead).length}
+                  {pendingOrderCount}
                 </span>
               )}
             </button>
@@ -437,7 +471,6 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                      { icon: <Printer className="h-4 w-4" />, label: "Cấu hình in bill", path: '/settings/receipt' },
                      userRole === 'admin' && { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", path: '/branches' },
                      { icon: <Users className="h-4 w-4" />, label: "Quản lý nhân viên", path: '/employees' },
-                     { icon: <Banknote className="h-4 w-4" />, label: "Quản lý tiền lương", path: '/payroll' },
                    ].filter(Boolean).map((item: any, i) => (
                      <Link
                        key={i}
@@ -605,6 +638,30 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
               <p className="text-xs font-mono text-blue-600 break-all">{CUSTOMER_WEB_URL}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* BUSINESS INSIGHT TOAST */}
+      {insightToast && (
+        <div className="fixed bottom-6 right-6 z-[200] bg-blue-900 text-white p-5 rounded-2xl shadow-2xl flex items-center space-x-4 animate-in slide-in-from-right-10 duration-500 max-w-sm border-l-4 border-blue-400">
+           <div className="bg-blue-600 p-3 rounded-xl">
+              <BellRing size={24} className="animate-pulse" />
+           </div>
+           <div className="flex-1 min-w-0">
+              <p className="font-black uppercase text-[10px] text-blue-300 tracking-widest mb-1 italic">Cảnh báo kinh doanh mới</p>
+              <p className="text-sm font-bold truncate uppercase">{insightToast.title}</p>
+              <p className="text-[11px] opacity-70 line-clamp-2 italic">{insightToast.message}</p>
+              <Link
+                to="/business-insights"
+                onClick={() => setInsightToast(null)}
+                className="mt-3 inline-block bg-white text-blue-900 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-sm"
+              >
+                 XEM NHẬN ĐỊNH AI
+              </Link>
+           </div>
+           <button onClick={() => setInsightToast(null)} className="text-white/50 hover:text-white transition-colors self-start">
+              <X size={16} />
+           </button>
         </div>
       )}
     </nav>

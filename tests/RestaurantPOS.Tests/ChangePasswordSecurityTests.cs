@@ -39,13 +39,13 @@ public sealed class ChangePasswordSecurityTests
             Id = employeeId,
             Type = "Employee",
             OldPassword = "old",
-            NewPassword = "new"
+            NewPassword = "new-password"
         });
 
         Assert.IsType<OkObjectResult>(result);
         var updated = await context.Employees.FindAsync(employeeId);
         Assert.NotEqual("new", updated!.Password);
-        Assert.Equal(PasswordVerificationResult.Success, new PasswordHasher<Employee>().VerifyHashedPassword(updated, updated.Password!, "new"));
+        Assert.Equal(PasswordVerificationResult.Success, new PasswordHasher<Employee>().VerifyHashedPassword(updated, updated.Password!, "new-password"));
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class ChangePasswordSecurityTests
             Id = otherId,
             Type = "Employee",
             OldPassword = "old",
-            NewPassword = "new"
+            NewPassword = "new-password"
         });
 
         Assert.IsType<ForbidResult>(result);
@@ -114,7 +114,7 @@ public sealed class ChangePasswordSecurityTests
             Id = employeeId,
             Type = "Employee",
             OldPassword = "wrong",
-            NewPassword = "new"
+            NewPassword = "new-password"
         });
 
         Assert.IsType<BadRequestObjectResult>(result);
@@ -137,7 +137,7 @@ public sealed class ChangePasswordSecurityTests
             Id = employeeId,
             Type = "Employee",
             OldPassword = "old",
-            NewPassword = "new"
+            NewPassword = "new-password"
         });
 
         Assert.IsType<UnauthorizedObjectResult>(result);
@@ -160,7 +160,7 @@ public sealed class ChangePasswordSecurityTests
             Id = customerId,
             Type = "Employee",
             OldPassword = "old",
-            NewPassword = "new"
+            NewPassword = "new-password"
         });
         Assert.IsType<ForbidResult>(forbidden);
 
@@ -169,12 +169,12 @@ public sealed class ChangePasswordSecurityTests
             Id = customerId,
             Type = "Customer",
             OldPassword = "old",
-            NewPassword = "new"
+            NewPassword = "new-password"
         });
         Assert.IsType<OkObjectResult>(allowed);
         var updated = await context.Customers.FindAsync(customerId);
         Assert.NotEqual("new", updated!.Password);
-        Assert.Equal(PasswordVerificationResult.Success, new PasswordHasher<Customer>().VerifyHashedPassword(updated, updated.Password!, "new"));
+        Assert.Equal(PasswordVerificationResult.Success, new PasswordHasher<Customer>().VerifyHashedPassword(updated, updated.Password!, "new-password"));
     }
 
     private static AuthController CreateController(ApplicationDbContext context, Guid? userId, string role)

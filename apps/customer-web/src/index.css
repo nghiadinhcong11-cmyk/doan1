@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 :root {
+  --ui-primary: #2563eb;
+  --ui-primary-hover: #1d4ed8;
+  --ui-surface: #ffffff;
+  --ui-page: #f9fafb;
+  --ui-border: #e5e7eb;
+  --ui-radius: 1rem;
+  --ui-shadow: 0 10px 25px -12px rgba(37, 99, 235, 0.2);
+  --ui-focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  --ui-danger: #dc2626;
+  --ui-success: #16a34a;
+  --ui-warning: #d97706;
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;

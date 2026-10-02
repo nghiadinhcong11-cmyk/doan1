@@ -62,13 +62,17 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
                 if (!HasBranchAccess(request.BranchId)) return Forbid();
 
+                var employee = await _context.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == request.EmployeeId);
+                if (employee == null) return BadRequest(new { message = "Employee does not exist." });
+                if (employee.BranchId != request.BranchId) return Forbid();
+
                 if (await _context.Shifts.AnyAsync(s => s.EmployeeId == request.EmployeeId && s.Status == "Open"))
                     return Conflict(new { message = "Nhân viên đang có một ca mở." });
 
                 var shift = new Shift {
                     Id = Guid.NewGuid(),
                     EmployeeId = request.EmployeeId,
-                    EmployeeName = request.EmployeeName,
+                    EmployeeName = employee.FullName,
                     BranchId = request.BranchId,
                     BranchName = request.BranchName,
                     StartTime = DateTime.UtcNow,
@@ -104,7 +108,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             // Lấy danh sách các đơn hàng hoàn thành trong ca này
             var shiftOrders = await _context.Orders
-                .Where(o => o.CreatedAt >= shift.StartTime && o.Status == "Hoàn thành" && o.CreatedBy == shift.EmployeeName)
+                .Where(o => o.BranchId == shift.BranchId && o.CreatedAt >= shift.StartTime && o.Status == "Hoàn thành" && o.CreatedBy == shift.EmployeeName)
                 .ToListAsync();
 
             var cashRev = shiftOrders.Where(o => o.PaymentMethod == "Tiền mặt").Sum(o => (double)o.PaidAmount);

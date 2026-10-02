@@ -124,7 +124,7 @@ const ChatBot = () => {
         content: m.text
       }));
 
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('customerToken');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };

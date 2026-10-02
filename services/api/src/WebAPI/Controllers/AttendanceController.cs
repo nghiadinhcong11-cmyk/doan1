@@ -15,7 +15,7 @@ namespace RestaurantPOS.WebAPI.Controllers
     /// <summary>Cung cấp các endpoint chấm công nhân viên.</summary>
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "admin,cashier,kitchen,employee")]
+    [Authorize(Roles = "admin,manager,cashier,kitchen,employee")]
     public class AttendanceController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -190,7 +190,11 @@ namespace RestaurantPOS.WebAPI.Controllers
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
             if (!IsAdmin(role) && !IsManager(role) && (!userId.HasValue || attendance.EmployeeId != userId.Value)) return Forbid();
 
-            if (IsManager(role) && attendance.BranchId != CurrentUserBranchId()) return Forbid();
+            if (IsManager(role))
+            {
+                var ownBranch = CurrentUserBranchId();
+                if (!ownBranch.HasValue || attendance.BranchId != ownBranch.Value) return Forbid();
+            }
 
             if (attendance.CheckOutTime.HasValue) return Conflict(new { message = "Bản ghi này đã check-out." });
             if (!TryValidateQr(request.QrPayload, out var qrBranchId, out var qrError))

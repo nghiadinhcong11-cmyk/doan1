@@ -5,6 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using RestaurantPOS.Application.Common.Security;
 
 namespace RestaurantPOS.Infrastructure.Persistence
 {
@@ -48,12 +51,27 @@ namespace RestaurantPOS.Infrastructure.Persistence
                             new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn VIP", AreaName = "Tầng 2", SeatCount = 10, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
                             new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn SV1", AreaName = "Sân Vườn", SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow }
                         );
+                        foreach (var table in context.ChangeTracker.Entries<RestaurantTable>()
+                                     .Where(entry => string.IsNullOrEmpty(entry.Entity.QrToken)))
+                        {
+                            table.Entity.QrToken = QrTokenGenerator.Generate();
+                        }
                         await context.SaveChangesAsync();
                     }
                 }
 
                 if (!await context.Employees.AnyAsync())
                 {
+                    var environment = serviceProvider.GetRequiredService<IHostEnvironment>();
+                    if (!environment.IsDevelopment())
+                        throw new InvalidOperationException("Refusing to create a default admin account outside Development.");
+
+                    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+                    var seedPassword = configuration["Seed:AdminPassword"]
+                        ?? Environment.GetEnvironmentVariable("RESTAURANTPOS_SEED_ADMIN_PASSWORD");
+                    if (string.IsNullOrWhiteSpace(seedPassword))
+                        throw new InvalidOperationException("Seed:AdminPassword must be supplied through local development secrets.");
+
                     var admin = new Employee
                     {
                         Id = Guid.NewGuid(),
@@ -71,7 +89,7 @@ namespace RestaurantPOS.Infrastructure.Persistence
                     };
 
                     var hasher = serviceProvider.GetRequiredService<IPasswordHasher<Employee>>();
-                    admin.Password = hasher.HashPassword(admin, "password");
+                    admin.Password = hasher.HashPassword(admin, seedPassword);
 
                     context.Employees.Add(admin);
                     await context.SaveChangesAsync();

@@ -13,7 +13,7 @@ namespace RestaurantPOS.AI.Tools.Employee
         private readonly ITableService _tableService;
         public string Name => "employee_get_table_summary";
         public string Description => "Xem thống kê tình trạng các bàn trong nhà hàng (Trống, Có khách, Đã đặt).";
-        public string[] AllowedRoles => new[] { "admin", "manager", "employee" };
+        public string[] AllowedRoles => new[] { "admin", "manager", "employee", "cashier", "kitchen" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetTableSummaryTool(ITableService tableService)

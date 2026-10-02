@@ -38,9 +38,12 @@ namespace RestaurantPOS.AI.Services
         {
             var todayStart = TimeZoneInfo.ConvertTimeToUtc(nowVn.Date, TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"));
 
-            var revenue = await _context.Orders
-                .Where(o => o.CreatedAt >= todayStart && o.Status == "Hoàn thành")
-                .SumAsync(o => (decimal?)o.PaidAmount) ?? 0;
+            var query = _context.Orders
+                .Where(o => o.CreatedAt >= todayStart && o.Status == "Hoàn thành");
+
+            decimal revenue = _context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true
+                ? (await query.Select(o => o.PaidAmount).ToListAsync()).Sum()
+                : await query.SumAsync(o => (decimal?)o.PaidAmount) ?? 0m;
 
             var activeTables = await _context.Tables.CountAsync(t => t.Status == "Có khách");
             var branchCount = await _context.Branches.CountAsync();

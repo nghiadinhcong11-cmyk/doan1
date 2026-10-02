@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace RestaurantPOS.WebAPI.Hubs
 {
-    [Authorize(Roles = "admin,employee,cashier,kitchen")]
+    [Authorize(Roles = "admin,manager,employee,cashier,kitchen")]
     public class KitchenHub : Hub
     {
         public override async Task OnConnectedAsync()
@@ -27,7 +27,13 @@ namespace RestaurantPOS.WebAPI.Hubs
             }
 
             if (Guid.TryParse(Context.User?.FindFirst("branchId")?.Value, out var connectedBranchId))
+            {
                 await Groups.AddToGroupAsync(Context.ConnectionId, $"branch:{connectedBranchId}");
+                if (!string.IsNullOrWhiteSpace(role))
+                {
+                    await Groups.AddToGroupAsync(Context.ConnectionId, $"branch:{connectedBranchId}:role:{role}");
+                }
+            }
 
             await base.OnConnectedAsync();
         }

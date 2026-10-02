@@ -2405,8 +2405,6 @@ export interface components {
             /** Format: date-time */
             startDate?: string;
             isActive?: boolean;
-            /** Format: double */
-            basicSalary?: number;
             note?: string | null;
             username?: string | null;
             password?: string | null;

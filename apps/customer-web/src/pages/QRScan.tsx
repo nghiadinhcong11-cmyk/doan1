@@ -59,13 +59,13 @@ const QRScan = () => {
               console.log("QR Data:", code.data);
               // Kiểm tra nếu là URL chứa tableId hoặc là ID bàn trực tiếp
               try {
-                if (code.data.includes('tableId=')) {
+                if (code.data.includes('qr=')) {
                   const url = new URL(code.data);
-                  const tableId = url.searchParams.get('tableId');
-                  if (tableId) navigate(`/?tableId=${tableId}`);
-                } else if (code.data.length > 20) {
+                  const qr = url.searchParams.get('qr');
+                  if (qr && /^[A-Za-z0-9_-]{43}$/.test(qr)) navigate(`/?qr=${encodeURIComponent(qr)}`);
+                } else if (/^[A-Za-z0-9_-]{43}$/.test(code.data)) {
                   // Giả sử mã QR là một ID GUID của bàn
-                  navigate(`/?tableId=${code.data}`);
+                  navigate(`/?qr=${encodeURIComponent(code.data)}`);
                 }
               } catch (e) {
                 console.error("Invalid QR data format");

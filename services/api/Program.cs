@@ -17,6 +17,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Security.Claims;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using Microsoft.AspNetCore.Identity;
@@ -28,7 +29,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddScoped<RestaurantPOS.Application.Services.IPayrollService, RestaurantPOS.Application.Services.PayrollService>();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
@@ -114,6 +114,50 @@ builder.Services.AddAuthentication(options =>
                 context.Token = accessToken;
             }
             return Task.CompletedTask;
+        },
+        OnTokenValidated = async context =>
+        {
+            var principal = context.Principal;
+            var role = principal?.FindFirst(ClaimTypes.Role)?.Value?.ToLowerInvariant();
+            var userIdValue = principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            var employeeRoles = new[] { "admin", "manager", "employee", "cashier", "kitchen" };
+            if (role != null && employeeRoles.Contains(role))
+            {
+                if (!Guid.TryParse(userIdValue, out var employeeId))
+                {
+                    context.Fail("The employee identity claim is invalid.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                var isActive = await db.Employees.AsNoTracking()
+                    .AnyAsync(e => e.Id == employeeId && e.IsActive);
+                if (!isActive)
+                    context.Fail("The employee account is inactive or no longer exists.");
+                return;
+            }
+
+            if (role == "customer")
+            {
+                var sessionType = principal?.FindFirst("customerSessionType")?.Value;
+                if (string.Equals(sessionType, "guest", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                if (!Guid.TryParse(userIdValue, out var customerId))
+                {
+                    context.Fail("The customer identity claim is invalid.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                var customer = await db.Customers.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Id == customerId);
+                if (customer != null && !customer.IsActive)
+                    context.Fail("The customer account is inactive.");
+                else if (customer == null && string.Equals(sessionType, "registered", StringComparison.OrdinalIgnoreCase))
+                    context.Fail("The customer account no longer exists.");
+            }
         }
     };
 });
@@ -186,12 +230,17 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IKitchenService, KitchenService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IFinancialAnalysisService, FinancialAnalysisService>();
+builder.Services.AddScoped<IProactiveInsightService, ProactiveInsightService>();
+builder.Services.AddScoped<IInsightExplanationService, InsightExplanationService>();
+builder.Services.AddHostedService<InsightBackgroundService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IKitchenNotifier, KitchenNotifier>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISystemSettingService, SystemSettingService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 // Đăng ký Password Hasher
 builder.Services.AddScoped<IPasswordHasher<Employee>, PasswordHasher<Employee>>();
@@ -215,6 +264,11 @@ builder.Services.AddScoped<AiToolRegistry>();
 builder.Services.AddScoped<IAiTool, GetRevenueTool>();
 builder.Services.AddScoped<IAiTool, UpdateProductPriceTool>();
 builder.Services.AddScoped<IAiTool, GetActiveStaffTool>();
+builder.Services.AddScoped<IAiTool, GetOrderListTool>();
+builder.Services.AddScoped<IAiTool, GetBestSellersTool>();
+builder.Services.AddScoped<IAiTool, GetRevenueComparisonTool>();
+builder.Services.AddScoped<IAiTool, GetBusinessSummaryTool>();
+builder.Services.AddScoped<IAiTool, GetFinancialAnalysisTool>();
 
 // Employee Tools
 builder.Services.AddScoped<IAiTool, GetTableSummaryTool>();
@@ -265,9 +319,12 @@ builder.Services.AddCors(options =>
                       {
                           if (string.IsNullOrWhiteSpace(origin)) return false;
 
-                          // Hỗ trợ truy cập qua IP LAN động (HTTPS + Port 5173/5174)
+                          // Local Vite runs on HTTP; LAN access remains HTTPS-only.
                           if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                           {
+                              var isLocalhost = uri.Host is "localhost" or "127.0.0.1";
+                              if (isLocalhost && uri.Scheme == "http" && (uri.Port == 5173 || uri.Port == 5174))
+                                  return true;
                               return uri.Scheme == "https" && (uri.Port == 5173 || uri.Port == 5174);
                           }
                           return false;
@@ -305,22 +362,32 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 
-// Tự động kiểm tra và cập nhật Database (Migration) khi khởi động
-using (var scope = app.Services.CreateScope())
+// Database schema/data mutation is an explicit Development-only opt-in.
+// This prevents a normal startup, especially a production/main-DB startup,
+// from applying migrations or seed data implicitly.
+var allowAutomaticDatabaseMutation = builder.Configuration.GetValue<bool>("DatabaseSafety:AllowAutomaticMigration");
+if (app.Environment.IsDevelopment() && allowAutomaticDatabaseMutation)
 {
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    try
+    using (var scope = app.Services.CreateScope())
     {
-        db.Database.Migrate();
-        await DbInitializer.SeedAsync(db, scope.ServiceProvider);
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        try
+        {
+            db.Database.Migrate();
+            await DbInitializer.SeedAsync(db, scope.ServiceProvider);
+        }
+        catch (Exception ex)
+        {
+            // Do not start an API that cannot read/write its configured Supabase
+            // database. The exception intentionally contains no connection data.
+            throw new InvalidOperationException(
+                "Database migration/seeding failed. Verify the isolated Development database configuration.", ex);
+        }
     }
-    catch (Exception ex)
-    {
-        // Do not start an API that cannot read/write its configured Supabase
-        // database. The exception intentionally contains no connection data.
-        throw new InvalidOperationException(
-            "Database migration/seeding failed. Verify the Supabase PostgreSQL configuration.", ex);
-    }
+}
+else
+{
+    Console.WriteLine("Automatic database migration/seeding is disabled. Set DatabaseSafety:AllowAutomaticMigration=true only for an isolated Development database.");
 }
 
 // Hiển thị lỗi chi tiết khi chạy Local để dễ Debug

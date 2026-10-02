@@ -8,13 +8,14 @@ using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Application.DTOs.Expenses;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Domain.Entities;
+using RestaurantPOS.Domain.Finance;
 using RestaurantPOS.Infrastructure.Persistence;
 
 namespace RestaurantPOS.WebAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "admin,employee,cashier")]
+[Authorize(Roles = "admin,manager")]
 public class ExpenseController : ControllerBase
 {
     private static readonly string[] Categories = { "Nguyên liệu", "Bao bì", "Điện nước", "Vệ sinh", "Gas", "Vận hành", "Khác" };
@@ -51,7 +52,7 @@ public class ExpenseController : ControllerBase
         if (!HasBranchAccess(request.BranchId)) return Forbid();
         var expense = new Expense { Id = Guid.NewGuid(), BranchId = request.BranchId, Category = request.Category!.Trim(),
             Description = request.Description!.Trim(), Amount = request.Amount, ExpenseDate = NormalizeDate(request.ExpenseDate),
-            PaymentMethod = request.PaymentMethod?.Trim(), Note = request.Note?.Trim() ?? string.Empty, CreatedBy = CurrentUserId(), CreatedAt = DateTime.UtcNow };
+            PaymentMethod = request.PaymentMethod?.Trim() ?? ExpensePaymentMethods.Cash, Note = request.Note?.Trim() ?? string.Empty, CreatedBy = CurrentUserId(), CreatedAt = DateTime.UtcNow };
         _context.Expenses.Add(expense); await _context.SaveChangesAsync(); _dashboardService.InvalidateSummaryCache();
         return CreatedAtAction(nameof(GetExpenses), new { id = expense.Id }, expense);
     }
@@ -62,10 +63,12 @@ public class ExpenseController : ControllerBase
         var expense = await _context.Expenses.FindAsync(id);
         if (expense == null) return NotFound();
         if (!HasBranchAccess(expense.BranchId) || expense.BranchId != request.BranchId) return Forbid();
+        if (expense.StockReceiptId.HasValue)
+            return Conflict(new { message = "Inventory-linked expenses are immutable." });
         var validation = await ValidateRequest(request);
         if (validation != null) return validation;
         expense.Category = request.Category!.Trim(); expense.Description = request.Description!.Trim(); expense.Amount = request.Amount;
-        expense.ExpenseDate = NormalizeDate(request.ExpenseDate); expense.PaymentMethod = request.PaymentMethod?.Trim();
+        expense.ExpenseDate = NormalizeDate(request.ExpenseDate); expense.PaymentMethod = request.PaymentMethod?.Trim() ?? ExpensePaymentMethods.Cash;
         expense.Note = request.Note?.Trim() ?? string.Empty; expense.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(); _dashboardService.InvalidateSummaryCache(); return Ok(expense);
     }
@@ -75,6 +78,8 @@ public class ExpenseController : ControllerBase
     {
         var expense = await _context.Expenses.FindAsync(id); if (expense == null) return NotFound();
         if (!HasBranchAccess(expense.BranchId)) return Forbid();
+        if (expense.StockReceiptId.HasValue)
+            return Conflict(new { message = "Inventory-linked expenses cannot be deleted." });
         _context.Expenses.Remove(expense); await _context.SaveChangesAsync(); _dashboardService.InvalidateSummaryCache(); return NoContent();
     }
 

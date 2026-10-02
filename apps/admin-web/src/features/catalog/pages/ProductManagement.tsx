@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronDown, Image as ImageIcon, Download, Upload, HelpCircle, Camera, Utensils, Settings2 } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback } from '../../../components/ui';
 
 interface Product {
   id?: string;
@@ -109,13 +110,13 @@ const ProductManagement = () => {
     if (file) {
       // Validation: Size < 500KB
       if (file.size > 500 * 1024) {
-        alert("Ảnh quá lớn. Vui lòng chọn ảnh dưới 500 KB.");
+        notifyFeedback("Ảnh quá lớn. Vui lòng chọn ảnh dưới 500 KB.");
         return;
       }
       // Validation: MIME Type
       const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
       if (!allowedTypes.includes(file.type)) {
-        alert("Định dạng ảnh không hỗ trợ. Vui lòng chọn JPG, PNG hoặc WebP.");
+      notifyFeedback("Định dạng ảnh không hỗ trợ. Vui lòng chọn JPG, PNG hoặc WebP.");
         return;
       }
 
@@ -129,6 +130,10 @@ const ProductManagement = () => {
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     try {
       const isEditing = !!editingProduct;
       const url = isEditing
@@ -153,13 +158,13 @@ const ProductManagement = () => {
         setEditingProduct(null);
         resetForm();
         fetchProducts();
-      } else {
+      } else if (response.status !== 403) {
         const errorData = await response.json();
-        alert(`Lỗi: ${errorData.message || response.statusText}`);
+        notifyFeedback(`Lỗi: ${errorData.message || response.statusText}`);
       }
     } catch (err) {
       console.error('Error saving product:', err);
-      alert('Lỗi kết nối đến server.');
+      notifyFeedback('Lỗi kết nối đến server.');
     }
   };
 
@@ -190,6 +195,10 @@ const ProductManagement = () => {
   };
 
   const openEditModal = (product: Product) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     setEditingProduct(product);
     setNewProduct({
       code: product.code,
@@ -238,7 +247,7 @@ const ProductManagement = () => {
   const handleDeleteGroup = (groupName: string) => {
     const hasProducts = products.some(p => p.group === groupName);
     if (hasProducts) {
-      alert('Không thể xóa nhóm này vì vẫn còn sản phẩm đang thuộc nhóm. Hãy đổi nhóm cho sản phẩm trước.');
+      notifyFeedback('Không thể xóa nhóm này vì vẫn còn sản phẩm đang thuộc nhóm. Hãy đổi nhóm cho sản phẩm trước.');
       return;
     }
     if (window.confirm(`Bạn có chắc chắn muốn xóa nhóm "${groupName}"?`)) {
@@ -247,6 +256,10 @@ const ProductManagement = () => {
   };
 
   const handleDeleteProduct = async (id: string) => {
+    if (localStorage.getItem('userRole') !== 'admin') {
+      notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+      return;
+    }
     if (!window.confirm('Bạn có chắc chắn muốn xóa món này không?')) return;
     try {
       const response = await fetch(`${API_URL}/api/Product/${id}`, {
@@ -256,7 +269,7 @@ const ProductManagement = () => {
         fetchProducts();
       }
     } catch (err) {
-      alert('Lỗi khi xóa món');
+      notifyFeedback('Lỗi khi xóa món');
     }
   };
 
@@ -269,7 +282,7 @@ const ProductManagement = () => {
         fetchProducts();
       }
     } catch (err) {
-      alert('Lỗi khi cập nhật trạng thái');
+      notifyFeedback('Lỗi khi cập nhật trạng thái');
     }
   };
 
@@ -396,7 +409,13 @@ const ProductManagement = () => {
           </div>
           <div className="flex space-x-2">
             <button
-              onClick={() => { resetForm(); setEditingProduct(null); setIsModalOpen(true); }}
+              onClick={() => {
+                if (localStorage.getItem('userRole') !== 'admin') {
+                  notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
+                  return;
+                }
+                resetForm(); setEditingProduct(null); setIsModalOpen(true);
+              }}
               className="bg-[#0070f4] text-white px-4 py-1.5 rounded flex items-center font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
             >
               <Plus size={16} className="mr-1" /> Thêm mới
@@ -612,16 +631,6 @@ const ProductManagement = () => {
                              <input type="checkbox" className="mr-3 h-5 w-5 text-blue-600 rounded-lg border-gray-300" checked={newProduct.isActive} onChange={e => setNewProduct({...newProduct, isActive: e.target.checked})}/>
                              <span className="text-xs font-black text-gray-700 uppercase tracking-tighter italic">Đang kinh doanh</span>
                           </label>
-                       </div>
-                       <div>
-                          <label className="block text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 ml-1">Mô tả món ăn</label>
-                          <textarea
-                             className="w-full px-5 py-3 bg-gray-50 border-none rounded-2xl outline-none font-medium text-gray-600 focus:ring-2 focus:ring-blue-500/20"
-                             placeholder="Nhập mô tả ngắn về hương vị, nguyên liệu..."
-                             rows={2}
-                             value={newProduct.description}
-                             onChange={e => setNewProduct({...newProduct, description: e.target.value})}
-                          />
                        </div>
                     </div>
                  </div>

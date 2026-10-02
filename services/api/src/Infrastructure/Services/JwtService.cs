@@ -18,7 +18,7 @@ namespace RestaurantPOS.Infrastructure.Services
             _configuration = configuration;
         }
 
-        public string GenerateToken(Guid userId, string username, string fullName, string role, Guid? branchId = null, string? branchName = null, string? position = null)
+        public string GenerateToken(Guid userId, string username, string fullName, string role, Guid? branchId = null, string? branchName = null, string? position = null, string? customerSessionType = null, Guid? tableId = null)
         {
             var secret = GetRequiredSecret();
             var issuer = _configuration["Jwt:Issuer"] ?? "RestaurantPOS";
@@ -51,6 +51,16 @@ namespace RestaurantPOS.Infrastructure.Services
             if (!string.IsNullOrEmpty(position))
             {
                 claims.Add(new Claim("position", position));
+            }
+
+            if (!string.IsNullOrEmpty(customerSessionType))
+            {
+                claims.Add(new Claim("customerSessionType", customerSessionType));
+            }
+
+            if (tableId.HasValue)
+            {
+                claims.Add(new Claim("tableId", tableId.Value.ToString()));
             }
 
             var tokenDescriptor = new SecurityTokenDescriptor

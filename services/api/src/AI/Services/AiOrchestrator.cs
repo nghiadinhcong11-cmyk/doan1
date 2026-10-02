@@ -60,70 +60,108 @@ namespace RestaurantPOS.AI.Services
                     generationConfig = new { temperature = 0.2, maxOutputTokens = 1024 }
                 };
 
-                // 4. Gọi Gemini API
-                var jsonResponse = await _geminiService.GenerateContentAsync(requestBody);
-                using var doc = JsonDocument.Parse(jsonResponse);
+                // 4. Lượt hội thoại với Gemini (Hỗ trợ Sequential Tool Calling)
+                int iterations = 0;
+                const int MAX_ITERATIONS = 5;
+                var currentContents = new System.Collections.Generic.List<object>(contentsList);
 
-                if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
+                while (iterations < MAX_ITERATIONS)
                 {
-                    return new AiResponse { Success = false, Error = "Gemini không trả về kết quả hợp lệ." };
-                }
-
-                var content = candidates[0].GetProperty("content");
-                var parts = content.GetProperty("parts");
-
-                // 5. Kiểm tra AI có yêu cầu gọi Tool không
-                foreach (var part in parts.EnumerateArray())
-                {
-                    if (part.TryGetProperty("functionCall", out var call))
+                    var response = await _geminiService.GenerateContentAsync(new
                     {
-                        var functionName = call.GetProperty("name").GetString() ?? "";
-                        var args = call.TryGetProperty("args", out var arguments) ? arguments : default;
+                        contents = currentContents.ToArray(),
+                        system_instruction = new { parts = new object[] { new { text = systemInstruction } } },
+                        tools = toolsDef.Length > 0 ? toolsDef : null,
+                        generationConfig = new { temperature = 0.2, maxOutputTokens = 1024 }
+                    });
 
-                        // BẢO MẬT BACKEND: Tìm tool và kiểm tra quyền thực thi thực tế
-                        var tool = _toolRegistry.GetTool(functionName);
-                        if (tool == null)
-                            return new AiResponse { Success = false, Error = $"Tool '{functionName}' không tồn tại trong hệ thống." };
+                    using var doc = JsonDocument.Parse(response);
+                    if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
+                    {
+                        return new AiResponse { Success = false, Error = "Gemini không trả về kết quả hợp lệ." };
+                    }
 
-                        if (!await _permissionService.CanExecuteAsync(tool, userContext))
+                    var candidate = candidates[0];
+                    var content = candidate.GetProperty("content");
+                    var parts = content.GetProperty("parts");
+
+                    // Lưu phản hồi của model vào history cho lượt tiếp theo
+                    var modelParts = new System.Collections.Generic.List<object>();
+                    bool hasFunctionCall = false;
+
+                    foreach (var part in parts.EnumerateArray())
+                    {
+                        if (part.TryGetProperty("functionCall", out var call))
                         {
-                            return new AiResponse { Success = false, Message = "Rất tiếc, bạn không có quyền thực hiện thao tác này." };
+                            hasFunctionCall = true;
+                            var functionName = call.GetProperty("name").GetString() ?? "";
+                            var args = call.TryGetProperty("args", out var arguments) ? arguments : default;
+                            modelParts.Add(new { functionCall = new { name = functionName, args = args } });
                         }
-
-                        // 6. Thực thi Tool tại Backend
-                        var toolResult = await tool.ExecuteAsync(args, userContext);
-
-                        // 7. Gửi kết quả Tool quay lại Gemini để nhận câu trả lời cuối cùng (Lượt 2)
-                        var secondContentsList = new System.Collections.Generic.List<object>(contentsList);
-                        secondContentsList.Add(new { role = "model", parts = new object[] { new { functionCall = new { name = functionName, args = args } } } });
-                        secondContentsList.Add(new { role = "function", parts = new object[] { new { functionResponse = new { name = functionName, response = new { content = toolResult.Success ? toolResult.Data : toolResult.Error } } } } });
-
-                        var secondRequestBody = new
+                        else if (part.TryGetProperty("text", out var text))
                         {
-                            contents = secondContentsList.ToArray(),
-                            system_instruction = new { parts = new object[] { new { text = systemInstruction } } },
-                            tools = toolsDef,
-                            generationConfig = new { temperature = 0.2 }
-                        };
+                            modelParts.Add(new { text = text.GetString() });
+                        }
+                    }
 
-                        var finalJsonResponse = await _geminiService.GenerateContentAsync(secondRequestBody);
-                        using var finalDoc = JsonDocument.Parse(finalJsonResponse);
-                        var finalText = finalDoc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
+                    currentContents.Add(new { role = "model", parts = modelParts.ToArray() });
 
+                    if (!hasFunctionCall)
+                    {
+                        // Nếu không có function call, trả về kết quả text cuối cùng
+                        string? finalText = null;
+                        foreach (var part in parts.EnumerateArray())
+                        {
+                            if (part.TryGetProperty("text", out var text))
+                            {
+                                finalText = text.GetString();
+                                break;
+                            }
+                        }
                         return new AiResponse { Success = true, Message = finalText ?? "" };
                     }
-                }
 
-                // 8. Nếu AI trả lời bằng văn bản thông thường (không gọi tool)
-                foreach (var part in parts.EnumerateArray())
-                {
-                    if (part.TryGetProperty("text", out var text))
+                    // Xử lý các function call trong lượt này
+                    var functionResponses = new System.Collections.Generic.List<object>();
+                    foreach (var part in parts.EnumerateArray())
                     {
-                        return new AiResponse { Success = true, Message = text.GetString() ?? "" };
+                        if (part.TryGetProperty("functionCall", out var call))
+                        {
+                            var functionName = call.GetProperty("name").GetString() ?? "";
+                            var args = call.TryGetProperty("args", out var arguments) ? arguments : default;
+
+                            var tool = _toolRegistry.GetTool(functionName);
+                            AiToolResult toolResult;
+
+                            if (tool == null)
+                            {
+                                toolResult = AiToolResult.CreateError($"Tool '{functionName}' không tồn tại.");
+                            }
+                            else if (!await _permissionService.CanExecuteAsync(tool, userContext))
+                            {
+                                toolResult = AiToolResult.CreateError("Bạn không có quyền thực hiện thao tác này.");
+                            }
+                            else
+                            {
+                                toolResult = await tool.ExecuteAsync(args, userContext);
+                            }
+
+                            functionResponses.Add(new
+                            {
+                                functionResponse = new
+                                {
+                                    name = functionName,
+                                    response = new { content = toolResult.Success ? toolResult.Data : toolResult.Error }
+                                }
+                            });
+                        }
                     }
+
+                    currentContents.Add(new { role = "function", parts = functionResponses.ToArray() });
+                    iterations++;
                 }
 
-                return new AiResponse { Success = false, Error = "AI không trả về text hoặc functionCall." };
+                return new AiResponse { Success = false, Error = "Đã vượt quá giới hạn lượt gọi Tool (Sequential Tool Calling)." };
             }
             catch (Exception ex)
             {

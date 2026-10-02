@@ -19,7 +19,6 @@ const KitchenNavbar: React.FC<KitchenNavbarProps> = ({ onLogout, userName }) => 
     { path: '/kitchen/attendance', label: 'Chấm công nhận diện', icon: <Camera size={16} className="text-orange-500" /> },
     { path: '/kitchen/reservations', label: 'Lịch đặt bàn trước', icon: <Calendar size={16} className="text-blue-500" /> },
     { path: '/kitchen/schedule', label: 'Lịch làm việc', icon: <Calendar size={16} className="text-green-500" /> },
-    { path: '/kitchen/shifts', label: 'Lịch sử ca làm việc', icon: <Clock size={16} className="text-blue-500" /> },
     { path: '/kitchen/profile', label: 'Hồ sơ cá nhân', icon: <User size={16} className="text-purple-500" /> },
   ];
 

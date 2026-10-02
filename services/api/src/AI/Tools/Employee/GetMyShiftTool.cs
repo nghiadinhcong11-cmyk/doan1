@@ -13,7 +13,7 @@ namespace RestaurantPOS.AI.Tools.Employee
         private readonly IEmployeeService _employeeService;
         public string Name => "get_my_shift";
         public string Description => "Xem lịch làm việc (ca làm) của bản thân nhân viên trong hôm nay.";
-        public string[] AllowedRoles => new[] { "employee" };
+        public string[] AllowedRoles => new[] { "employee", "cashier", "kitchen" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetMyShiftTool(IEmployeeService employeeService)

@@ -20,7 +20,8 @@ const EmployeeSchedule = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const myEmployeeId = localStorage.getItem('employeeId');
-  const isAdmin = localStorage.getItem('userRole') === 'admin';
+  const userRole = localStorage.getItem('userRole');
+  const canSeeAll = userRole === 'admin' || userRole === 'manager';
 
   // Quản lý tuần hiện tại
   const [startOfWeek, setStartOfWeek] = useState(() => {
@@ -47,12 +48,12 @@ const EmployeeSchedule = () => {
       const endOfWeekDate = new Date(startOfWeek);
       endOfWeekDate.setDate(startOfWeek.getDate() + 6);
 
-      const employeeParam = !isAdmin && myEmployeeId ? `&employeeId=${myEmployeeId}` : '';
+      const employeeParam = !canSeeAll && myEmployeeId ? `&employeeId=${myEmployeeId}` : '';
       const res = await fetch(`${API_URL}/api/WorkSchedule?startDate=${startOfWeek.toISOString()}&endDate=${endOfWeekDate.toISOString()}${employeeParam}`);
       const data = await res.json();
       setSchedules(data);
 
-      if (isAdmin) {
+      if (canSeeAll) {
         const resEmp = await fetch(`${API_URL}/api/Employee`);
         const dataEmp = await resEmp.json();
         setEmployees(dataEmp);

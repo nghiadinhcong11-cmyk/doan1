@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using RestaurantPOS.AI.Models;
 using RestaurantPOS.AI.Tools;
@@ -19,6 +20,13 @@ namespace RestaurantPOS.AI.Services
         /// </summary>
         public async Task<bool> CanExecuteAsync(IAiTool tool, AiUserContext context)
         {
+            // Managers are branch-bound. A malformed or incomplete JWT must never
+            // turn a manager AI request into an unscoped/global query.
+            if (string.Equals(context.Role, "manager", StringComparison.OrdinalIgnoreCase) && !context.BranchId.HasValue)
+            {
+                return false;
+            }
+
             // 1. Kiểm tra Role có trong AllowedRoles của Tool không
             if (!_authorization.IsRoleAllowed(tool, context))
             {

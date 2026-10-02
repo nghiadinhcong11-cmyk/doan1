@@ -17,12 +17,18 @@ if (!customerFetchInstalled && typeof window !== 'undefined') {
     const url = input instanceof Request ? input.url : String(input);
     if (!url.startsWith(API_URL)) return nativeFetch(input, init);
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
-    const token = localStorage.getItem('token');
+    const useGuestSession = sessionStorage.getItem('guestQrSession') === 'true';
+    const token = useGuestSession ? localStorage.getItem('guestToken') : localStorage.getItem('customerToken');
     if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
     return nativeFetch(input, { ...init, headers }).then(response => {
       if (response.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('customerInfo');
+        if (useGuestSession) {
+          localStorage.removeItem('guestToken');
+          sessionStorage.removeItem('guestQrSession');
+        } else {
+          localStorage.removeItem('customerToken');
+          localStorage.removeItem('customerInfo');
+        }
         window.dispatchEvent(new Event('customer:unauthorized'));
       }
       return response;
@@ -53,22 +59,29 @@ function App() {
 
   const handleLogin = (customer: any) => {
     localStorage.setItem('customerInfo', JSON.stringify(customer));
-    if (customer.token) localStorage.setItem('token', customer.token);
+    if (customer.token) localStorage.setItem('customerToken', customer.token);
     setCustomerInfo(customer);
     setIsLoggedIn(true);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('customerInfo');
-    localStorage.removeItem('token');
+    localStorage.removeItem('customerToken');
     setCustomerInfo(null);
     setIsLoggedIn(false);
   };
 
+  const isQrBootstrap = new URLSearchParams(window.location.search).has('qr');
+  const isScanPage = window.location.pathname === '/scan';
+
+  if (isScanPage) {
+    return <Router><QRScan /></Router>;
+  }
+
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
-        {!isLoggedIn ? (
+        {!isLoggedIn && !isQrBootstrap ? (
           <CustomerLogin onLogin={handleLogin} />
         ) : (
           <>
@@ -80,7 +93,7 @@ function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             <BottomNav />
-            <ChatBot />
+            {!isQrBootstrap && <ChatBot />}
           </>
         )}
       </div>

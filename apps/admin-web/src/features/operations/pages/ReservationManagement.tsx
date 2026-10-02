@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Users, MapPin, Phone, User, CheckCircle2, XCircle, Clock4, Trash2, Loader2, RotateCcw, Filter, MessageSquare } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { notifyFeedback, StatusBadge } from '../../../components/ui';
 
 interface Reservation {
   id: string;
@@ -17,6 +18,8 @@ interface Reservation {
 interface ReservationManagementProps {
   readOnly?: boolean;
 }
+
+const reservationTone = (status: string) => status === 'Pending' ? 'pending' as const : status === 'Confirmed' ? 'confirmed' as const : status === 'Completed' ? 'completed' as const : 'cancelled' as const;
 
 const ReservationManagement: React.FC<ReservationManagementProps> = ({ readOnly = false }) => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -60,7 +63,7 @@ const ReservationManagement: React.FC<ReservationManagementProps> = ({ readOnly 
         fetchReservations();
       }
     } catch (err) {
-      alert('Lỗi khi cập nhật trạng thái');
+      notifyFeedback('Lỗi khi cập nhật trạng thái');
     }
   };
 
@@ -133,13 +136,7 @@ const ReservationManagement: React.FC<ReservationManagementProps> = ({ readOnly 
         ) : (
           reservations.map((res) => (
             <div key={res.id} className="bg-white rounded-[2rem] shadow-xl shadow-blue-500/5 border border-white p-6 relative group overflow-hidden">
-               <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl text-[9px] font-black uppercase tracking-widest ${
-                  res.status === 'Pending' ? 'bg-orange-100 text-orange-600' :
-                  res.status === 'Confirmed' ? 'bg-blue-100 text-blue-600' :
-                  res.status === 'Completed' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-               }`}>
-                  {res.status}
-               </div>
+               <div className="absolute right-4 top-4"><StatusBadge tone={reservationTone(res.status)}>{res.status}</StatusBadge></div>
 
                <div className="flex items-center space-x-4 mb-6">
                   <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 font-black text-lg">

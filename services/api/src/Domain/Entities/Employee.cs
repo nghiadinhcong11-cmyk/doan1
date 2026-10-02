@@ -7,10 +7,14 @@ namespace RestaurantPOS.Domain.Entities
     {
         public Guid Id { get; set; }
         public string? EmployeeCode { get; set; } // Mã nhân viên (VD: NV00001)
+        // Retained employee profile data; this is not Payroll functionality.
+        public string EmployeeType { get; set; } = "FullTime";
         public string FullName { get; set; }
         public string? PhoneNumber { get; set; }
         public string? Position { get; set; } // Chức danh: Thu ngân, Phục vụ, Quản lý
         public string? Department { get; set; } // Phòng ban
+        // Employee profile data retained independently of the out-of-scope Payroll module.
+        public decimal BasicSalary { get; set; }
         public Guid? BranchId { get; set; } // ID chi nhánh làm việc
         public string? BranchName { get; set; } // Tên chi nhánh làm việc
         public string? CitizenId { get; set; } // CMND/CCCD
@@ -19,8 +23,6 @@ namespace RestaurantPOS.Domain.Entities
         public string? Address { get; set; }
         public DateTime StartDate { get; set; } = DateTime.UtcNow; // Ngày bắt đầu làm việc
         public bool IsActive { get; set; } = true; // Đang làm việc / Đã nghỉ
-        public decimal BasicSalary { get; set; } // Lương cơ bản
-        public string EmployeeType { get; set; } = "FullTime"; // FullTime / PartTime
         public string Role { get; set; } = "employee"; // admin, manager, employee, cashier, kitchen
         public string? Note { get; set; }
         public string? Username { get; set; }

@@ -1,4 +1,5 @@
 using RestaurantPOS.Application.DTOs.Orders;
+using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Domain.Entities;
 
@@ -301,7 +302,7 @@ public sealed class OrderServiceTests
         await using var _ = context;
         await using var __ = connection;
         var branch = Guid.NewGuid();
-        var table = new RestaurantTable { Id = Guid.NewGuid(), BranchId = branch, Name = "Table Accept", AreaName = "Main", Status = "Trống" };
+        var table = new RestaurantTable { Id = Guid.NewGuid(), BranchId = branch, Name = "Table Accept", AreaName = "Main", Status = "Trống", QrToken = QrTokenGenerator.Generate() };
         context.Branches.Add(new Branch { Id = branch, Name = "Main" });
         var order = new Order
         {

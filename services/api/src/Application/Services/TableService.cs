@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
 
@@ -60,6 +61,10 @@ namespace RestaurantPOS.Application.Services
 
             table.Id = Guid.NewGuid();
             table.CreatedAt = DateTime.UtcNow;
+            if (await _context.Tables.AnyAsync(candidate => candidate.BranchId == table.BranchId && candidate.Name == table.Name))
+                throw new InvalidOperationException("A table with this name already exists in the branch.");
+            // The client model binds the entity today; overwrite any supplied value with server entropy.
+            table.QrToken = QrTokenGenerator.Generate();
             if (string.IsNullOrEmpty(table.Status)) table.Status = "Trống";
 
             _context.Tables.Add(table);
@@ -74,6 +79,10 @@ namespace RestaurantPOS.Application.Services
 
             if (authorizedBranchId.HasValue && table.BranchId != authorizedBranchId.Value)
                 return null;
+
+            var targetBranchId = authorizedBranchId ?? tableUpdate.BranchId;
+            if (await _context.Tables.AnyAsync(candidate => candidate.Id != id && candidate.BranchId == targetBranchId && candidate.Name == tableUpdate.Name))
+                throw new InvalidOperationException("A table with this name already exists in the branch.");
 
             table.Name = tableUpdate.Name;
             table.AreaName = tableUpdate.AreaName;

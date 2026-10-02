@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Phone, ArrowRight, Loader2, Star } from 'lucide-react';
+import { ArrowRight, Star } from 'lucide-react';
 import { API_URL } from '../config';
+import { Button, Feedback, FormField } from '../components/ui';
 
 interface CustomerLoginProps {
   onLogin: (customer: any) => void;
@@ -35,7 +36,10 @@ const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin }) => {
 
   const handleCheckPhone = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phoneNumber.length < 10) return;
+    if (phoneNumber.length < 10) {
+      setError('Số điện thoại cần có ít nhất 10 chữ số.');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -110,32 +114,30 @@ const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin }) => {
         <div className="bg-white p-8 rounded-[3rem] shadow-2xl shadow-blue-500/10 border border-gray-100">
            {step === 1 ? (
              <form onSubmit={handleCheckPhone} className="space-y-6">
-                {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-center text-xs font-bold text-red-600">{error}</p>}
-                <div>
-                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-2">Số điện thoại của bạn</label>
-                   <div className="relative">
-                      <Phone className="absolute left-4 top-4 text-gray-400" size={20}/>
-                      <input
-                        type="tel"
-                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 font-black text-lg text-gray-700 tracking-wider"
-                        placeholder="09xx xxx xxx"
-                        value={phoneNumber}
-                        onChange={e => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
-                        required
-                      />
-                   </div>
-                </div>
-                <button
+                {error && <Feedback tone="error">{error}</Feedback>}
+                <FormField
+                  label="Số điện thoại của bạn"
+                  type="tel"
+                  placeholder="09xx xxx xxx"
+                  value={phoneNumber}
+                  onChange={e => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                  required
+                  maxLength={15}
+                  className="py-4 text-lg tracking-wider"
+                />
+                <Button
+                  type="submit"
                   disabled={loading || phoneNumber.length < 10}
-                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center disabled:opacity-50"
+                  loading={loading}
+                  className="w-full uppercase tracking-widest"
                 >
-                   {loading ? <Loader2 className="animate-spin" /> : <>TIẾP TỤC <ArrowRight size={20} className="ml-2"/></>}
-                </button>
+                   TIẾP TỤC <ArrowRight aria-hidden="true" size={20}/>
+                </Button>
 
                 <div className="pt-4 text-center">
                    <button
                      type="button"
-                     onClick={continueAsGuest}
+                     onClick={() => window.location.assign('/scan')}
                      disabled={loading}
                      className="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
                    >
@@ -145,25 +147,25 @@ const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin }) => {
              </form>
            ) : (
              <form onSubmit={handleRegister} className="space-y-6 animate-in slide-in-from-right duration-300">
-                {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-center text-xs font-bold text-red-600">{error}</p>}
+                {error && <Feedback tone="error">{error}</Feedback>}
                 <p className="text-center text-xs font-bold text-blue-600 bg-blue-50 py-2 rounded-xl">Chào mừng bạn mới! Vui lòng cho biết tên nhé</p>
-                <div>
-                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-2">Họ và tên</label>
-                   <input
-                     type="text"
-                     className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 font-black text-gray-700"
-                     placeholder="Ví dụ: Nguyễn Văn A"
-                     value={fullName}
-                     onChange={e => setFullName(e.target.value)}
-                     required
-                   />
-                </div>
-                <button
+                <FormField
+                  label="Họ và tên"
+                  type="text"
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  required
+                  className="px-6 py-4"
+                />
+                <Button
+                  type="submit"
                   disabled={loading}
-                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center justify-center"
+                  loading={loading}
+                  className="w-full uppercase tracking-widest"
                 >
-                   {loading ? <Loader2 className="animate-spin" /> : "HOÀN TẤT ĐĂNG KÝ"}
-                </button>
+                   HOÀN TẤT ĐĂNG KÝ
+                </Button>
              </form>
            )}
         </div>

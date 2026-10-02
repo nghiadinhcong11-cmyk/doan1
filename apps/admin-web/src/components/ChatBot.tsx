@@ -125,7 +125,7 @@ const ChatBot = () => {
     setIsTyping(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('adminToken');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };

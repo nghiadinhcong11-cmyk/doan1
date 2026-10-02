@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.WebAPI.Controllers;
@@ -173,7 +174,7 @@ public sealed class TableReservationHardeningTests
             new Branch { Id = BranchA, Name = "Branch A" },
             new Branch { Id = BranchB, Name = "Branch B" }
         );
-        var table = new RestaurantTable { Id = Guid.NewGuid(), BranchId = BranchB, Name = "Table B", AreaName = "Main" };
+        var table = new RestaurantTable { Id = Guid.NewGuid(), BranchId = BranchB, Name = "Table B", AreaName = "Main", QrToken = QrTokenGenerator.Generate() };
         context.Tables.Add(table);
         await context.SaveChangesAsync();
 
@@ -199,7 +200,7 @@ public sealed class TableReservationHardeningTests
             new Branch { Id = BranchA, Name = "Branch A" },
             new Branch { Id = BranchB, Name = "Branch B" }
         );
-        var tableB = new RestaurantTable { Id = Guid.NewGuid(), BranchId = BranchB, Name = "Table B", AreaName = "Main" };
+        var tableB = new RestaurantTable { Id = Guid.NewGuid(), BranchId = BranchB, Name = "Table B", AreaName = "Main", QrToken = QrTokenGenerator.Generate() };
         var resA = new Reservation { Id = Guid.NewGuid(), BranchId = BranchA, ReservationTime = DateTime.UtcNow.AddDays(1) };
 
         context.Tables.Add(tableB);
@@ -220,7 +221,7 @@ public sealed class TableReservationHardeningTests
         await using var __ = connection;
 
         context.Branches.Add(new Branch { Id = BranchB, Name = "Branch B" });
-        var table = new RestaurantTable { Id = Guid.NewGuid(), BranchId = BranchB, Name = "Table B", BranchName = "Branch B", AreaName = "Main" };
+        var table = new RestaurantTable { Id = Guid.NewGuid(), BranchId = BranchB, Name = "Table B", BranchName = "Branch B", AreaName = "Main", QrToken = QrTokenGenerator.Generate() };
         context.Tables.Add(table);
         await context.SaveChangesAsync();
 

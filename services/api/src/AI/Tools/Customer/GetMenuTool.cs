@@ -17,7 +17,7 @@ namespace RestaurantPOS.AI.Tools.Customer
         private readonly IProductService _productService;
         public string Name => "customer_get_menu";
         public string Description => "Xem thực đơn của nhà hàng (tên món, giá bán, kích cỡ và topping đi kèm).";
-        public string[] AllowedRoles => new[] { "admin", "employee", "customer" };
+        public string[] AllowedRoles => new[] { "admin", "manager", "employee", "cashier", "kitchen", "customer" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetMenuTool(IProductService productService)

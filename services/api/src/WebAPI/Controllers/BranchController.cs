@@ -28,7 +28,20 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try
             {
-                return Ok(await _context.Branches.OrderByDescending(b => b.IsMain).ThenBy(b => b.Name).ToListAsync());
+                var branches = await _context.Branches
+                    .Where(b => b.IsActive)
+                    .OrderByDescending(b => b.IsMain)
+                    .ThenBy(b => b.Name)
+                    .Select(b => new BranchPublicDto
+                    {
+                        Id = b.Id,
+                        Name = b.Name,
+                        Address = b.Address,
+                        PhoneNumber = b.PhoneNumber,
+                        ImageUrl = b.ImageUrl
+                    })
+                    .ToListAsync();
+                return Ok(branches);
             }
             catch (Exception ex)
             {
@@ -154,5 +167,14 @@ namespace RestaurantPOS.WebAPI.Controllers
                 return StatusCode(500, new { message = ex.Message });
             }
         }
+    }
+
+    public sealed class BranchPublicDto
+    {
+        public Guid Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public string? Address { get; init; }
+        public string? PhoneNumber { get; init; }
+        public string? ImageUrl { get; init; }
     }
 }

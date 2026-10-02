@@ -14,7 +14,7 @@ namespace RestaurantPOS.WebAPI.Controllers
     /// <summary>Cung cấp các endpoint quản lý lịch làm việc.</summary>
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "admin,cashier,kitchen,employee")]
+    [Authorize(Roles = "admin,manager,cashier,kitchen,employee")]
     public class WorkScheduleController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -74,7 +74,14 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (IsManager())
             {
                 // Manager chỉ được tạo lịch cho chi nhánh mình
-                if (schedule.BranchId != CurrentUserBranchId()) return Forbid();
+                var ownBranch = CurrentUserBranchId();
+                if (!ownBranch.HasValue) return Forbid();
+                var employee = await _context.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == schedule.EmployeeId);
+                if (employee?.BranchId != ownBranch.Value) return Forbid();
+
+                schedule.BranchId = ownBranch.Value;
+                schedule.BranchName = employee.BranchName;
+                schedule.EmployeeName = employee.FullName;
             }
             try
             {
@@ -103,7 +110,11 @@ namespace RestaurantPOS.WebAPI.Controllers
             var schedule = await _context.WorkSchedules.FindAsync(id);
             if (schedule == null) return NotFound();
 
-            if (IsManager() && schedule.BranchId != CurrentUserBranchId()) return Forbid();
+            if (IsManager())
+            {
+                var ownBranch = CurrentUserBranchId();
+                if (!ownBranch.HasValue || schedule.BranchId != ownBranch.Value) return Forbid();
+            }
 
             _context.WorkSchedules.Remove(schedule);
             await _context.SaveChangesAsync();

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using RestaurantPOS.Infrastructure.Persistence;
 using RestaurantPOS.Application.Common.Interfaces;
+using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using System;
@@ -79,11 +80,13 @@ namespace RestaurantPOS.WebAPI.Controllers
             /// <summary>
             /// Chế độ làm việc: "admin", "cashier", hoặc "kitchen"
             /// </summary>
-            public string Mode { get; set; } = "admin";
+            public string Mode { get; set; } = string.Empty;
 
             /// <summary>
             /// Chi nhánh đăng nhập làm việc (bắt buộc với cashier và kitchen)
             /// </summary>
+            // Retained only for request compatibility with old clients. Login authorization
+            // and JWT branch scope are derived exclusively from the employee record.
             public Guid? BranchId { get; set; }
         }
 
@@ -110,6 +113,12 @@ namespace RestaurantPOS.WebAPI.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
+            var loginGroup = request.Mode?.Trim().ToLowerInvariant();
+            if (loginGroup is not "management" and not "staff")
+            {
+                return BadRequest(new { message = "Nhóm đăng nhập không hợp lệ." });
+            }
+
             // Tìm nhân viên theo Username
             var employee = await _context.Employees
                 .FirstOrDefaultAsync(e => e.Username == request.Username && e.IsActive);
@@ -128,30 +137,13 @@ namespace RestaurantPOS.WebAPI.Controllers
                 return Unauthorized(new { message = "Tài khoản chưa có mật khẩu" });
             }
 
-            try
-            {
-                var result = _employeeHasher.VerifyHashedPassword(employee, employee.Password, request.Password);
-                if (result == PasswordVerificationResult.Success)
-                {
-                    passwordValid = true;
-                }
-                else if (result == PasswordVerificationResult.SuccessRehashNeeded)
-                {
-                    passwordValid = true;
-                    needsUpgrade = true;
-                }
-            }
-            catch (FormatException)
-            {
-                // Mật khẩu có thể đang là plaintext
-            }
-
-            // Thử so sánh plaintext (Legacy support) nếu chưa xác thực được bằng hash
-            if (!passwordValid && employee.Password == request.Password)
-            {
-                passwordValid = true;
-                needsUpgrade = true;
-            }
+            var verification = LegacyPasswordVerifier.Verify(
+                _employeeHasher,
+                employee,
+                employee.Password,
+                request.Password);
+            passwordValid = verification.IsValid;
+            needsUpgrade = verification.NeedsRehash;
 
             if (!passwordValid)
             {
@@ -165,23 +157,24 @@ namespace RestaurantPOS.WebAPI.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            string actualRole = employee.Role?.ToLower() ?? "employee";
+            var actualRole = employee.Role?.Trim().ToLowerInvariant() ?? string.Empty;
 
             // Nếu đăng nhập chế độ thu ngân, kiểm tra chi nhánh
-            if (request.Mode == "cashier")
+            if (loginGroup == "staff")
             {
                 // Cho phép admin, manager và cashier truy cập POS
-                if (actualRole != "admin" && actualRole != "manager" && actualRole != "cashier")
+                if (actualRole != "employee" && actualRole != "cashier" && actualRole != "kitchen")
                 {
                     return BadRequest(new { message = "Tài khoản của bạn không có quyền truy cập thu ngân" });
                 }
 
-                if (request.BranchId.HasValue && employee.BranchId != request.BranchId.Value && actualRole != "admin")
+            // BranchId from the request is deliberately ignored; JWT scope comes from the account.
+            if (request.BranchId.HasValue && loginGroup == "legacy-cashier")
                 {
                     return BadRequest(new { message = "Bạn không có quyền đăng nhập vào chi nhánh này" });
                 }
 
-                var tokenRole = actualRole == "admin" ? "admin" : (actualRole == "manager" ? "manager" : "cashier");
+                var tokenRole = actualRole;
 
                 var token = _jwtService.GenerateToken(
                     employee.Id,
@@ -206,7 +199,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
 
             // Nếu đăng nhập chế độ nhà bếp
-            if (request.Mode == "kitchen")
+            if (loginGroup == "legacy-kitchen")
             {
                 // Cho phép admin, manager và kitchen truy cập bếp
                 if (actualRole != "admin" && actualRole != "manager" && actualRole != "kitchen")
@@ -244,7 +237,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
 
             // Nếu đăng nhập chế độ admin bằng tài khoản nhân viên
-            if (request.Mode == "admin")
+            if (loginGroup == "management")
             {
                 if (actualRole != "admin" && actualRole != "manager")
                 {
@@ -282,23 +275,24 @@ namespace RestaurantPOS.WebAPI.Controllers
         [HttpPost("customer-token")]
         public async Task<IActionResult> GetCustomerToken([FromBody] CustomerTokenRequest request)
         {
+            // A guest table session must originate from POST /api/guest/bootstrap,
+            // where the server resolves an opaque QR token to its table and branch.
+            if (string.IsNullOrWhiteSpace(request.PhoneNumber))
+                return BadRequest(new { message = "Số điện thoại là bắt buộc cho phiên khách hàng." });
+
             var customer = await _context.Customers.FirstOrDefaultAsync(c => c.PhoneNumber == request.PhoneNumber);
+            if (customer != null && !customer.IsActive)
+                return Unauthorized(new { message = "Tài khoản khách hàng đã bị vô hiệu hóa" });
+
             if (customer == null)
-            {
-                var guestToken = _jwtService.GenerateToken(
-                    Guid.NewGuid(),
-                    request.PhoneNumber,
-                    request.FullName ?? "Khách hàng",
-                    "customer"
-                );
-                return Ok(new { token = guestToken, role = "customer", fullName = request.FullName ?? "Khách hàng", customerId = (Guid?)null });
-            }
+                return NotFound(new { message = "Không tìm thấy khách hàng." });
 
             var token = _jwtService.GenerateToken(
                 customer.Id,
                 customer.PhoneNumber,
                 customer.FullName,
-                "customer"
+                "customer",
+                customerSessionType: "registered"
             );
             return Ok(new { token, role = "customer", fullName = customer.FullName, customerId = customer.Id });
         }
@@ -359,24 +353,19 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                     if (string.IsNullOrEmpty(employee.Password)) return BadRequest(new { message = "Lỗi dữ liệu mật khẩu" });
 
-                    bool oldPasswordMatch = false;
-                    try
-                    {
-                        var verification = _employeeHasher.VerifyHashedPassword(employee, employee.Password, request.OldPassword);
-                        if (verification != PasswordVerificationResult.Failed) oldPasswordMatch = true;
-                    }
-                    catch (FormatException) { }
-
-                    if (!oldPasswordMatch && employee.Password == request.OldPassword)
-                    {
-                        oldPasswordMatch = true;
-                    }
+                    var oldPasswordMatch = LegacyPasswordVerifier.Verify(
+                        _employeeHasher,
+                        employee,
+                        employee.Password,
+                        request.OldPassword).IsValid;
 
                     if (!oldPasswordMatch)
                     {
                         return BadRequest(new { message = "Mật khẩu cũ không chính xác" });
                     }
 
+                    var passwordError = PasswordPolicy.Validate(request.NewPassword);
+                    if (passwordError != null) return BadRequest(new { message = passwordError });
                     employee.Password = _employeeHasher.HashPassword(employee, request.NewPassword);
                 }
                 else
@@ -386,24 +375,19 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                     if (string.IsNullOrEmpty(customer.Password)) return BadRequest(new { message = "Lỗi dữ liệu mật khẩu" });
 
-                    bool oldPasswordMatch = false;
-                    try
-                    {
-                        var verification = _customerHasher.VerifyHashedPassword(customer, customer.Password, request.OldPassword);
-                        if (verification != PasswordVerificationResult.Failed) oldPasswordMatch = true;
-                    }
-                    catch (FormatException) { }
-
-                    if (!oldPasswordMatch && customer.Password == request.OldPassword)
-                    {
-                        oldPasswordMatch = true;
-                    }
+                    var oldPasswordMatch = LegacyPasswordVerifier.Verify(
+                        _customerHasher,
+                        customer,
+                        customer.Password,
+                        request.OldPassword).IsValid;
 
                     if (!oldPasswordMatch)
                     {
                         return BadRequest(new { message = "Mật khẩu cũ không chính xác" });
                     }
 
+                    var passwordError = PasswordPolicy.Validate(request.NewPassword);
+                    if (passwordError != null) return BadRequest(new { message = passwordError });
                     customer.Password = _customerHasher.HashPassword(customer, request.NewPassword);
                 }
 

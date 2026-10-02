@@ -10,11 +10,16 @@ namespace RestaurantPOS.Domain.Entities
         public string Description { get; set; } // Nội dung chi
         public decimal Amount { get; set; } // Số tiền
         public DateTime ExpenseDate { get; set; } = DateTime.Now;
-        public string Category { get; set; } // Loại chi: Tiền nhà, Điện nước, Lương, Nhập hàng...
-        public string? PaymentMethod { get; set; } // Tiền mặt, Chuyển khoản
-        public string? Note { get; set; } // Ghi chú thêm
+        public string Category { get; set; } // Loại chi phí do người dùng ghi nhận
+        // Expenses.PaymentMethod is NOT NULL in the existing PostgreSQL schema.
+        public string PaymentMethod { get; set; } = RestaurantPOS.Domain.Finance.ExpensePaymentMethods.Cash;
+        // Expenses.Note is also NOT NULL in the existing PostgreSQL schema.
+        public string Note { get; set; } = string.Empty; // Ghi chú thêm
         public Guid? CreatedBy { get; set; }
+        public Guid? StockReceiptId { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
+
+        public StockReceipt? StockReceipt { get; set; }
     }
 }

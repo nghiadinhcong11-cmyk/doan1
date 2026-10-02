@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Application.Services;
+using RestaurantPOS.Application.DTOs;
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -30,7 +31,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (!TryResolveBranch(branchId, out var effectiveBranchId))
                     return Forbid();
 
-                return Ok(await _tableService.GetTablesAsync(effectiveBranchId, search, area, isActive));
+                return Ok(ToResponses(await _tableService.GetTablesAsync(effectiveBranchId, search, area, isActive)));
             }
 
             // Đối với khách vãng lai hoặc customer, cho phép xem bàn của một chi nhánh cụ thể
@@ -42,18 +43,33 @@ namespace RestaurantPOS.WebAPI.Controllers
                     return BadRequest("Vui lòng cung cấp mã chi nhánh (branchId).");
             }
 
-            return Ok(await _tableService.GetTablesAsync(branchId, search, area, isActive));
+            return Ok(ToResponses(await _tableService.GetTablesAsync(branchId, search, area, isActive)));
         }
 
         /// <summary>Lấy thông tin chi tiết một bàn.</summary>
         [HttpGet("{id}")]
+        [Authorize]
         public async Task<IActionResult> GetTable(Guid id)
         {
             var branchId = GetUserBranchId();
+            if (User.Identity?.IsAuthenticated == true && !IsAdmin() && !IsCustomer() && !branchId.HasValue)
+                return Forbid();
             var table = await _tableService.GetByIdAsync(id, IsAdmin() ? null : branchId);
 
             if (table == null) return NotFound();
-            return Ok(table);
+            return Ok(TableResponseDto.From(table));
+        }
+
+        /// <summary>Returns an opaque QR credential only to authorized table managers.</summary>
+        [HttpGet("{id}/qr-token")]
+        [Authorize(Roles = "admin,manager")]
+        public async Task<IActionResult> GetQrToken(Guid id)
+        {
+            var branchId = GetUserBranchId();
+            if (!IsAdmin() && !branchId.HasValue) return Forbid();
+
+            var table = await _tableService.GetByIdAsync(id, IsAdmin() ? null : branchId);
+            return table is null ? NotFound() : Ok(new { qrToken = table.QrToken });
         }
 
         /// <summary>Tạo bàn mới.</summary>
@@ -74,7 +90,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
 
                 var result = await _tableService.CreateTableAsync(table, IsAdmin() ? null : branchId);
-                return Ok(result);
+                return Ok(TableResponseDto.From(result));
             }
             catch (Exception ex)
             {
@@ -103,7 +119,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             var result = await _tableService.UpdateTableAsync(id, tableUpdate, IsAdmin() ? null : branchId);
             if (result == null) return NotFound();
 
-            return Ok(result);
+            return Ok(TableResponseDto.From(result));
         }
 
         /// <summary>Cập nhật trạng thái sử dụng của bàn.</summary>
@@ -157,5 +173,8 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         private bool IsAdmin() => User.IsInRole("admin");
         private bool IsCustomer() => User.IsInRole("customer");
+
+        private static IEnumerable<TableResponseDto> ToResponses(IEnumerable<RestaurantTable>? tables) =>
+            (tables ?? Enumerable.Empty<RestaurantTable>()).Select(TableResponseDto.From);
     }
 }

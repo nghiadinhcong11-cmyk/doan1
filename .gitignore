@@ -82,6 +82,7 @@ test-results/
 
 # Local downloaded tools, certificates, and E2E database state
 /.tools/postgresql-17.11/
+/.tools/postgresql-17.11-binaries.zip
 /.tools/pgdata-e2e/
 /.tools/e2e-cert/
 /.tools/pg-e2e-password.txt

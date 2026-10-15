@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RestaurantPOS.Application.Common.Interfaces;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
@@ -15,12 +16,18 @@ namespace RestaurantPOS.Application.Services
         private readonly ApplicationDbContext _context;
         private readonly IKitchenNotifier _kitchenNotifier;
         private readonly INotificationService? _notificationService;
+        private readonly ILogger<KitchenService>? _logger;
 
-        public KitchenService(ApplicationDbContext context, IKitchenNotifier kitchenNotifier, INotificationService? notificationService = null)
+        public KitchenService(
+            ApplicationDbContext context,
+            IKitchenNotifier kitchenNotifier,
+            INotificationService? notificationService = null,
+            ILogger<KitchenService>? logger = null)
         {
             _context = context;
             _kitchenNotifier = kitchenNotifier;
             _notificationService = notificationService;
+            _logger = logger;
         }
 
         public async Task<OrderRequest> SendToKitchenAsync(Guid orderId)
@@ -38,7 +45,7 @@ namespace RestaurantPOS.Application.Services
 
                     if (order == null) throw new InvalidOperationException("Không tìm thấy đơn hàng.");
                     if (order.Status != "Đang xử lý") throw new InvalidOperationException("Đơn hàng đã đóng hoặc đã hủy.");
-
+                    
                     var itemsToSend = order.Details.Where(d => d.Quantity > d.SentQuantity).ToList();
                     if (!itemsToSend.Any()) throw new InvalidOperationException("Không có món mới cần gửi bếp.");
 
@@ -154,23 +161,92 @@ namespace RestaurantPOS.Application.Services
 
         public async Task<OrderRequest?> UpdateRequestStatusAsync(Guid requestId, string status, string? processedBy)
         {
-            var request = await _context.OrderRequests.FindAsync(requestId);
-            if (request == null) return null;
+            var isCompleted = string.Equals(status, "Completed", StringComparison.Ordinal);
+            var transitionedToCompleted = false;
+            OrderRequest? request;
 
-            request.Status = status;
-            request.ProcessedBy = processedBy ?? request.ProcessedBy;
-            var now = DateTime.UtcNow;
-            if (status == "Preparing") { request.AcceptedAt ??= now; request.PreparingAt ??= now; }
-            if (status == "Completed") request.CompletedAt = now;
-            await _context.SaveChangesAsync();
+            if (isCompleted)
+            {
+                // Make the transition itself the idempotency guard. A repeated or concurrent
+                // Completed command can therefore not create a second employee notification.
+                var now = DateTime.UtcNow;
+                var affected = await _context.OrderRequests
+                    .Where(r => r.Id == requestId && r.Status != "Completed")
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(r => r.Status, status)
+                        .SetProperty(r => r.CompletedAt, now)
+                        .SetProperty(r => r.ProcessedBy, r => processedBy ?? r.ProcessedBy));
 
-            var orderBranchId = await (from o in _context.Orders
-                                       where o.Id == request.OrderId
-                                       select o.BranchId).FirstOrDefaultAsync();
-            if (orderBranchId.HasValue)
-                await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(requestId, status, orderBranchId);
+                request = await _context.OrderRequests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId);
+                if (request == null) return null;
+                transitionedToCompleted = affected == 1;
+            }
             else
-                await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(requestId, status);
+            {
+                request = await _context.OrderRequests.FindAsync(requestId);
+                if (request == null) return null;
+
+                request.Status = status;
+                request.ProcessedBy = processedBy ?? request.ProcessedBy;
+                var now = DateTime.UtcNow;
+                if (status == "Preparing") { request.AcceptedAt ??= now; request.PreparingAt ??= now; }
+                await _context.SaveChangesAsync();
+            }
+
+            var orderRow = await (from r in _context.OrderRequests.AsNoTracking()
+                                  join o in _context.Orders.AsNoTracking() on r.OrderId equals o.Id
+                                  where r.Id == requestId
+                                  select new { Request = r, Order = o }).FirstOrDefaultAsync();
+
+            var orderBranchId = orderRow?.Order.BranchId;
+            try
+            {
+                if (orderBranchId.HasValue && orderBranchId.Value != Guid.Empty)
+                    await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(requestId, status, orderBranchId);
+                else
+                    await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(requestId, status);
+            }
+            catch (Exception ex)
+            {
+                // The status is already committed. Reconnect/polling can recover the missed event;
+                // do not turn a post-commit SignalR failure into a retryable business failure.
+                _logger?.LogError(ex, "Failed to broadcast kitchen request status {RequestId}", requestId);
+            }
+
+            if (transitionedToCompleted && orderRow != null && _notificationService != null)
+            {
+                var location = string.IsNullOrWhiteSpace(orderRow.Order.TableName) ? "Mang về" : orderRow.Order.TableName;
+                var requestItems = await _context.OrderRequestItems.AsNoTracking()
+                    .Where(item => item.OrderRequestId == requestId)
+                    .ToListAsync();
+                var itemSummary = requestItems.Count > 0
+                    ? string.Join(", ", requestItems.Select(item => $"{item.ProductName} x{item.Quantity}"))
+                    : "món trong đợt gọi";
+
+                try
+                {
+                    // ProcessedBy is a display string, not a validated user id. Until an explicit
+                    // assignment relation exists, route only to employee users in this branch.
+                    await _notificationService.CreateAsync(new Notification
+                    {
+                        Type = "ORDER_REQUEST_COMPLETED",
+                        Title = "Món đã hoàn thành",
+                        Message = $"{location} — đợt gọi #{orderRow.Request.RequestNumber} đã hoàn thành: {itemSummary}.",
+                        EntityType = "OrderRequest",
+                        EntityId = requestId,
+                        Route = "/staff",
+                        TargetRole = "employee",
+                        BranchId = orderRow.Order.BranchId
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // Notification persistence is attempted after the business commit. A SignalR
+                    // failure must not cause the caller to repeat the Completed transition.
+                    _logger?.LogError(ex, "Failed to create employee completion notification for {RequestId}", requestId);
+                }
+            }
+
             return request;
         }
 

@@ -8,9 +8,10 @@ using RestaurantPOS.Infrastructure.Persistence;
 
 namespace RestaurantPOS.Application.Services;
 
-public sealed class InventoryService(ApplicationDbContext context) : IInventoryService
+public sealed class InventoryService(ApplicationDbContext context, IDashboardService? dashboardService = null) : IInventoryService
 {
     private readonly ApplicationDbContext _context = context;
+    private readonly IDashboardService? _dashboardService = dashboardService;
 
     public async Task<IReadOnlyCollection<InventoryItemResponse>> GetItemsAsync(bool? activeOnly)
     {
@@ -129,14 +130,7 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
                 receipt.ConfirmedAtUtc.HasValue &&
                 receipt.ConfirmedAtUtc.Value >= periodStartUtc &&
                 receipt.ConfirmedAtUtc.Value < periodEndUtc);
-        var importCost = IsSqlite
-            ? (await _context.StockReceipts.AsNoTracking()
-                .Where(receipt => receipt.BranchId == branchId && receipt.Status == StockDocumentStatus.Confirmed && receipt.ConfirmedAtUtc.HasValue)
-                .Select(receipt => new { receipt.ConfirmedAtUtc, receipt.TotalAmount })
-                .ToListAsync())
-                .Where(receipt => receipt.ConfirmedAtUtc!.Value >= periodStartUtc && receipt.ConfirmedAtUtc.Value < periodEndUtc)
-                .Sum(receipt => receipt.TotalAmount)
-            : await importCostQuery.Select(receipt => (decimal?)receipt.TotalAmount).SumAsync() ?? 0m;
+        var importCost = await importCostQuery.Select(receipt => (decimal?)receipt.TotalAmount).SumAsync() ?? 0m;
 
         return new InventoryOverviewResponse(
             branchId,
@@ -160,17 +154,6 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
                 transaction.CreatedAtUtc >= periodStartUtc && transaction.CreatedAtUtc < periodEndUtc)
             .Join(_context.InventoryItems.AsNoTracking(), transaction => transaction.InventoryItemId, item => item.Id,
                 (transaction, item) => new { item.UnitCode, transaction.Quantity });
-
-        // SQLite's test provider cannot translate SUM(decimal), while PostgreSQL does.
-        // Keep production aggregation server-side and use a bounded monthly fallback only for tests.
-        if (IsSqlite)
-        {
-            var rows = await query.ToListAsync();
-            return rows.GroupBy(value => value.UnitCode)
-                .Select(group => new InventoryQuantityByUnitResponse(group.Key, group.Sum(value => value.Quantity)))
-                .OrderBy(value => value.UnitCode)
-                .ToList();
-        }
 
         var grouped = await query
             .GroupBy(value => value.UnitCode)
@@ -280,6 +263,11 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
     public async Task<StockReceiptResponse> ConfirmReceiptAsync(Guid id, InventoryUserContext user)
     {
         RequireManagement(user);
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var committedByThisCall = false;
+        var result = await strategy.ExecuteAsync(async () =>
+        {
+        _context.ChangeTracker.Clear();
         await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var receipt = await LoadReceiptAsync(id, tracking: true);
         EnsureBranchAccess(receipt.BranchId, user);
@@ -324,7 +312,13 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
         receipt.ConfirmedAtUtc = now;
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
+        committedByThisCall = true;
         return Map(receipt);
+        });
+
+        if (committedByThisCall)
+            _dashboardService?.InvalidateSummaryCache();
+        return result;
     }
 
     public async Task<StockReceiptResponse> CancelReceiptAsync(Guid id, InventoryUserContext user)
@@ -403,8 +397,12 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
     public async Task<StockIssueResponse> ConfirmIssueAsync(Guid id, InventoryUserContext user)
     {
         RequireManagement(user);
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var result = await strategy.ExecuteAsync(async () =>
+        {
+        _context.ChangeTracker.Clear();
         await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
-        var issue = await LoadIssueAsync(id, tracking: true);
+        var issue = await LoadIssueForUpdateAsync(id);
         EnsureBranchAccess(issue.BranchId, user);
         if (issue.Status == StockDocumentStatus.Confirmed) return Map(issue);
         EnsureDraft(issue.Status, "issue");
@@ -444,12 +442,14 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
         return Map(issue);
+        });
+        return result;
     }
 
     public async Task<StockIssueResponse> CancelIssueAsync(Guid id, InventoryUserContext user)
     {
         RequireOperational(user);
-        var issue = await LoadIssueAsync(id);
+        var issue = await LoadIssueAsync(id, tracking: true);
         EnsureBranchAccess(issue.BranchId, user);
         EnsureDraft(issue.Status, "issue");
         issue.Status = StockDocumentStatus.Cancelled;
@@ -486,6 +486,46 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
         if (!tracking) query = query.AsNoTracking();
         return await query.SingleOrDefaultAsync(issue => issue.Id == id)
             ?? throw new InventoryNotFoundException("Stock issue was not found.");
+    }
+
+    private async Task<StockIssue> LoadIssueForUpdateAsync(Guid id)
+    {
+        if (!IsPostgres)
+            return await LoadIssueAsync(id, tracking: true);
+
+        // Serialize confirmation of one document before checking its status. The
+        // inventory-row locks below protect balances, but cannot prevent two
+        // transactions from both observing the same Draft issue.
+        // Detach any previously tracked copy so the locking query cannot reuse
+        // stale status or item state from an earlier operation on this context.
+        foreach (var itemEntry in _context.ChangeTracker.Entries<StockIssueItem>()
+                     .Where(entry => entry.Entity.StockIssueId == id)
+                     .ToArray())
+        {
+            itemEntry.State = EntityState.Detached;
+        }
+
+        var issueEntry = _context.ChangeTracker.Entries<StockIssue>()
+            .SingleOrDefault(entry => entry.Entity.Id == id);
+        if (issueEntry is not null)
+            issueEntry.State = EntityState.Detached;
+
+        var issue = await _context.StockIssues
+            .FromSqlInterpolated($"""
+                SELECT * FROM "StockIssues"
+                WHERE "Id" = {id}
+                FOR UPDATE
+                """)
+            .SingleOrDefaultAsync()
+            ?? throw new InventoryNotFoundException("Stock issue was not found.");
+
+        await _context.Entry(issue)
+            .Collection(value => value.Items)
+            .Query()
+            .Include(item => item.InventoryItem)
+            .LoadAsync();
+
+        return issue;
     }
 
     private async Task<List<StockReceiptItem>> ValidateReceiptItemsAsync(IReadOnlyCollection<StockDocumentItemRequest>? requests)
@@ -609,7 +649,6 @@ public sealed class InventoryService(ApplicationDbContext context) : IInventoryS
     }
 
     private bool IsPostgres => _context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
-    private bool IsSqlite => _context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
 
     private static (string Name, string UnitCode, string NormalizedName) ValidateItemInput(string? rawName, string? rawUnitCode)
     {

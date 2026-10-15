@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using RestaurantPOS.Application.Common.Orders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
@@ -56,14 +58,27 @@ namespace RestaurantPOS.WebAPI.Controllers
             [FromQuery] string? fromDate,
             [FromQuery] string? toDate)
         {
+            var correlationId = HttpContext.Items.TryGetValue(OrderRequestDiagnostics.CorrelationItemKey, out var correlation)
+                ? correlation as string
+                : null;
+            HttpContext.Items[OrderRequestDiagnostics.PhaseItemKey] = "CONTROLLER_ENTRY";
+            _logger?.LogInformation(
+                "ORDER_GET_DIAGNOSTIC CODE=ORDER_GET_CONTROLLER_ENTRY PHASE=CONTROLLER_ENTRY CORRELATION_ID={CorrelationId}",
+                correlationId ?? "UNAVAILABLE");
+
             var customerPhoneFilter = customerPhone;
             if (GuestSessionContext.IsGuest(User))
             {
                 if (!TryGetGuestSession(out var guest) || _context == null)
                     return Forbid();
 
+                // A direct guest session without a table may create a takeaway order,
+                // but it must never read a branch-wide order list.
+                if (guest!.TableId == Guid.Empty)
+                    return Forbid();
+
                 var table = await _context.Tables.AsNoTracking()
-                    .FirstOrDefaultAsync(candidate => candidate.Id == guest!.TableId && candidate.BranchId == guest.BranchId && candidate.IsActive);
+                    .FirstOrDefaultAsync(candidate => candidate.Id == guest.TableId && candidate.BranchId == guest.BranchId && candidate.IsActive);
                 if (table is null) return Forbid();
 
                 var guestFilter = new OrderQueryFilter
@@ -75,7 +90,8 @@ namespace RestaurantPOS.WebAPI.Controllers
                     FromDate = fromDate,
                     ToDate = toDate
                 };
-                return Ok(await _orderService.GetOrdersAsync(guestFilter));
+                var guestOrders = await _orderService.GetOrdersAsync(guestFilter);
+                return Ok(guestOrders.Select(MapCustomerOrder));
             }
 
             if (IsCustomer())
@@ -93,19 +109,30 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!TryResolveBranch(branchId, out var effectiveBranchId))
                 return Forbid();
 
+            HttpContext.Items[OrderRequestDiagnostics.PhaseItemKey] = "BRANCH_SCOPE";
+            _logger?.LogInformation(
+                "ORDER_GET_DIAGNOSTIC CODE=ORDER_GET_BRANCH_SCOPE_RESOLVED PHASE=BRANCH_SCOPE BRANCH_SCOPE=AUTHENTICATED CORRELATION_ID={CorrelationId}",
+                correlationId ?? "UNAVAILABLE");
+
             var filter = new OrderQueryFilter
             {
                 Search = search,
                 Status = status,
                 CustomerPhone = customerPhoneFilter,
+                ExactCustomerPhone = IsCustomer(),
                 BranchId = effectiveBranchId,
                 TableName = tableName,
                 FromDate = fromDate,
-                ToDate = toDate
+                ToDate = toDate,
+                DiagnosticCorrelationId = correlationId
             };
 
+            HttpContext.Items[OrderRequestDiagnostics.PhaseItemKey] = "EF_QUERY_EXECUTION";
             var orders = await _orderService.GetOrdersAsync(filter);
-            return Ok(orders);
+            HttpContext.Items[OrderRequestDiagnostics.PhaseItemKey] = "RESPONSE_SERIALIZATION";
+            return IsCustomer()
+                ? Ok(orders.Select(MapCustomerOrder))
+                : Ok(orders);
         }
 
         /// <summary>
@@ -119,22 +146,52 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try
             {
-                if (GuestSessionContext.IsGuest(User))
+                var guestMarker = GuestSessionContext.IsGuest(User);
+                var guestContextValid = TryGetGuestSession(out var guestContext);
+                _logger?.LogInformation(
+                    "Order create context: role={Role}, authenticated={Authenticated}, guestMarker={GuestMarker}, guestContextValid={GuestContextValid}, branchPresent={BranchPresent}, tablePresent={TablePresent}",
+                    User.FindFirst(ClaimTypes.Role)?.Value ?? "none",
+                    User.Identity?.IsAuthenticated == true,
+                    guestMarker,
+                    guestContextValid,
+                    order.BranchId != Guid.Empty,
+                    !string.IsNullOrWhiteSpace(order.TableName));
+
+                if (guestMarker)
                 {
-                    if (!TryGetGuestSession(out var guest) || _context == null || order.Id != Guid.Empty)
+                    if (!guestContextValid || _context == null || order.Id != Guid.Empty)
+                    {
+                        _logger?.LogWarning(
+                            "Rejected guest order context: guestContextValid={GuestContextValid}, databaseContextPresent={DatabaseContextPresent}, existingOrderId={ExistingOrderId}",
+                            guestContextValid,
+                            _context != null,
+                            order.Id != Guid.Empty);
                         return Forbid();
+                    }
 
-                    var table = await _context.Tables.AsNoTracking()
-                        .FirstOrDefaultAsync(candidate => candidate.Id == guest!.TableId && candidate.BranchId == guest.BranchId && candidate.IsActive);
-                    if (table is null) return Forbid();
+                    var table = guestContext!.TableId == Guid.Empty
+                        ? null
+                        : await _context.Tables.AsNoTracking()
+                            .FirstOrDefaultAsync(candidate => candidate.Id == guestContext.TableId && candidate.BranchId == guestContext.BranchId && candidate.IsActive);
 
-                    // Both table and branch come exclusively from the signed QR session.
-                    order.TableName = table.Name;
-                    order.BranchId = guest.BranchId;
-                    order.BranchName = table.BranchName;
+                    var branch = await _context.Branches.AsNoTracking()
+                        .FirstOrDefaultAsync(candidate => candidate.Id == guestContext.BranchId && candidate.IsActive);
+                    if (branch is null || (guestContext.TableId != Guid.Empty && table is null))
+                    {
+                        _logger?.LogWarning("Rejected guest order context: activeBranch={ActiveBranch}, tablePresent={TablePresent}", branch is not null, table is not null);
+                        return Forbid();
+                    }
+
+                    // Branch and optional table come exclusively from the signed guest session.
+                    // A direct session without a table is explicitly takeaway.
+                    order.TableName = table?.Name ?? "Mang về";
+                    order.BranchId = guestContext.BranchId;
+                    order.BranchName = branch.Name;
+                    order.CustomerName = table is null ? "Khách vãng lai" : "Khách tại bàn";
                     order.CustomerId = null;
                     order.CustomerPhone = null;
                     order.CustomerEmail = null;
+                    _logger?.LogInformation("Resolved guest order context: branchPresent={BranchPresent}, tablePresent={TablePresent}", true, table is not null);
                 }
 
                 if (order.Id != Guid.Empty)
@@ -148,7 +205,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (!HasBranchAccess(order.BranchId))
                     return Forbid();
 
-                if (IsCustomer())
+                if (IsCustomer() && !guestMarker)
                 {
                     var jwtPhone = User.Identity?.Name;
                     if (!string.IsNullOrWhiteSpace(jwtPhone))
@@ -175,10 +232,67 @@ namespace RestaurantPOS.WebAPI.Controllers
                         order.CustomerId = null;
                     }
                 }
+                else if (guestMarker)
+                {
+                    // Guest claims are not member identities and cannot earn points or
+                    // attach client-supplied customer contact data to the order.
+                    order.CustomerId = null;
+                    order.CustomerPhone = null;
+                    order.CustomerEmail = null;
+                }
+                else if (User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(order.CustomerPhone) && _context != null)
+                {
+                    // Resolve the member from the server-side phone record. A client
+                    // supplied CustomerId is never accepted as the identity source.
+                    var normalizedPhone = new string(order.CustomerPhone.Where(char.IsDigit).ToArray());
+                    var customer = await _context.Customers.AsNoTracking()
+                        .FirstOrDefaultAsync(candidate => candidate.PhoneNumber == normalizedPhone && candidate.IsActive);
+                    order.CustomerId = customer?.Id;
+                    order.CustomerPhone = customer?.PhoneNumber ?? normalizedPhone;
+                    if (customer != null) order.CustomerName = customer.FullName;
+                }
                 else if (User.Identity == null || !User.Identity.IsAuthenticated)
                 {
                     // Anonymous users cannot set CustomerId
                     order.CustomerId = null;
+                }
+                else if (string.IsNullOrWhiteSpace(order.CustomerPhone))
+                {
+                    // Staff must explicitly link a member by phone; never trust a
+                    // standalone CustomerId from the request body.
+                    order.CustomerId = null;
+                }
+
+                // Customer orders must carry a branch resolved from trusted guest
+                // context or an authenticated branch-scoped flow before reaching
+                // the financial/order persistence service.
+                if (order.BranchId == Guid.Empty)
+                {
+                    _logger?.LogWarning(
+                        "Rejected order without trusted branch context: role={Role}, authenticated={Authenticated}, guestMarker={GuestMarker}, guestContextValid={GuestContextValid}, tablePresent={TablePresent}",
+                        User.FindFirst(ClaimTypes.Role)?.Value ?? "none",
+                        User.Identity?.IsAuthenticated == true,
+                        guestMarker,
+                        guestContextValid,
+                        !string.IsNullOrWhiteSpace(order.TableName));
+                    return BadRequest("Order branch context is required.");
+                }
+
+                // A registered customer may choose an active public branch from
+                // the normal menu. The client-provided ID is only a request for
+                // context; the server resolves the branch and rejects inactive
+                // or unknown branches before persistence.
+                if (IsCustomer() && !guestMarker)
+                {
+                    if (_context == null)
+                        return BadRequest("A valid branch context is required.");
+
+                    var customerBranch = await _context.Branches.AsNoTracking()
+                        .FirstOrDefaultAsync(candidate => candidate.Id == order.BranchId && candidate.IsActive);
+                    if (customerBranch == null)
+                        return BadRequest("A valid active branch is required.");
+
+                    order.BranchName = customerBranch.Name;
                 }
 
                 if (order.Details == null || order.Details.Count == 0 || order.Details.Any(d => d.Quantity <= 0))
@@ -202,6 +316,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
         }
 
+        //hàm Mã Endpoint tiếp nhận đơn web và xác định phạm vi chi nhánh của người dùng.
         [HttpPost("{id:guid}/accept")]
         [Authorize(Roles = "admin,manager,employee,cashier")]
         public async Task<IActionResult> AcceptWebOrder(Guid id, [FromBody] AcceptWebOrderDto request)
@@ -219,7 +334,9 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             var result = await _orderService.AcceptWebOrderAsync(id, request?.TableId, allowedBranchId, acceptedBy);
             if (result.Result == WebOrderAcceptResult.Accepted)
+            {
                 await NotifyPendingOrderChangedAsync(result.Order?.BranchId);
+            }
 
             return result.Result switch
             {
@@ -276,7 +393,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         }
 
         [HttpPost("{id:guid}/payment")]
-        [Authorize(Roles = "admin,manager,employee,cashier")]
+        [Authorize(Roles = "admin,manager,cashier")]
         public async Task<IActionResult> PayOrder(Guid id, [FromBody] OrderPaymentDto request)
         {
             if (request.Amount <= 0)
@@ -291,24 +408,35 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (request.Amount != existingOrder.TotalAmount)
                 return BadRequest("Payment amount must equal the order total.");
 
-            var result = await _orderService.PayOrderAsync(id, request.Amount, request.PaymentMethod.Trim());
+            var result = await _orderService.PayOrderAsync(
+                id,
+                request.Amount,
+                request.PaymentMethod.Trim(),
+                request.CustomerPhone,
+                request.CustomerName,
+                request.CreateMember);
             if (result.Result == PaymentAttemptResult.Paid && result.Order != null && _hub != null)
             {
-                await _hub.Clients.All.SendAsync("PaymentCompleted", new
+                var paymentGroups = PaymentEventRouting.Groups(result.Order.BranchId);
+                if (paymentGroups.Count > 0)
                 {
-                    orderId = result.Order.Id,
-                    invoiceCode = result.Order.InvoiceCode,
-                    status = result.Order.Status,
-                    paidAmount = result.Order.PaidAmount,
-                    paymentMethod = result.Order.PaymentMethod,
-                    branchId = result.Order.BranchId
-                });
+                    await _hub.Clients.Groups(paymentGroups).SendAsync("PaymentCompleted", new
+                    {
+                        orderId = result.Order.Id,
+                        invoiceCode = result.Order.InvoiceCode,
+                        status = result.Order.Status,
+                        paidAmount = result.Order.PaidAmount,
+                        paymentMethod = result.Order.PaymentMethod,
+                        branchId = result.Order.BranchId
+                    });
+                }
             }
             return result.Result switch
             {
                 PaymentAttemptResult.Paid => Ok(result.Order),
                 PaymentAttemptResult.NotFound => NotFound(),
                 PaymentAttemptResult.AlreadyPaid => Conflict(new { message = "Order has already been paid." }),
+                PaymentAttemptResult.MemberAlreadyRewarded => Conflict(new { message = "Đơn hàng đã được cộng điểm và không thể đổi thành viên nhận điểm." }),
                 _ => BadRequest(new { message = "Order is not payable in its current state." })
             };
         }
@@ -364,7 +492,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!IsCustomer() && !HasBranchAccess(order.BranchId))
                 return Forbid();
 
-            return Ok(order);
+            return IsCustomer() || GuestSessionContext.IsGuest(User)
+                ? Ok(MapCustomerOrder(order))
+                : Ok(order);
         }
 
         /// <summary>
@@ -506,11 +636,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         private bool IsCustomer() => string.Equals(User.FindFirst(ClaimTypes.Role)?.Value, "customer", StringComparison.OrdinalIgnoreCase);
         private bool IsAdmin() => string.Equals(User.FindFirst(ClaimTypes.Role)?.Value, "admin", StringComparison.OrdinalIgnoreCase);
-        private static bool IsTerminal(string? status) =>
-            string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "Hoàn thành", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "Đã hủy", StringComparison.OrdinalIgnoreCase);
+        private static bool IsTerminal(string? status) => OrderStatusPolicy.IsTerminal(status);
 
         private bool OwnsOrder(Order order) =>
             !string.IsNullOrWhiteSpace(User.Identity?.Name) &&
@@ -518,6 +644,35 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         private bool TryGetGuestSession(out GuestSessionContext? context) =>
             GuestSessionContext.TryCreate(User, out context);
+
+        private static CustomerOrderDto MapCustomerOrder(Order order) => new()
+        {
+            Id = order.Id,
+            InvoiceCode = order.InvoiceCode,
+            CreatedAt = order.CreatedAt,
+            PaymentAt = order.PaymentAt,
+            Status = order.Status,
+            PaymentMethod = order.PaymentMethod,
+            TotalAmount = order.TotalAmount,
+            PaidAmount = order.PaidAmount,
+            SubTotal = order.SubTotal,
+            Discount = order.Discount,
+            VatAmount = order.VatAmount,
+            VatPercent = order.VatPercent,
+            ServiceFeeAmount = order.ServiceFeeAmount,
+            ServiceFeePercent = order.ServiceFeePercent,
+            Note = order.Note,
+            TableName = order.TableName,
+            BranchId = order.BranchId,
+            BranchName = order.BranchName,
+            Details = order.Details.Select(detail => new CustomerOrderDetailDto
+            {
+                ProductName = detail.ProductName,
+                Quantity = detail.Quantity,
+                UnitPrice = detail.UnitPrice,
+                Options = detail.Options
+            }).ToList()
+        };
 
         private async Task<bool> GuestOwnsOrderAsync(Order order)
         {

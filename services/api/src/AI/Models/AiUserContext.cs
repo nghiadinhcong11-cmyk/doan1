@@ -11,5 +11,8 @@ namespace RestaurantPOS.AI.Models
         public string? UserName { get; set; }
         public string? Email { get; set; }
         public string? PhoneNumber { get; set; }
+        // Server-controlled marker for the anonymous public Mock AI route.
+        // It is never populated from client input or JWT claims.
+        public bool IsGuest { get; set; }
     }
 }

@@ -12,12 +12,14 @@ namespace RestaurantPOS.Domain.Entities
         public string? CustomerPhone { get; set; }
         public DateTime ReservationTime { get; set; }
         public int NumberOfGuests { get; set; }
-        public Guid? BranchId { get; set; }
+        public Guid BranchId { get; set; }
+        public Branch? Branch { get; set; }
         public string? BranchName { get; set; }
         public string? Note { get; set; }
         public string Status { get; set; } = "Pending"; // Pending, Confirmed, Cancelled, Completed
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? TableId { get; set; }
+        public RestaurantTable? Table { get; set; }
         public string? TableName { get; set; }
     }
 }

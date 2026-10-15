@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, LogIn, ShieldCheck, Users, ChevronRight } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { Button, Feedback, FormField } from '../../../components/ui';
+import BrandLogo from '../../../../../shared/BrandLogo';
 
 type EmployeeSystemRole = 'admin' | 'manager' | 'employee' | 'cashier' | 'kitchen';
 type LoginGroup = 'management' | 'staff';
@@ -45,8 +46,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-4 font-sans">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#0070f4] rounded-2xl shadow-lg mb-4 rotate-3 transform transition-transform hover:rotate-0 cursor-default"><span className="text-white text-3xl font-black italic">D</span></div>
-          <h1 className="text-3xl font-black text-gray-800 tracking-tighter uppercase italic">DOAN RESTAURANT</h1>
+          <BrandLogo className="mb-4 w-full" imageClassName="h-auto max-h-28 w-44" />
           <p className="text-gray-500 mt-2 text-sm font-medium">Hệ thống quản lý nhà hàng</p>
         </div>
         <div className="flex bg-white p-1 rounded-xl mb-4 shadow-sm border border-gray-100" role="tablist" aria-label="Loại đăng nhập">

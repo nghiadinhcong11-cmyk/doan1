@@ -6,6 +6,7 @@ import { notifyFeedback } from '../../../components/ui';
 interface Table {
   id?: string;
   name: string;
+  areaId: string;
   areaName: string;
   seatCount: number;
   description: string;
@@ -20,6 +21,17 @@ interface Area {
   id: string;
   name: string;
   displayOrder: number;
+  branchId?: string;
+}
+
+interface TableForm {
+  name: string;
+  areaId: string;
+  seatCount: number;
+  description: string;
+  status: string;
+  isActive: boolean;
+  branchId: string;
 }
 
 interface Branch {
@@ -45,9 +57,9 @@ const TableManagement = () => {
   const [filterStatus, setFilterStatus] = useState('all'); // all, active, inactive
 
   // Form State
-  const [newTable, setNewTable] = useState<Table>({
+  const [newTable, setNewTable] = useState<TableForm>({
     name: '',
-    areaName: '',
+    areaId: '',
     seatCount: 4,
     description: '',
     status: 'Trống',
@@ -72,8 +84,8 @@ const TableManagement = () => {
       setAreas(dataAreas);
       setBranches(dataBranches);
 
-      if (dataAreas.length > 0 && !newTable.areaName) {
-         setNewTable(prev => ({ ...prev, areaName: dataAreas[0].name }));
+      if (dataAreas.length > 0 && !newTable.areaId) {
+         setNewTable(prev => ({ ...prev, areaId: dataAreas[0].id }));
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -125,7 +137,6 @@ const TableManagement = () => {
         : `${API_URL}/api/Table`;
 
       const payload = {
-        ...(isEditing ? editingTable : {}),
         ...newTable,
         branchName: branches.find(b => b.id === newTable.branchId)?.name
       };
@@ -152,7 +163,7 @@ const TableManagement = () => {
   const resetForm = () => {
     setNewTable({
       name: '',
-      areaName: areas[0]?.name || '',
+      areaId: areas[0]?.id || '',
       seatCount: 4,
       description: '',
       status: 'Trống',
@@ -165,7 +176,7 @@ const TableManagement = () => {
     setEditingTable(table);
     setNewTable({
       name: table.name,
-      areaName: table.areaName,
+      areaId: table.areaId,
       seatCount: table.seatCount,
       description: table.description || '',
       status: table.status,
@@ -194,7 +205,11 @@ const TableManagement = () => {
         const response = await fetch(`${API_URL}/api/Area`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: areaName, displayOrder: areas.length + 1 })
+          body: JSON.stringify({
+            name: areaName,
+            displayOrder: areas.length + 1,
+            branchId: localStorage.getItem('selectedBranchId') || undefined
+          })
         });
         if (response.ok) fetchData();
       } catch (err) { notifyFeedback('Lỗi khi thêm khu vực'); }
@@ -498,9 +513,11 @@ const TableManagement = () => {
                    <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Khu vực / Tầng</label>
                       <div className="flex items-center">
-                         <select className="w-full border-b-2 border-gray-100 py-2.5 outline-none focus:border-blue-500 bg-transparent font-black text-gray-700 flex-1 transition-all" value={newTable.areaName} onChange={e => setNewTable({...newTable, areaName: e.target.value})}>
+                         <select className="w-full border-b-2 border-gray-100 py-2.5 outline-none focus:border-blue-500 bg-transparent font-black text-gray-700 flex-1 transition-all" value={newTable.areaId} onChange={e => setNewTable({...newTable, areaId: e.target.value})} required>
                             <option value="">-- Chọn khu vực --</option>
-                            {areas.map(area => <option key={area.id} value={area.name}>{area.name}</option>)}
+                            {areas
+                              .filter(area => !newTable.branchId || !area.branchId || area.branchId === newTable.branchId)
+                              .map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
                          </select>
                          <button type="button" onClick={handleAddArea} className="ml-4 text-blue-600 p-2 bg-blue-50 rounded-xl hover:bg-blue-100 transition-all shadow-sm"><Plus size={20}/></button>
                       </div>

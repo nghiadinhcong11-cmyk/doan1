@@ -143,6 +143,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export function parseInventoryItemsResponse(value: unknown): InventoryItem[] {
+  if (!Array.isArray(value)) {
+    const error: ApiError = { message: 'Dữ liệu danh mục nguyên liệu không hợp lệ.', status: 200 };
+    throw error;
+  }
+  return value as InventoryItem[];
+}
+
 const query = (params: Record<string, string | number | boolean | undefined>) => {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') search.set(key, String(value)); });
@@ -151,25 +159,25 @@ const query = (params: Record<string, string | number | boolean | undefined>) =>
 };
 
 export const inventoryApi = {
-  getItems: (activeOnly?: boolean) => request<InventoryItem[]>(`/api/inventory/items${query({ activeOnly })}`),
+  getItems: async (activeOnly?: boolean) => parseInventoryItemsResponse(await request<unknown>(`/api/inventory/items${query({ activeOnly })}`)),
   createItem: (body: { name: string; unitCode: string }) => request<InventoryItem>('/api/inventory/items', { method: 'POST', body: JSON.stringify(body) }),
   updateItem: (id: string, body: { name: string; unitCode: string; isActive: boolean }) => request<InventoryItem>(`/api/inventory/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   getBranchInventory: (branchId: string) => request<BranchInventory[]>(`/api/inventory/branches/${branchId}`),
   getOverview: (branchId: string) => request<InventoryOverview>(`/api/inventory/overview/${branchId}`),
   updateMinimumStock: (branchId: string, itemId: string, minimumStock: number) => request<BranchInventory>(`/api/inventory/branches/${branchId}/items/${itemId}/minimum-stock`, { method: 'PUT', body: JSON.stringify({ minimumStock }) }),
-  getReceipts: (params: { branchId?: string; status?: StockStatus; page?: number }) => request<InventoryPage<StockReceipt>>(`/api/inventory/receipts${query({ ...params, pageSize: 20 })}`),
+  getReceipts: (params: { branchId?: string; status?: StockStatus; page?: number; pageSize?: number }) => request<InventoryPage<StockReceipt>>(`/api/inventory/receipts${query({ ...params, pageSize: params.pageSize ?? 20 })}`),
   getReceipt: (id: string) => request<StockReceipt>(`/api/inventory/receipts/${id}`),
   createReceipt: (body: { branchId: string; supplierName?: string; purchaseDate?: string; note?: string; idempotencyKey: string; items: StockLineInput[] }) => request<StockReceipt>('/api/inventory/receipts', { method: 'POST', body: JSON.stringify(body) }),
   updateReceipt: (id: string, body: { supplierName?: string; purchaseDate?: string; note?: string; items: StockLineInput[] }) => request<StockReceipt>(`/api/inventory/receipts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   confirmReceipt: (id: string) => request<StockReceipt>(`/api/inventory/receipts/${id}/confirm`, { method: 'POST' }),
   cancelReceipt: (id: string) => request<StockReceipt>(`/api/inventory/receipts/${id}/cancel`, { method: 'POST' }),
-  getIssues: (params: { branchId?: string; status?: StockStatus; page?: number }) => request<InventoryPage<StockIssue>>(`/api/inventory/issues${query({ ...params, pageSize: 20 })}`),
+  getIssues: (params: { branchId?: string; status?: StockStatus; page?: number; pageSize?: number }) => request<InventoryPage<StockIssue>>(`/api/inventory/issues${query({ ...params, pageSize: params.pageSize ?? 20 })}`),
   getIssue: (id: string) => request<StockIssue>(`/api/inventory/issues/${id}`),
   createIssue: (body: { branchId: string; reason: string; note?: string; idempotencyKey: string; items: StockLineInput[] }) => request<StockIssue>('/api/inventory/issues', { method: 'POST', body: JSON.stringify(body) }),
   updateIssue: (id: string, body: { reason: string; note?: string; items: StockLineInput[] }) => request<StockIssue>(`/api/inventory/issues/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   confirmIssue: (id: string) => request<StockIssue>(`/api/inventory/issues/${id}/confirm`, { method: 'POST' }),
   cancelIssue: (id: string) => request<StockIssue>(`/api/inventory/issues/${id}/cancel`, { method: 'POST' }),
-  getTransactions: (params: { branchId?: string; inventoryItemId?: string; type?: TransactionType; fromDate?: string; toDate?: string; page?: number }) => request<InventoryPage<StockTransaction>>(`/api/inventory/transactions${query({ ...params, pageSize: 20 })}`)
+  getTransactions: (params: { branchId?: string; inventoryItemId?: string; type?: TransactionType; fromDate?: string; toDate?: string; page?: number; pageSize?: number }) => request<InventoryPage<StockTransaction>>(`/api/inventory/transactions${query({ ...params, pageSize: params.pageSize ?? 20 })}`)
 };
 
 export function formatApiError(error: unknown): string {

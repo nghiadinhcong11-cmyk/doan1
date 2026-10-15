@@ -18,13 +18,26 @@ namespace RestaurantPOS.Infrastructure.Services
             _configuration = configuration;
         }
 
-        public string GenerateToken(Guid userId, string username, string fullName, string role, Guid? branchId = null, string? branchName = null, string? position = null, string? customerSessionType = null, Guid? tableId = null)
+        public string GenerateToken(Guid userId, string username, string fullName, string role, Guid? branchId = null, string? branchName = null, string? position = null, string? customerSessionType = null, Guid? tableId = null, string? customerAuthMethod = null)
+        {
+            var expiryDays = int.TryParse(_configuration["Jwt:ExpiryDays"], out var days) ? days : 7;
+            return CreateToken(userId, username, fullName, role, branchId, branchName, position, customerSessionType, tableId, customerAuthMethod, TimeSpan.FromDays(expiryDays));
+        }
+
+        public string GenerateDirectGuestToken(Guid branchId, Guid? tableId, TimeSpan lifetime)
+        {
+            if (lifetime <= TimeSpan.Zero || lifetime > TimeSpan.FromHours(2))
+                throw new ArgumentOutOfRangeException(nameof(lifetime));
+
+            return CreateToken(Guid.NewGuid(), "direct-guest", "Khách vãng lai", "customer", branchId,
+                branchName: null, position: null, customerSessionType: "directGuest", tableId: tableId, customerAuthMethod: null, lifetime: lifetime);
+        }
+
+        private string CreateToken(Guid userId, string username, string fullName, string role, Guid? branchId, string? branchName, string? position, string? customerSessionType, Guid? tableId, string? customerAuthMethod, TimeSpan lifetime)
         {
             var secret = GetRequiredSecret();
             var issuer = _configuration["Jwt:Issuer"] ?? "RestaurantPOS";
             var audience = _configuration["Jwt:Audience"] ?? "RestaurantPOS";
-            var expiryDays = int.TryParse(_configuration["Jwt:ExpiryDays"], out var days) ? days : 7;
-
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
@@ -58,6 +71,11 @@ namespace RestaurantPOS.Infrastructure.Services
                 claims.Add(new Claim("customerSessionType", customerSessionType));
             }
 
+            if (!string.IsNullOrEmpty(customerAuthMethod))
+            {
+                claims.Add(new Claim("customerAuthMethod", customerAuthMethod));
+            }
+
             if (tableId.HasValue)
             {
                 claims.Add(new Claim("tableId", tableId.Value.ToString()));
@@ -66,7 +84,7 @@ namespace RestaurantPOS.Infrastructure.Services
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddDays(expiryDays),
+                Expires = DateTime.UtcNow.Add(lifetime),
                 Issuer = issuer,
                 Audience = audience,
                 SigningCredentials = credentials

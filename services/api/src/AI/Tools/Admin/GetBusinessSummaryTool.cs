@@ -100,7 +100,7 @@ namespace RestaurantPOS.AI.Tools.Admin
             }
             catch (Exception ex)
             {
-                return AiToolResult.CreateError($"Lỗi khi lấy tóm tắt kinh doanh: {ex.Message}");
+                return AiToolResult.CreateInternalError(ex);
             }
         }
     }

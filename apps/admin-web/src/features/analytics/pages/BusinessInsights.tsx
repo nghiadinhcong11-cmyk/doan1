@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BellRing, ChevronRight, AlertCircle, AlertTriangle, Info, CheckCircle, Clock, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { API_URL } from '../../../config';
 
@@ -29,6 +30,7 @@ const BusinessInsights: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [filter, setFilter] = useState({ status: '', severity: '' });
+  const [searchParams] = useSearchParams();
 
   const fetchInsights = async () => {
     try {
@@ -79,6 +81,11 @@ const BusinessInsights: React.FC = () => {
       setLoadingDetail(false);
     }
   };
+
+  useEffect(() => {
+    const insightId = searchParams.get('insightId');
+    if (insightId) void fetchDetail(insightId);
+  }, [searchParams]);
 
   const handleMarkRead = async (id: string) => {
     try {

@@ -4,23 +4,29 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const httpsDir = path.resolve(__dirname, '../../.https')
-const keyPath = path.join(httpsDir, 'pos-key.pem')
-const certPath = path.join(httpsDir, 'pos-cert.pem')
-// Do not enable HTTPS merely because a local certificate exists. The API must
-// be started with the matching PFX certificate as well, otherwise the browser
-// page loads over HTTPS while every API request fails at the TLS handshake.
-const https = process.env.VITE_HTTPS === 'true' && fs.existsSync(keyPath) && fs.existsSync(certPath)
-  ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
-  : undefined
+const keyPath = process.env.VITE_HTTPS_KEY_PATH || path.join(httpsDir, 'pos-key.pem')
+const certPath = process.env.VITE_HTTPS_CERT_PATH || path.join(httpsDir, 'pos-cert.pem')
+const lanMode = Boolean(process.env.DOAN_DEV_LAN_HOST)
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    strictPort: true,
-    https,
-    // Hỗ trợ truy cập từ các thiết bị khác trong cùng mạng LAN nếu cần
-    host: true
+export default defineConfig(({ command }) => {
+  const httpsEnabled = command === 'serve' && process.env.VITE_HTTPS !== 'false'
+  const hasCertificate = fs.existsSync(keyPath) && fs.existsSync(certPath)
+
+  if (httpsEnabled && !hasCertificate) {
+    throw new Error(`Admin Web HTTPS certificate is missing: ${certPath}`)
+  }
+
+  return {
+    plugins: [react()],
+    server: {
+      port: 5173,
+      strictPort: true,
+      fs: { allow: [__dirname, path.resolve(__dirname, '../shared')] },
+      https: httpsEnabled ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) } : undefined,
+      // LAN binding is opt-in and is enabled by setup-https.ps1 together with
+      // a certificate whose SAN covers the configured LAN host.
+      host: lanMode ? true : 'localhost'
+    }
   }
 })

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Globalization;
+using RestaurantPOS.Application.Services;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -19,10 +20,12 @@ namespace RestaurantPOS.WebAPI.Controllers
     public class AttendanceController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IDashboardService? _dashboardService;
 
-        public AttendanceController(ApplicationDbContext context)
+        public AttendanceController(ApplicationDbContext context, IDashboardService? dashboardService = null)
         {
             _context = context;
+            _dashboardService = dashboardService;
         }
 
         /// <summary>Lấy danh sách chấm công theo ngày hoặc nhân viên.</summary>
@@ -171,6 +174,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 _context.Attendances.Add(attendance);
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return Ok(attendance);
             }
             catch (Exception ex)
@@ -203,6 +207,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             attendance.CheckOutTime = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            _dashboardService?.InvalidateSummaryCache();
             return Ok(attendance);
         }
 

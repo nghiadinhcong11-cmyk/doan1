@@ -1,15 +1,18 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronDown, User, Phone, Mail, MapPin, Briefcase, Calendar, CreditCard, Facebook, Info, Settings, Clock, DollarSign, Store, Key, UserCheck, ShieldCheck } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { useRef } from 'react';
 import { Feedback, FormField, notifyFeedback } from '../../../components/ui';
 
 interface Employee {
   id?: string;
   employeeCode: string;
+  employeeType: string;
   fullName: string;
   phoneNumber?: string;
   position?: string;
   department?: string;
+  basicSalary: number;
   branchId?: string;
   branchName?: string;
   citizenId?: string;
@@ -38,20 +41,20 @@ const EmployeeManagement = () => {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const userRole = localStorage.getItem('userRole');
+  const ownBranchId = localStorage.getItem('selectedBranchId');
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('active'); // active, inactive, all
   const [filterDept, setFilterDept] = useState('');
   const [filterPos, setFilterPos] = useState('');
-  const [filterBranch, setFilterBranch] = useState('all');
-  const ownBranchId = localStorage.getItem('selectedBranchId');
-
-  useEffect(() => {
-    if (userRole === 'manager' && ownBranchId) {
-       setFilterBranch(ownBranchId);
-    }
-  }, [userRole, ownBranchId]);
+  const [filterBranch, setFilterBranch] = useState(userRole === 'manager' && ownBranchId ? ownBranchId : 'all');
+  const requestGeneration = useRef(0);
+  const abortController = useRef<AbortController | null>(null);
+  const employeeQueryRef = useRef({ searchTerm, filterStatus, filterDept, filterPos, filterBranch });
+  employeeQueryRef.current = { searchTerm, filterStatus, filterDept, filterPos, filterBranch };
+  const searchEffectInitialized = useRef(false);
+  const employeeSearchTimer = useRef<number | null>(null);
 
   // Dropdown lists
   const departments = ['Phòng bàn', 'Bếp', 'Kho', 'Quản lý'];
@@ -70,10 +73,12 @@ const EmployeeManagement = () => {
   // Form State
   const [newEmployee, setNewEmployee] = useState<Employee>({
     employeeCode: '',
+    employeeType: 'FullTime',
     fullName: '',
     phoneNumber: '',
     position: 'Phục vụ',
     department: 'Phòng bàn',
+    basicSalary: 0,
     branchId: '',
     branchName: '',
     citizenId: '',
@@ -98,25 +103,32 @@ const EmployeeManagement = () => {
   };
 
   const fetchEmployees = async () => {
+    const { searchTerm: currentSearch, filterStatus: currentStatus, filterDept: currentDept, filterPos: currentPos, filterBranch: currentBranch } = employeeQueryRef.current;
+    const generation = ++requestGeneration.current;
+    abortController.current?.abort();
+    const controller = new AbortController();
+    abortController.current = controller;
     try {
       setLoading(true);
       let url = `${API_URL}/api/Employee`;
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (filterStatus === 'active') params.append('isActive', 'true');
-      if (filterStatus === 'inactive') params.append('isActive', 'false');
-      if (filterDept) params.append('department', filterDept);
-      if (filterPos) params.append('position', filterPos);
+      if (currentSearch) params.append('search', currentSearch);
+      if (currentStatus === 'active') params.append('isActive', 'true');
+      if (currentStatus === 'inactive') params.append('isActive', 'false');
+      if (currentDept) params.append('department', currentDept);
+      if (currentPos) params.append('position', currentPos);
 
-      const response = await fetch(`${url}${params.toString() ? `?${params.toString()}` : ''}`);
+      const response = await fetch(`${url}${params.toString() ? `?${params.toString()}` : ''}`, { signal: controller.signal });
       const data: Employee[] = await response.json();
 
-      const finalData = filterBranch === 'all' ? data : data.filter(e => e.branchId === filterBranch);
+      if (generation !== requestGeneration.current) return;
+      const finalData = currentBranch === 'all' ? data : data.filter(e => e.branchId === currentBranch);
       setEmployees(finalData);
     } catch (err) {
-      console.error('Error fetching employees:', err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) console.error('Error fetching employees:', err);
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
+      if (abortController.current === controller) abortController.current = null;
     }
   };
 
@@ -125,8 +137,31 @@ const EmployeeManagement = () => {
   }, []);
 
   useEffect(() => {
-    fetchEmployees();
-  }, [filterStatus, filterDept, filterPos, searchTerm, filterBranch]);
+    if (employeeSearchTimer.current !== null) {
+      window.clearTimeout(employeeSearchTimer.current);
+      employeeSearchTimer.current = null;
+    }
+    void fetchEmployees();
+  }, [filterStatus, filterDept, filterPos, filterBranch]);
+
+  useEffect(() => {
+    if (!searchEffectInitialized.current) {
+      searchEffectInitialized.current = true;
+      return;
+    }
+    employeeSearchTimer.current = window.setTimeout(() => {
+      employeeSearchTimer.current = null;
+      void fetchEmployees();
+    }, 350);
+    return () => {
+      if (employeeSearchTimer.current !== null) {
+        window.clearTimeout(employeeSearchTimer.current);
+        employeeSearchTimer.current = null;
+      }
+    };
+  }, [searchTerm]);
+
+  useEffect(() => () => abortController.current?.abort(), []);
 
   const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,10 +205,12 @@ const EmployeeManagement = () => {
   const resetForm = () => {
     setNewEmployee({
       employeeCode: '',
+      employeeType: 'FullTime',
       fullName: '',
       phoneNumber: '',
       position: 'Phục vụ',
       department: 'Phòng bàn',
+      basicSalary: 0,
       branchId: branches.length > 0 ? branches[0].id : '',
       branchName: branches.length > 0 ? branches[0].name : '',
       citizenId: '',
@@ -393,6 +430,8 @@ const EmployeeManagement = () => {
                                        <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Tài khoản</p><p className="font-bold text-blue-600 italic tracking-tight">{e.username || '---'}</p></div>
                                        <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">CMND/CCCD</p><p className="font-bold text-gray-700">{e.citizenId || '---'}</p></div>
                                        <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Ngày vào làm</p><p className="font-bold text-gray-700">{e.startDate ? new Date(e.startDate).toLocaleDateString('vi-VN') : '---'}</p></div>
+                                       <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Loại nhân viên</p><p className="font-bold text-gray-700">{e.employeeType || '---'}</p></div>
+                                       <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Lương cơ bản</p><p className="font-bold text-gray-700">{e.basicSalary.toLocaleString('vi-VN')}</p></div>
                                     </div>
                                  </div>
                               </div>
@@ -470,6 +509,16 @@ const EmployeeManagement = () => {
                        <select className="w-full py-2 outline-none bg-transparent font-black text-gray-700" value={newEmployee.position} onChange={ev => setNewEmployee({...newEmployee, position: ev.target.value})}>
                           {positions.map(p => <option key={p} value={p}>{p}</option>)}
                        </select>
+                    </div>
+
+                    <div className="border-b-2 border-gray-100 focus-within:border-blue-500 transition-all pb-1">
+                       <label className="block text-[10px] text-gray-400 font-black uppercase tracking-widest">Loại nhân viên</label>
+                       <input type="text" className="w-full py-2 outline-none font-bold text-gray-700 bg-transparent" value={newEmployee.employeeType} onChange={ev => setNewEmployee({...newEmployee, employeeType: ev.target.value})}/>
+                    </div>
+
+                    <div className="border-b-2 border-gray-100 focus-within:border-blue-500 transition-all pb-1">
+                       <label className="block text-[10px] text-gray-400 font-black uppercase tracking-widest">Lương cơ bản</label>
+                       <input type="number" className="w-full py-2 outline-none font-bold text-gray-700 bg-transparent" value={newEmployee.basicSalary} onChange={ev => setNewEmployee({...newEmployee, basicSalary: Number(ev.target.value)})}/>
                     </div>
 
                     <div className="border-b-2 border-gray-100 focus-within:border-blue-500 transition-all pb-1">

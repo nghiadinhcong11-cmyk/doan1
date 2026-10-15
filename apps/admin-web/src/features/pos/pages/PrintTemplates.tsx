@@ -68,32 +68,16 @@ const PrintTemplates = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-48px)] bg-[#f0f2f5] text-[13px] font-sans">
-      <div className="w-64 bg-white border-r p-6 space-y-8 shadow-sm">
-        <h2 className="font-black text-xl text-gray-800 uppercase tracking-tighter italic flex items-center">
-           <Printer className="mr-2 text-blue-600" size={24}/> Mẫu in
-        </h2>
-        <div className="space-y-4">
-           <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Phân loại mẫu</p>
-              <div className="space-y-1">
-                 {['Tất cả', 'Hóa đơn khách', 'Nhập kho'].map(cat => (
-                   <button
-                     key={cat}
-                     onClick={() => setFilterType(cat)}
-                     className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${filterType === cat ? 'bg-white shadow-md text-blue-600' : 'text-gray-500 hover:bg-white/50'}`}
-                   >
-                     {cat}
-                   </button>
-                 ))}
-              </div>
-           </div>
+    <div className="flex min-h-full flex-col bg-[#f0f2f5] text-[13px] font-sans">
+      <div className="flex flex-col gap-3 border-b bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 className="mr-3 flex items-center text-xl font-black uppercase tracking-tighter text-gray-800 italic"><Printer className="mr-2 text-blue-600" size={22}/> Mẫu in</h1>
+          {['Tất cả', 'Hóa đơn khách', 'Nhập kho'].map(cat => (
+            <button key={cat} onClick={() => setFilterType(cat)} className={`rounded-lg px-3 py-2 text-xs font-bold transition-all ${filterType === cat ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{cat}</button>
+          ))}
         </div>
-      </div>
-
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="bg-white p-3 flex justify-between items-center border-b shadow-sm">
-          <div className="relative w-80">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <input
               type="text"
@@ -103,12 +87,13 @@ const PrintTemplates = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <button onClick={handleAdd} className="bg-[#0070f4] text-white px-6 py-2 rounded-xl flex items-center text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+          <button onClick={handleAdd} className="bg-[#0070f4] text-white px-6 py-2 rounded-xl flex items-center justify-center text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95">
             <Plus size={16} className="mr-2" /> Thêm mẫu mới
           </button>
         </div>
+      </div>
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-auto">
+      <div className="grid flex-1 grid-cols-1 gap-6 overflow-auto p-6 md:grid-cols-2 xl:grid-cols-3">
           {filteredTemplates.length === 0 ? (
             <div className="col-span-full py-20 text-center">
               <FileText size={48} className="mx-auto text-gray-200 mb-4" />
@@ -166,7 +151,6 @@ const PrintTemplates = () => {
               </div>
             ))
           )}
-        </div>
       </div>
 
       {/* PREVIEW MODAL */}

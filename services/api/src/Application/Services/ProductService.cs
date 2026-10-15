@@ -27,20 +27,62 @@ namespace RestaurantPOS.Application.Services
             return await query.OrderBy(p => p.Name).ToListAsync();
         }
 
+        public async Task<List<Product>> FindProductsByExactNameAsync(string productName)
+        {
+            var normalizedName = productName?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedName))
+                return new List<Product>();
+
+            return await _context.Products
+                .AsNoTracking()
+                .Where(p => p.Name != null && p.Name.Trim().ToLower() == normalizedName)
+                .OrderBy(p => p.Id)
+                .ToListAsync();
+        }
+
         public async Task<(bool Success, string Message, decimal OldPrice, decimal NewPrice)> UpdatePriceByNameAsync(string productName, decimal newPrice)
         {
             if (newPrice <= 0)
                 return (false, "Giá mới phải lớn hơn 0.", 0, 0);
 
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Name != null && p.Name.Contains(productName));
-            if (product == null)
+            var matches = await FindProductsByExactNameAsync(productName);
+            if (matches.Count == 0)
                 return (false, $"Không tìm thấy sản phẩm '{productName}'.", 0, 0);
+            if (matches.Count > 1)
+                return (false, $"Tên sản phẩm '{productName}' không duy nhất; vui lòng chỉ rõ sản phẩm.", 0, 0);
 
-            var oldPrice = product.Price;
-            product.Price = newPrice;
-            await _context.SaveChangesAsync();
+            var product = matches[0];
+            return await UpdatePriceByIdAsync(product.Id, product.Price, newPrice);
+        }
 
-            return (true, $"Đã cập nhật giá món '{product.Name}' từ {oldPrice:N0}đ thành {newPrice:N0}đ.", oldPrice, newPrice);
+        public async Task<(bool Success, string Message, decimal OldPrice, decimal NewPrice)> UpdatePriceByIdAsync(
+            Guid productId,
+            decimal expectedCurrentPrice,
+            decimal newPrice)
+        {
+            if (newPrice <= 0)
+                return (false, "Giá mới phải lớn hơn 0.", 0, 0);
+
+            var product = await _context.Products
+                .AsNoTracking()
+                .Where(p => p.Id == productId)
+                .Select(p => new { p.Name, p.Price })
+                .SingleOrDefaultAsync();
+
+            if (product == null)
+                return (false, "Không tìm thấy sản phẩm cần cập nhật.", 0, 0);
+
+            if (product.Price != expectedCurrentPrice)
+                return (false, "Giá hiện tại đã thay đổi; cần xác nhận lại thao tác.", product.Price, newPrice);
+
+            var affectedRows = await _context.Products
+                .Where(p => p.Id == productId && p.Price == expectedCurrentPrice)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(p => p.Price, newPrice));
+
+            if (affectedRows != 1)
+                return (false, "Giá hiện tại đã thay đổi; cần xác nhận lại thao tác.", product.Price, newPrice);
+
+            return (true, $"Đã cập nhật giá món '{product.Name}' từ {expectedCurrentPrice:N0}đ thành {newPrice:N0}đ.", expectedCurrentPrice, newPrice);
         }
     }
 }

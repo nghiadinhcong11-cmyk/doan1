@@ -42,7 +42,7 @@ namespace RestaurantPOS.AI.Tools.Employee
             }
             catch (Exception ex)
             {
-                return AiToolResult.CreateError($"Lỗi khi lấy ca làm việc: {ex.Message}");
+                return AiToolResult.CreateInternalError(ex);
             }
         }
     }

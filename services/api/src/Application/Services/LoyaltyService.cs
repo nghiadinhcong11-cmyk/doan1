@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
 
@@ -13,11 +14,13 @@ namespace RestaurantPOS.Application.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly ISystemSettingService _settingService;
+        private readonly ILogger<LoyaltyService> _logger;
 
-        public LoyaltyService(ApplicationDbContext context, ISystemSettingService settingService)
+        public LoyaltyService(ApplicationDbContext context, ISystemSettingService settingService, ILogger<LoyaltyService>? logger = null)
         {
             _context = context;
             _settingService = settingService;
+            _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<LoyaltyService>.Instance;
         }
 
         public async Task<LoyaltyTransaction?> EarnPointsAsync(Guid orderId)
@@ -30,15 +33,54 @@ namespace RestaurantPOS.Application.Services
                     : null;
 
                 var order = await _context.Orders
+                    .AsNoTracking()
                     .FirstOrDefaultAsync(o => o.Id == orderId);
 
-                if (order == null || order.CustomerId == null || (order.Status != "Hoàn thành" && order.Status != "Completed"))
+                var customerIsActive = order?.CustomerId is Guid customerId
+                    ? await _context.Customers.AsNoTracking().Where(c => c.Id == customerId).Select(c => (bool?)c.IsActive).FirstOrDefaultAsync()
+                    : null;
+                var alreadyEarned = await _context.LoyaltyTransactions
+                    .AnyAsync(t => t.OrderId == orderId && t.Type == "Earn");
+
+                _logger.LogInformation(
+                    "Loyalty earn trace: order {OrderId} hasCustomerId={HasCustomerId}, totalAmount={TotalAmount}, paidAmount={PaidAmount}, status={Status}, customerIsActive={CustomerIsActive}, alreadyEarned={AlreadyEarned}",
+                    orderId, order?.CustomerId.HasValue ?? false, order?.TotalAmount, order?.PaidAmount,
+                    order?.Status, customerIsActive, alreadyEarned);
+
+                // Loyalty is earned only after the persisted order is fully paid.
+                // A status transition alone must never award points for an unpaid order.
+                if (order == null)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: order not found", orderId);
                     return null;
+                }
+                if (order.CustomerId == null)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: no customer linked", orderId);
+                    return null;
+                }
+                if (order.TotalAmount <= 0)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: total amount is not positive", orderId);
+                    return null;
+                }
+                if (order.PaidAmount < order.TotalAmount)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: payment is incomplete", orderId);
+                    return null;
+                }
+                if (order.Status != "Hoàn thành" && order.Status != "Completed")
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: status is not completed", orderId);
+                    return null;
+                }
 
                 // Idempotency check: Already earned for this order?
-                var existing = await _context.LoyaltyTransactions
-                    .AnyAsync(t => t.OrderId == orderId && t.Type == "Earn");
-                if (existing) return null;
+                if (alreadyEarned)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: Earn transaction already exists", orderId);
+                    return null;
+                }
 
                 var settings = await _settingService.GetSettingsAsync(order.BranchId);
 
@@ -47,7 +89,14 @@ namespace RestaurantPOS.Application.Services
                 if (pointsPerAmount <= 0) pointsPerAmount = 10000;
 
                 int pointsToEarn = (int)(order.TotalAmount / pointsPerAmount);
-                if (pointsToEarn <= 0) return null;
+                _logger.LogInformation(
+                    "Loyalty earn calculation: order {OrderId} pointsPerAmount={PointsPerAmount}, pointsToEarn={PointsToEarn}",
+                    orderId, pointsPerAmount, pointsToEarn);
+                if (pointsToEarn <= 0)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: calculated points are zero", orderId);
+                    return null;
+                }
 
                 // Atomic update to avoid race conditions
                 var affected = await _context.Customers
@@ -59,14 +108,30 @@ namespace RestaurantPOS.Application.Services
                         .SetProperty(c => c.LastOrderDate, DateTime.UtcNow)
                         .SetProperty(c => c.UpdatedAt, DateTime.UtcNow));
 
-                if (affected == 0) return null;
+                if (affected == 0)
+                {
+                    _logger.LogInformation("Loyalty earn skipped for order {OrderId}: customer missing or inactive", orderId);
+                    return null;
+                }
+
+                // ExecuteUpdateAsync bypasses EF's identity map. Detach a previously
+                // tracked Customer so later reads in this transaction cannot return
+                // a stale balance or overwrite the atomic database update.
+                var trackedCustomer = _context.ChangeTracker.Entries<Customer>()
+                    .FirstOrDefault(entry => entry.Entity.Id == order.CustomerId.Value);
+                if (trackedCustomer != null)
+                    trackedCustomer.State = EntityState.Detached;
 
                 // Re-fetch for balance calculation in transaction record and group update
-                var customer = await _context.Customers.FindAsync(order.CustomerId.Value);
+                var customer = await _context.Customers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Id == order.CustomerId.Value);
                 if (customer != null)
                 {
                     UpdateCustomerGroup(customer);
-                    await _context.SaveChangesAsync();
+                    await _context.Customers
+                        .Where(c => c.Id == customer.Id)
+                        .ExecuteUpdateAsync(s => s.SetProperty(c => c.CustomerGroup, customer.CustomerGroup));
                 }
 
                 var loyaltyTx = new LoyaltyTransaction
@@ -83,6 +148,10 @@ namespace RestaurantPOS.Application.Services
 
                 _context.LoyaltyTransactions.Add(loyaltyTx);
                 await _context.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Loyalty earn persisted for order {OrderId}: customerUpdateRows={AffectedRows}, transactionPoints={Points}, balanceAfter={BalanceAfter}",
+                    orderId, affected, loyaltyTx.Points, loyaltyTx.BalanceAfter);
 
                 if (transaction != null) await transaction.CommitAsync();
 

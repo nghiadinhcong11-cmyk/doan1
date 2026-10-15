@@ -4,14 +4,18 @@ using System.Threading.Tasks;
 
 namespace RestaurantPOS.Application.Services
 {
-    public interface IDashboardService
+    public interface IDashboardCacheInvalidator
+    {
+        void InvalidateSummaryCache();
+    }
+
+    public interface IDashboardService : IDashboardCacheInvalidator
     {
         Task<object> GetSummaryAsync(string? branchId);
         Task<decimal> GetRevenueByPeriodAsync(string period, Guid? branchId = null);
         Task<List<TopProductDto>> GetBestSellersAsync(DateTime startUtc, DateTime endUtc, Guid? branchId, int limit);
         Task<(decimal Revenue, int OrderCount)> GetRevenueReportAsync(DateTime startUtc, DateTime endUtc, Guid? branchId);
         Task<BusinessSummaryDto> GetBusinessSummaryAsync(DateTime startUtc, DateTime endUtc, Guid? branchId);
-        void InvalidateSummaryCache();
     }
 
     public class BusinessSummaryDto
@@ -39,5 +43,18 @@ namespace RestaurantPOS.Application.Services
         public string ProductName { get; set; } = string.Empty;
         public int TotalQuantity { get; set; }
         public decimal TotalRevenue { get; set; }
+    }
+
+    public sealed class BranchDashboardMetricDto
+    {
+        public string Name { get; init; } = string.Empty;
+        public decimal Revenue { get; init; }
+        public int OrderCount { get; init; }
+        public decimal Expenses { get; init; }
+        public decimal CostOfGoodsSold { get; init; }
+        public decimal EstimatedProfit { get; init; }
+
+        // Kept for the existing dashboard chart contract.
+        public decimal Value => Revenue;
     }
 }

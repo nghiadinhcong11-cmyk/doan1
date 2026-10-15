@@ -1,16 +1,97 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, LogOut, Package, Star, TrendingUp, ChevronRight, Clock, MapPin, Loader2, X, Edit3, Save, CheckCircle2, Calendar, Users, LayoutGrid } from 'lucide-react';
 import { API_URL } from '../config';
 import { Button, Feedback, FormField } from '../components/ui';
+import ReceiptPreview, { ReceiptSettingsModel } from '../../../shared/ReceiptPreview';
+
+interface CustomerOrderDetail {
+  id: string;
+  invoiceCode?: string;
+  branchId?: string;
+  branchName?: string;
+  tableName?: string | null;
+  createdAt: string;
+  paymentAt?: string | null;
+  status?: string | null;
+  paymentMethod?: string | null;
+  totalAmount: number;
+  paidAmount?: number | null;
+  subTotal?: number | null;
+  discount?: number | null;
+  serviceFeeAmount?: number | null;
+  serviceFeePercent?: number | null;
+  vatAmount?: number | null;
+  vatPercent?: number | null;
+  note?: string | null;
+  details?: Array<{ productName?: string; quantity: number; unitPrice: number; options?: string | null }>;
+}
 
 const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
   const [customer, setCustomer] = useState<any>(null);
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<CustomerOrderDetail[]>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; imageUrl?: string }>>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [loyaltyHistory, setLoyaltyHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [selectedOrder, setSelectedOrder] = useState<CustomerOrderDetail | null>(null);
+  const [orderDetail, setOrderDetail] = useState<CustomerOrderDetail | null>(null);
+  const [orderDetailLoading, setOrderDetailLoading] = useState(false);
+  const [orderDetailError, setOrderDetailError] = useState('');
+  const orderDetailRequest = useRef(0);
   const [selectedReservation, setSelectedReservation] = useState<any>(null);
+  const receiptSettings: ReceiptSettingsModel = { paperWidth: 80, showLogo: true, showAddress: true, showPhone: true, showStaff: true, showPaymentMethod: true, showOrderNote: true, showThankYou: true, thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!', fontSize: 11 };
+
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [selectedOrder]);
+
+  useEffect(() => {
+    if (!selectedOrder) {
+      setOrderDetail(null);
+      setOrderDetailError('');
+      return;
+    }
+
+    const requestId = ++orderDetailRequest.current;
+    const controller = new AbortController();
+    setOrderDetail(null);
+    setOrderDetailError('');
+    setOrderDetailLoading(true);
+
+    const token = localStorage.getItem('customerToken');
+    fetch(`${API_URL}/api/Order/${encodeURIComponent(selectedOrder.id)}`, {
+      signal: controller.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error(response.status === 403 ? 'Bạn không có quyền xem đơn hàng này.' : 'Không thể tải chi tiết đơn hàng.');
+        return response.json() as Promise<CustomerOrderDetail>;
+      })
+      .then(data => {
+        if (requestId === orderDetailRequest.current && data.id === selectedOrder.id) setOrderDetail(data);
+      })
+      .catch(error => {
+        if (error?.name !== 'AbortError' && requestId === orderDetailRequest.current) setOrderDetailError(error?.message || 'Không thể tải chi tiết đơn hàng.');
+      })
+      .finally(() => {
+        if (requestId === orderDetailRequest.current) setOrderDetailLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [selectedOrder]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/Branch`)
+      .then(response => response.ok ? response.json() : [])
+      .then(data => setBranches(Array.isArray(data) ? data.map((branch: { id?: string; Id?: string; imageUrl?: string; ImageUrl?: string }) => ({
+        id: String(branch.id ?? branch.Id ?? ''),
+        imageUrl: branch.imageUrl ?? branch.ImageUrl
+      })).filter(branch => branch.id) : []))
+      .catch(() => setBranches([]));
+  }, []);
 
   // States cho việc mở rộng/thu hẹp danh sách
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
@@ -130,8 +211,9 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
       const response = await fetch(`${API_URL}/api/Order?customerPhone=${encodeURIComponent(phone)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
+      if (!response.ok) throw new Error('Không thể tải lịch sử đơn hàng.');
       const data = await response.json();
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     }
@@ -483,91 +565,40 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
 
       {/* ORDER DETAILS MODAL */}
       {selectedOrder && (
-        <div className="fixed inset-0 bg-black/80 z-[200] flex items-end justify-center animate-in fade-in duration-300 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-lg rounded-t-[3rem] p-8 pb-12 shadow-2xl animate-in slide-in-from-bottom-20 duration-500 max-h-[90vh] overflow-y-auto no-scrollbar">
+        <div className="customer-order-dialog-overlay fixed inset-0 z-[250] flex items-end justify-center bg-black/60 p-2 backdrop-blur-sm animate-in fade-in duration-300 sm:items-center sm:p-6" onClick={() => setSelectedOrder(null)}>
+           <div id="invoice-print" data-paper-width="80" className="customer-order-dialog max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[2rem] bg-white p-4 pb-6 shadow-2xl animate-in slide-in-from-bottom-20 duration-300 sm:max-h-[calc(100dvh-3rem)] sm:rounded-[2.5rem] sm:p-8 sm:pb-10" onClick={event => event.stopPropagation()}>
               <div className="flex justify-between items-start mb-8">
                  <div>
                     <h3 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">Chi tiết đơn hàng</h3>
                     <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mt-1">{selectedOrder.invoiceCode}</p>
                  </div>
-                 <button onClick={() => setSelectedOrder(null)} className="bg-gray-100 p-3 rounded-full hover:bg-gray-200 transition-all text-gray-400 hover:text-gray-800"><X size={24}/></button>
+                 <button onClick={() => setSelectedOrder(null)} className="print-hide bg-gray-100 p-3 rounded-full hover:bg-gray-200 transition-all text-gray-400 hover:text-gray-800"><X size={24}/></button>
               </div>
 
-              <div className="space-y-6">
-                 {/* Thông tin phục vụ */}
-                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                       <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Thời gian đặt</p>
-                       <div className="flex items-center text-xs font-bold text-gray-700">
-                          <Clock size={12} className="mr-1.5 text-blue-500" />
-                          {new Date(selectedOrder.createdAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})} - {new Date(selectedOrder.createdAt).toLocaleDateString('vi-VN')}
-                       </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                       <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Địa điểm</p>
-                       <div className="flex items-center text-xs font-bold text-gray-700">
-                          <MapPin size={12} className="mr-1.5 text-red-500" />
-                          <span className="truncate">{selectedOrder.branchName || 'Tổng hệ thống'}</span>
-                       </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 col-span-2">
-                       <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Nhân viên phục vụ</p>
-                       <div className="flex items-center text-xs font-bold text-gray-700">
-                          <User size={12} className="mr-1.5 text-green-500" />
-                          {selectedOrder.createdBy || 'Hệ thống tự động'}
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="bg-gray-50 rounded-[2rem] p-6 space-y-4">
-                    {selectedOrder.details?.map((item: any, i: number) => (
-                       <div key={i} className="flex justify-between items-center">
-                          <div className="flex items-center space-x-3">
-                             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-[10px] font-black text-gray-400 border border-gray-100">
-                                {item.quantity}x
-                             </div>
-                             <p className="text-sm font-bold text-gray-700 capitalize">{item.productName}</p>
-                          </div>
-                          <p className="text-sm font-black text-gray-800">{(item.unitPrice * item.quantity).toLocaleString()}đ</p>
-                       </div>
-                    ))}
-                 </div>
-
-                 <div className="px-4 space-y-3">
-                    <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
-                       <span>Tổng tiền món</span>
-                        <span>{(selectedOrder.subTotal ?? selectedOrder.totalAmount).toLocaleString()}đ</span>
-                     </div>
-                     {selectedOrder.serviceFeeAmount != null && selectedOrder.serviceFeeAmount > 0 && (
-                       <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
-                         <span>Phí phục vụ ({selectedOrder.serviceFeePercent || 0}%)</span>
-                         <span>{selectedOrder.serviceFeeAmount.toLocaleString()}đ</span>
-                       </div>
-                     )}
-                     {selectedOrder.vatAmount != null && selectedOrder.vatAmount > 0 && (
-                       <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest">
-                         <span>VAT ({selectedOrder.vatPercent || 0}%)</span>
-                         <span>{selectedOrder.vatAmount.toLocaleString()}đ</span>
-                       </div>
-                     )}
-                    <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest border-b pb-3">
-                       <span>Giảm giá</span>
-                       <span className="text-red-500">-{(selectedOrder.discount || 0).toLocaleString()}đ</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2">
-                       <span className="text-lg font-black text-gray-800 uppercase italic tracking-tighter">Thanh toán</span>
-                        <span className="text-2xl font-black text-blue-700 tracking-tighter">{selectedOrder.totalAmount.toLocaleString()}đ</span>
-                    </div>
-                 </div>
-
-                 <div className="bg-blue-50 rounded-2xl p-4 flex items-center space-x-3">
-                    <div className="bg-blue-600 text-white p-2 rounded-xl"><Star size={16} className="fill-white" /></div>
-                    <div>
-                       <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Điểm nhận được</p>
-                       <p className="text-xs font-bold text-blue-600">+{(selectedOrder.totalAmount / 10000).toLocaleString()} điểm</p>
-                    </div>
-                 </div>
-              </div>
+              {orderDetailLoading && <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400"><Loader2 className="animate-spin text-blue-600" size={32} /><p className="text-xs font-bold uppercase tracking-widest">Đang tải chi tiết...</p></div>}
+              {!orderDetailLoading && orderDetailError && <div className="rounded-2xl bg-red-50 p-5 text-center text-sm font-bold text-red-700">{orderDetailError}</div>}
+              {!orderDetailLoading && !orderDetailError && orderDetail && (
+                <>
+                  <div className="mb-5 grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Thời gian đặt</p><p className="font-bold text-gray-700">{new Date(orderDetail.createdAt).toLocaleString('vi-VN')}</p></div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Thanh toán lúc</p><p className="font-bold text-gray-700">{orderDetail.paymentAt ? new Date(orderDetail.paymentAt).toLocaleString('vi-VN') : 'Chưa có thông tin'}</p></div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Chi nhánh</p><p className="truncate font-bold text-gray-700">{orderDetail.branchName || 'Chưa có thông tin'}</p></div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Phục vụ</p><p className="font-bold text-gray-700">{orderDetail.tableName || 'Mang về'}</p></div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Trạng thái đơn</p><p className="font-bold text-gray-700">{orderDetail.status || 'Chưa có thông tin'}</p></div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Thanh toán</p><p className="font-bold text-gray-700">{orderDetail.paymentMethod || 'Chưa thanh toán'}</p></div>
+                  </div>
+                  <div className="flex justify-center overflow-x-auto">
+                    <ReceiptPreview settings={receiptSettings} branch={{ name: orderDetail.branchName, imageUrl: branches.find(branch => branch.id.toLowerCase() === String(orderDetail.branchId ?? '').toLowerCase())?.imageUrl }} order={orderDetail} />
+                  </div>
+                  {orderDetail.note && <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><span className="font-black">Ghi chú đơn:</span> {orderDetail.note}</p>}
+                  {(() => {
+                    const earned = loyaltyHistory.find(log => log.orderId === orderDetail.id && log.type === 'Earn');
+                    const redeemed = loyaltyHistory.find(log => log.orderId === orderDetail.id && log.type === 'Redeem');
+                    if (!earned && !redeemed) return null;
+                    return <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm text-blue-800"><div className="flex items-center gap-2 font-black"><Star size={16} className="fill-blue-600 text-blue-600" /> Điểm của đơn hàng</div>{earned && <p className="mt-2">Tích được: +{Number(earned.points || 0).toLocaleString('vi-VN')} điểm</p>}{redeemed && <p>Đã sử dụng: {Math.abs(Number(redeemed.points || 0)).toLocaleString('vi-VN')} điểm</p>}</div>;
+                  })()}
+                </>
+              )}
            </div>
         </div>
       )}

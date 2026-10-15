@@ -1,10 +1,15 @@
-const runtimeCustomerHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-const runtimeCustomerProtocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+const runtimeHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+// Derive Development links from the host serving Admin Web. This keeps QR
+// URLs reachable when Admin is opened through the current LAN address.
+const defaultHost = runtimeHost;
+const runtimeCustomerProtocol = import.meta.env.DEV
+  ? 'https:'
+  : (typeof window !== 'undefined' ? window.location.protocol : 'https:');
 const runtimeApiProtocol = import.meta.env.DEV ? 'https:' : runtimeCustomerProtocol;
-// Khi mở frontend trên điện thoại, localhost là điện thoại chứ không phải máy chạy API.
-// Dùng cùng hostname với frontend để hoạt động trong LAN; VITE_API_URL vẫn được ưu tiên khi deploy.
+// Explicit Vite variables remain authoritative for deployments and deliberate
+// hostname overrides.
 export const API_URL = import.meta.env.VITE_API_URL
-  || `${runtimeApiProtocol}//${runtimeCustomerHost}:5000`;
+  || `${runtimeApiProtocol}//${defaultHost}:5000`;
 
 export const CUSTOMER_WEB_URL = import.meta.env.VITE_CUSTOMER_WEB_URL
-  || `${runtimeCustomerProtocol}//${runtimeCustomerHost}:5174`;
+  || `${runtimeCustomerProtocol}//${defaultHost}:5174`;

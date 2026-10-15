@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using RestaurantPOS.AI.Models;
@@ -87,12 +88,24 @@ namespace RestaurantPOS.AI.Tools.Admin
                 if (bestSellers.Count == 0)
                     return AiToolResult.CreateSuccess($"Không có dữ liệu bán hàng trong khoảng thời gian {period}.");
 
-                return AiToolResult.CreateSuccess(JsonSerializer.Serialize(bestSellers));
+                object result = IsFinanciallyPrivilegedRole(userContext.Role)
+                    ? bestSellers
+                    : bestSellers.Select(product => new
+                    {
+                        product.ProductName,
+                        product.TotalQuantity
+                    });
+
+                return AiToolResult.CreateSuccess(JsonSerializer.Serialize(result));
             }
             catch (Exception ex)
             {
-                return AiToolResult.CreateError($"Lỗi khi lấy danh sách bán chạy: {ex.Message}");
+                return AiToolResult.CreateInternalError(ex);
             }
         }
+
+        private static bool IsFinanciallyPrivilegedRole(string role) =>
+            string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "manager", StringComparison.OrdinalIgnoreCase);
     }
 }

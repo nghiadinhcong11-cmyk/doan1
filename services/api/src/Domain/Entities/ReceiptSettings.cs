@@ -6,6 +6,7 @@ public class ReceiptSettings
 {
     public Guid Id { get; set; }
     public Guid? BranchId { get; set; }
+    public Branch? Branch { get; set; }
     public int PaperWidth { get; set; } = 80;
     public bool ShowLogo { get; set; } = true;
     public bool ShowAddress { get; set; } = true;

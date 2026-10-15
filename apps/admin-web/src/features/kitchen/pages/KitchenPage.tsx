@@ -19,8 +19,12 @@ const KitchenPage = () => {
   const [error, setError] = useState('');
   const [products, setProducts] = useState<KitchenProduct[]>([]);
   const lastSyncRef = useRef(0);
+  const activeRequestsInFlightRef = useRef(false);
+  const activeRequestsRefreshQueuedRef = useRef(false);
 
-  const fetchActiveRequests = useCallback(async (silent = false) => {
+  const fetchActiveRequests = useCallback(async (silent = false, isOwnerActive: () => boolean = () => true) => {
+    if (activeRequestsInFlightRef.current) return;
+    activeRequestsInFlightRef.current = true;
     try {
       if (!silent) setRefreshing(true);
       const branchId = localStorage.getItem('selectedBranchId');
@@ -28,16 +32,48 @@ const KitchenPage = () => {
       const response = await fetch(`${API_URL}/api/Order/kitchen/active-requests${query}`);
       if (!response.ok) throw new Error('Không thể tải danh sách bếp.');
       const data: OrderRequest[] = await response.json();
+      if (!isOwnerActive()) return;
       setRequests(data); setError(''); lastSyncRef.current = Date.now();
-    } catch (err) { console.error('Kitchen sync failed:', err); setError('Chưa đồng bộ được dữ liệu. Hãy thử làm mới lại.'); }
-    finally { setLoading(false); setRefreshing(false); }
+    } catch (err) {
+      if (isOwnerActive()) {
+        console.error('Kitchen sync failed:', err);
+        setError('Chưa đồng bộ được dữ liệu. Hãy thử làm mới lại.');
+      }
+    }
+    finally {
+      if (isOwnerActive()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      activeRequestsInFlightRef.current = false;
+    }
   }, []);
 
-  const fetchProducts = useCallback(async () => {
+  const requestActiveRequestsRefresh = useCallback((silent = true, allowTrailing = false, isOwnerActive: () => boolean = () => true) => {
+    if (activeRequestsInFlightRef.current) {
+      if (allowTrailing) activeRequestsRefreshQueuedRef.current = true;
+      return;
+    }
+    void fetchActiveRequests(silent, isOwnerActive).finally(() => {
+      if (activeRequestsRefreshQueuedRef.current && isOwnerActive() && document.visibilityState === 'visible') {
+        activeRequestsRefreshQueuedRef.current = false;
+        requestActiveRequestsRefresh(silent, true, isOwnerActive);
+      } else {
+        activeRequestsRefreshQueuedRef.current = false;
+      }
+    });
+  }, [fetchActiveRequests]);
+
+  const fetchProducts = useCallback(async (isOwnerActive: () => boolean = () => true) => {
     try {
       const response = await fetch(`${API_URL}/api/Product?isActive=true`);
-      if (response.ok) setProducts(await response.json());
-    } catch (err) { console.error('Product availability sync failed:', err); }
+      if (response.ok) {
+        const data = await response.json();
+        if (isOwnerActive()) setProducts(data);
+      }
+    } catch (err) {
+      if (isOwnerActive()) console.error('Product availability sync failed:', err);
+    }
   }, []);
 
   const updateAvailability = async (product: KitchenProduct, status: string) => {
@@ -56,22 +92,50 @@ const KitchenPage = () => {
       .withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' })
       .withAutomaticReconnect([0, 2000, 5000, 10000]).build();
     const onNew = (payload: OrderRequest) => {
+      if (disposed) return;
       if (!payload?.id || !ACTIVE_STATUSES.includes(payload.status)) return;
       setRequests(prev => prev.some(item => item.id === payload.id) ? prev.map(item => item.id === payload.id ? { ...item, ...payload } : item) : [...prev, payload]);
       void new Audio('/kitchen-order.mp3').play().catch(() => undefined);
     };
-    const onStatus = ({ id, status }: { id: string; status: RequestStatus }) => setRequests(prev => ACTIVE_STATUSES.includes(status) ? prev.map(item => item.id === id ? { ...item, status } : item) : prev.filter(item => item.id !== id));
+    const onStatus = ({ id, status }: { id: string; status: RequestStatus }) => {
+      if (disposed) return;
+      setRequests(prev => ACTIVE_STATUSES.includes(status) ? prev.map(item => item.id === id ? { ...item, status } : item) : prev.filter(item => item.id !== id));
+    };
     connection.on('NewOrderRequest', onNew); connection.on('RequestStatusUpdated', onStatus);
-    connection.onreconnecting(() => setConnected(false));
-    connection.onreconnected(() => { setConnected(true); void fetchActiveRequests(true); });
-    connection.onclose(() => setConnected(false));
-    void fetchActiveRequests();
-    void fetchProducts();
-    void connection.start().then(() => { if (!disposed) setConnected(true); }).catch(err => { console.error('Kitchen hub failed:', err); if (!disposed) setError('Realtime đang chờ khôi phục. Dữ liệu vẫn tự đồng bộ.'); });
+    connection.onreconnecting(() => { if (!disposed) setConnected(false); });
+    connection.onreconnected(() => { if (!disposed) { setConnected(true); requestActiveRequestsRefresh(true, true, () => !disposed); } });
+    connection.onclose(() => { if (!disposed) setConnected(false); });
+    void fetchActiveRequests(false, () => !disposed);
+    void fetchProducts(() => !disposed);
+    void connection.start().then(() => {
+      if (!disposed) setConnected(true);
+    }).catch(err => {
+      if (!disposed) {
+        console.error('Kitchen hub failed:', err);
+        setError('Realtime đang chờ khôi phục. Dữ liệu vẫn tự đồng bộ.');
+      }
+    });
     // Bù các sự kiện SignalR bị lỡ trong lúc mất mạng/reconnect.
-    const poll = window.setInterval(() => void fetchActiveRequests(true), 8000);
-    return () => { disposed = true; window.clearInterval(poll); connection.off('NewOrderRequest', onNew); connection.off('RequestStatusUpdated', onStatus); void connection.stop(); };
-  }, [fetchActiveRequests, fetchProducts]);
+    const refreshIfVisible = () => {
+      if (!disposed && document.visibilityState === 'visible') requestActiveRequestsRefresh(true, true, () => !disposed);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshIfVisible();
+    };
+    const poll = window.setInterval(() => {
+      if (!disposed && document.visibilityState === 'visible') requestActiveRequestsRefresh(true, false, () => !disposed);
+    }, 10000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      disposed = true;
+      window.clearInterval(poll);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      activeRequestsRefreshQueuedRef.current = false;
+      connection.off('NewOrderRequest', onNew);
+      connection.off('RequestStatusUpdated', onStatus);
+      void connection.stop().catch(err => console.warn('Kitchen hub cleanup failed.', err));
+    };
+  }, [fetchActiveRequests, fetchProducts, requestActiveRequestsRefresh]);
 
   const updateStatus = async (request: OrderRequest, status: RequestStatus) => {
     if (busyIds.has(request.id)) return;

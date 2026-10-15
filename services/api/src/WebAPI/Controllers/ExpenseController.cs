@@ -1,10 +1,12 @@
 using System;
 using System.Linq;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RestaurantPOS.Application.Common.Expenses;
 using RestaurantPOS.Application.DTOs.Expenses;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Domain.Entities;
@@ -18,6 +20,7 @@ namespace RestaurantPOS.WebAPI.Controllers;
 [Authorize(Roles = "admin,manager")]
 public class ExpenseController : ControllerBase
 {
+    private const string IdempotencyHeader = "Idempotency-Key";
     private static readonly string[] Categories = { "Nguyên liệu", "Bao bì", "Điện nước", "Vệ sinh", "Gas", "Vận hành", "Khác" };
     private readonly ApplicationDbContext _context;
     private readonly IDashboardService _dashboardService;
@@ -39,9 +42,10 @@ public class ExpenseController : ControllerBase
         if (fromDate.HasValue) query = query.Where(e => e.ExpenseDate >= fromDate.Value);
         if (toDate.HasValue) query = query.Where(e => e.ExpenseDate <= toDate.Value);
         var total = await query.CountAsync();
+        var totalAmount = await query.Select(e => (decimal?)e.Amount).SumAsync() ?? 0m;
         var items = await query.OrderByDescending(e => e.ExpenseDate).ThenByDescending(e => e.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
-        return Ok(new { items, total, page, pageSize, totalAmount = items.Sum(e => e.Amount) });
+        return Ok(new { items, total, page, pageSize, totalAmount });
     }
 
     [HttpPost]
@@ -50,11 +54,79 @@ public class ExpenseController : ControllerBase
         var validation = await ValidateRequest(request);
         if (validation != null) return validation;
         if (!HasBranchAccess(request.BranchId)) return Forbid();
-        var expense = new Expense { Id = Guid.NewGuid(), BranchId = request.BranchId, Category = request.Category!.Trim(),
-            Description = request.Description!.Trim(), Amount = request.Amount, ExpenseDate = NormalizeDate(request.ExpenseDate),
-            PaymentMethod = request.PaymentMethod?.Trim() ?? ExpensePaymentMethods.Cash, Note = request.Note?.Trim() ?? string.Empty, CreatedBy = CurrentUserId(), CreatedAt = DateTime.UtcNow };
-        _context.Expenses.Add(expense); await _context.SaveChangesAsync(); _dashboardService.InvalidateSummaryCache();
-        return CreatedAtAction(nameof(GetExpenses), new { id = expense.Id }, expense);
+        if (!Request.Headers.TryGetValue(IdempotencyHeader, out var headerValues) || headerValues.Count != 1)
+            return BadRequest("Idempotency-Key is required.");
+        if (!ExpenseIdempotencyKeyValidator.TryValidate(headerValues[0], out var keyError))
+            return BadRequest(keyError);
+
+        var userId = CurrentUserId();
+        if (!userId.HasValue) return Unauthorized();
+
+        var category = request.Category!.Trim();
+        var description = request.Description!.Trim();
+        var expenseDate = NormalizeDate(request.ExpenseDate);
+        var paymentMethod = request.PaymentMethod?.Trim() ?? ExpensePaymentMethods.Cash;
+        var note = request.Note?.Trim() ?? string.Empty;
+        var payloadHash = ManualExpenseOperationCanonicalizer.ComputeHash(new ManualExpenseOperationRequest(
+            request.BranchId, userId.Value, category, description, request.Amount, expenseDate, paymentMethod, note));
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var committedByThisCall = false;
+        var result = await strategy.ExecuteAsync(async () =>
+        {
+            // A retry must not reuse entities from a previous failed attempt.
+            _context.ChangeTracker.Clear();
+
+            var existing = await FindIdempotencyRecordAsync(request.BranchId, userId.Value, headerValues[0]!);
+            if (existing is not null) return await ReplayOrConflict(existing, payloadHash);
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            existing = await FindIdempotencyRecordAsync(request.BranchId, userId.Value, headerValues[0]!);
+            if (existing is not null) return await ReplayOrConflict(existing, payloadHash);
+
+            var expense = new Expense
+            {
+                Id = Guid.NewGuid(), BranchId = request.BranchId, Category = category,
+                Description = description, Amount = request.Amount, ExpenseDate = expenseDate,
+                PaymentMethod = paymentMethod, Note = note, CreatedBy = userId, CreatedAt = DateTime.UtcNow
+            };
+            var operation = new ManualExpenseIdempotencyRecord
+            {
+                Id = Guid.NewGuid(), BranchId = request.BranchId, UserId = userId.Value,
+                IdempotencyKey = headerValues[0]!, PayloadHash = payloadHash, ExpenseId = expense.Id,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+            _context.Expenses.Add(expense);
+            _context.ManualExpenseIdempotencyRecords.Add(operation);
+
+            const string savepoint = "manual_expense_idempotency_insert";
+            await transaction.CreateSavepointAsync(savepoint);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                await transaction.RollbackToSavepointAsync(savepoint);
+                _context.Entry(expense).State = EntityState.Detached;
+                _context.Entry(operation).State = EntityState.Detached;
+                existing = await FindIdempotencyRecordAsync(request.BranchId, userId.Value, headerValues[0]!);
+                if (existing is null) throw;
+                return await ReplayOrConflict(existing, payloadHash);
+            }
+
+            operation.ResponseJson = JsonSerializer.Serialize(expense);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+            committedByThisCall = true;
+            return CreatedAtAction(nameof(GetExpenses), new { id = expense.Id }, expense);
+        });
+
+        // A replay after an ambiguous commit is intentionally not treated as a
+        // new mutation, so it must not invalidate the Dashboard cache again.
+        if (committedByThisCall)
+            _dashboardService.InvalidateSummaryCache();
+        return result;
     }
 
     [HttpPut("{id:guid}")]
@@ -93,6 +165,35 @@ public class ExpenseController : ControllerBase
             return BadRequest(new { message = "Invalid category.", allowedCategories = Categories });
         if (!await _context.Branches.AnyAsync(b => b.Id == request.BranchId && b.IsActive)) return BadRequest("Branch is invalid or inactive.");
         return null;
+    }
+
+    private Task<ManualExpenseIdempotencyRecord?> FindIdempotencyRecordAsync(Guid branchId, Guid userId, string key) =>
+        _context.ManualExpenseIdempotencyRecords.AsNoTracking()
+            .SingleOrDefaultAsync(record => record.BranchId == branchId && record.UserId == userId && record.IdempotencyKey == key);
+
+    private async Task<IActionResult> ReplayOrConflict(ManualExpenseIdempotencyRecord record, string payloadHash)
+    {
+        if (!string.Equals(record.PayloadHash, payloadHash, StringComparison.Ordinal))
+            return Conflict(new { code = "IDEMPOTENCY_KEY_PAYLOAD_CONFLICT", message = "Idempotency-Key was already used with a different expense payload." });
+
+        // Keep the operation record after deletion so the key cannot be reused to create a second expense.
+        // A replay whose original expense no longer exists must therefore fail closed.
+        var originalStillExists = await _context.Expenses.AsNoTracking()
+            .AnyAsync(expense => expense.Id == record.ExpenseId && expense.BranchId == record.BranchId);
+        if (!originalStillExists)
+            return Conflict(new { code = "IDEMPOTENCY_RESULT_UNAVAILABLE", message = "The original expense result is unavailable." });
+
+        try
+        {
+            var expense = JsonSerializer.Deserialize<Expense>(record.ResponseJson);
+            if (expense is null || expense.Id != record.ExpenseId)
+                return Conflict(new { code = "IDEMPOTENCY_RESULT_UNAVAILABLE", message = "The original expense result is unavailable." });
+            return CreatedAtAction(nameof(GetExpenses), new { id = expense.Id }, expense);
+        }
+        catch (JsonException)
+        {
+            return Conflict(new { code = "IDEMPOTENCY_RESULT_UNAVAILABLE", message = "The original expense result is unavailable." });
+        }
     }
 
     private bool TryResolveBranch(Guid? requested, out Guid? effective)

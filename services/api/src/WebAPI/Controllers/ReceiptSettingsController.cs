@@ -12,6 +12,12 @@ namespace RestaurantPOS.WebAPI.Controllers;
 [Authorize(Roles = "admin,manager,cashier,employee")]
 public class ReceiptSettingsController : ControllerBase
 {
+    private const long MaxLogoBytes = 2 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedLogoTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png", "image/jpeg", "image/webp"
+    };
+
     private readonly ApplicationDbContext _context;
     public ReceiptSettingsController(ApplicationDbContext context) => _context = context;
 
@@ -24,10 +30,11 @@ public class ReceiptSettingsController : ControllerBase
     }
 
     [HttpPut]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> Put([FromBody] ReceiptSettings input, [FromQuery] Guid? branchId)
     {
         var role = User.FindFirstValue(ClaimTypes.Role);
-        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) && !string.Equals(role, "manager", StringComparison.OrdinalIgnoreCase)) return Forbid();
+        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)) return Forbid();
         if (!TryBranch(branchId, out var effective)) return Forbid();
         var settings = await _context.ReceiptSettings.FirstOrDefaultAsync(x => x.BranchId == effective);
         if (settings == null)
@@ -43,6 +50,57 @@ public class ReceiptSettingsController : ControllerBase
         settings.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         return Ok(settings);
+    }
+
+    [HttpPost("logo")]
+    [Authorize(Roles = "admin")]
+    [RequestSizeLimit(MaxLogoBytes + 1024 * 64)]
+    public async Task<IActionResult> UploadLogo([FromQuery] Guid? branchId, [FromForm] IFormFile? logo)
+    {
+        if (!TryBranch(branchId, out var effective) || !effective.HasValue) return Forbid();
+        if (logo == null || logo.Length == 0) return BadRequest(new { message = "Vui lòng chọn tệp logo." });
+        if (logo.Length > MaxLogoBytes) return BadRequest(new { message = "Logo không được vượt quá 2 MB." });
+        if (!AllowedLogoTypes.Contains(logo.ContentType)) return BadRequest(new { message = "Logo chỉ hỗ trợ PNG, JPG hoặc WebP." });
+
+        await using var stream = logo.OpenReadStream();
+        var bytes = new byte[12];
+        var read = await stream.ReadAsync(bytes.AsMemory(0, bytes.Length));
+        if (!IsSupportedImageSignature(bytes, read, logo.ContentType))
+            return BadRequest(new { message = "Nội dung tệp logo không hợp lệ." });
+
+        var branch = await _context.Branches.FirstOrDefaultAsync(x => x.Id == effective.Value);
+        if (branch == null) return NotFound();
+
+        stream.Position = 0;
+        await using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        branch.ImageUrl = $"data:{logo.ContentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
+        await _context.SaveChangesAsync();
+        return Ok(new { branchId = branch.Id, logoUrl = branch.ImageUrl });
+    }
+
+    [HttpDelete("logo")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> DeleteLogo([FromQuery] Guid? branchId)
+    {
+        if (!TryBranch(branchId, out var effective) || !effective.HasValue) return Forbid();
+        var branch = await _context.Branches.FirstOrDefaultAsync(x => x.Id == effective.Value);
+        if (branch == null) return NotFound();
+        branch.ImageUrl = null;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    private static bool IsSupportedImageSignature(byte[] bytes, int length, string contentType)
+    {
+        if (contentType.Equals("image/png", StringComparison.OrdinalIgnoreCase))
+            return length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+        if (contentType.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase))
+            return length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+        return contentType.Equals("image/webp", StringComparison.OrdinalIgnoreCase)
+            && length >= 12
+            && System.Text.Encoding.ASCII.GetString(bytes, 0, 4) == "RIFF"
+            && System.Text.Encoding.ASCII.GetString(bytes, 8, 4) == "WEBP";
     }
 
     private bool TryBranch(Guid? requested, out Guid? effective)

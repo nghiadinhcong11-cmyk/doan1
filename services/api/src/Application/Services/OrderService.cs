@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using RestaurantPOS.Application.Common.Orders;
 using RestaurantPOS.Application.DTOs.Orders;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
@@ -16,12 +17,18 @@ namespace RestaurantPOS.Application.Services
         private readonly ApplicationDbContext _context;
         private readonly ISystemSettingService _settingService;
         private readonly ILoyaltyService _loyaltyService;
+        private readonly IDashboardCacheInvalidator? _dashboardCacheInvalidator;
 
-        public OrderService(ApplicationDbContext context, ISystemSettingService settingService, ILoyaltyService loyaltyService)
+        public OrderService(
+            ApplicationDbContext context,
+            ISystemSettingService settingService,
+            ILoyaltyService loyaltyService,
+            IDashboardCacheInvalidator? dashboardCacheInvalidator = null)
         {
             _context = context;
             _settingService = settingService;
             _loyaltyService = loyaltyService;
+            _dashboardCacheInvalidator = dashboardCacheInvalidator;
         }
 
         // Keeps existing direct service consumers and tests compatible while the
@@ -66,8 +73,10 @@ namespace RestaurantPOS.Application.Services
 
             if (!string.IsNullOrEmpty(filter.CustomerPhone))
             {
-                query = query.Where(o => o.CustomerPhone == filter.CustomerPhone ||
-                    (o.CustomerName != null && o.CustomerName.Contains(filter.CustomerPhone)));
+                query = filter.ExactCustomerPhone
+                    ? query.Where(o => o.CustomerPhone == filter.CustomerPhone)
+                    : query.Where(o => o.CustomerPhone == filter.CustomerPhone ||
+                        (o.CustomerName != null && o.CustomerName.Contains(filter.CustomerPhone)));
             }
 
             if (!string.IsNullOrEmpty(filter.FromDate) && DateTime.TryParse(filter.FromDate, out var fDate))
@@ -121,6 +130,9 @@ namespace RestaurantPOS.Application.Services
         public async Task<Order> CreateOrUpdateOrderAsync(Order order)
         {
             const int MAX_QUANTITY = 500;
+
+            if (order.BranchId == Guid.Empty)
+                throw new ArgumentException("Đơn hàng phải thuộc một chi nhánh.");
 
             if (order.Details != null && order.Details.Any(d => d.Quantity > MAX_QUANTITY))
             {
@@ -211,6 +223,7 @@ namespace RestaurantPOS.Application.Services
 
                     _context.Orders.Update(existingOrder);
                     await _context.SaveChangesAsync();
+                    _dashboardCacheInvalidator?.InvalidateSummaryCache();
                     return existingOrder;
                 }
             }
@@ -245,6 +258,7 @@ namespace RestaurantPOS.Application.Services
 
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
+            _dashboardCacheInvalidator?.InvalidateSummaryCache();
             return order;
         }
 
@@ -384,6 +398,8 @@ namespace RestaurantPOS.Application.Services
         private static decimal RoundMoney(decimal amount) =>
             Math.Round(amount, 0, MidpointRounding.AwayFromZero);
 
+        //hàm Mã kiểm tra điều kiện và cập nhật tiếp nhận đơn web trong OrderService.
+    
         public async Task<(WebOrderAcceptResult Result, Order? Order)> AcceptWebOrderAsync(Guid id, Guid? tableId, Guid? allowedBranchId, string acceptedBy)
         {
             // Supabase uses a retrying Npgsql execution strategy. The complete
@@ -446,29 +462,102 @@ namespace RestaurantPOS.Application.Services
                 .FirstAsync(o => o.Id == id);
 
             await transaction.CommitAsync();
+            _dashboardCacheInvalidator?.InvalidateSummaryCache();
             return (WebOrderAcceptResult.Accepted, accepted);
             });
         }
 
-        public async Task<(PaymentAttemptResult Result, Order? Order)> PayOrderAsync(Guid id, decimal amount, string paymentMethod)
+        public async Task<(PaymentAttemptResult Result, Order? Order)> PayOrderAsync(
+            Guid id,
+            decimal amount,
+            string paymentMethod,
+            string? customerPhone = null,
+            string? customerName = null,
+            bool createMember = false)
         {
             var strategy = _context.Database.CreateExecutionStrategy();
             return await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await _context.Database.BeginTransactionAsync();
 
-                var affected = await _context.Orders
-                    .Where(o => o.Id == id && o.Status == "Đang xử lý" && o.PaidAmount <= 0 && o.TotalAmount == amount)
-                    .ExecuteUpdateAsync(setters => setters
+                var currentForPayment = await _context.Orders
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(o => o.Id == id);
+                if (currentForPayment == null)
+                    return (PaymentAttemptResult.NotFound, null);
+
+                var normalizedCustomerPhone = NormalizeCustomerPhone(customerPhone);
+                var preserveExistingCustomer = currentForPayment.CustomerId.HasValue;
+                Customer? customer = null;
+                if (!string.IsNullOrWhiteSpace(normalizedCustomerPhone))
+                {
+                    customer = await _context.Customers
+                        .FirstOrDefaultAsync(c => c.PhoneNumber == normalizedCustomerPhone && c.IsActive);
+                }
+
+                var payableOrders = _context.Orders
+                    .Where(o => o.Id == id && o.Status == "Đang xử lý" && o.PaidAmount <= 0 && o.TotalAmount == amount);
+                int affected;
+                if (!preserveExistingCustomer && customer != null)
+                {
+                    affected = await payableOrders.ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.PaidAmount, amount)
+                        .SetProperty(o => o.PaymentMethod, paymentMethod)
+                        .SetProperty(o => o.PaymentAt, DateTime.UtcNow)
+                        .SetProperty(o => o.Status, "Hoàn thành")
+                        .SetProperty(o => o.CustomerId, customer.Id)
+                        .SetProperty(o => o.CustomerPhone, customer.PhoneNumber)
+                        .SetProperty(o => o.CustomerName, customer.FullName));
+                }
+                else if (!preserveExistingCustomer && !string.IsNullOrWhiteSpace(normalizedCustomerPhone))
+                {
+                    affected = await payableOrders.ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.PaidAmount, amount)
+                        .SetProperty(o => o.PaymentMethod, paymentMethod)
+                        .SetProperty(o => o.PaymentAt, DateTime.UtcNow)
+                        .SetProperty(o => o.Status, "Hoàn thành")
+                        .SetProperty(o => o.CustomerPhone, normalizedCustomerPhone)
+                        .SetProperty(o => o.CustomerName, customerName));
+                }
+                else
+                {
+                    affected = await payableOrders.ExecuteUpdateAsync(setters => setters
                         .SetProperty(o => o.PaidAmount, amount)
                         .SetProperty(o => o.PaymentMethod, paymentMethod)
                         .SetProperty(o => o.PaymentAt, DateTime.UtcNow)
                         .SetProperty(o => o.Status, "Hoàn thành"));
+                }
 
                 if (affected == 1)
                 {
+                    if (!preserveExistingCustomer && customer == null && createMember && !string.IsNullOrWhiteSpace(normalizedCustomerPhone))
+                    {
+                        customer = new Customer
+                        {
+                            Id = Guid.NewGuid(),
+                            FullName = string.IsNullOrWhiteSpace(customerName) ? "Khách lẻ" : customerName.Trim(),
+                            PhoneNumber = normalizedCustomerPhone,
+                            IsActive = true,
+                            LoyaltyPoints = 0,
+                            TotalSpending = 0,
+                            TotalOrders = 0,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        _context.Customers.Add(customer);
+                        await _context.SaveChangesAsync();
+                        await _context.Orders
+                            .Where(o => o.Id == id)
+                            .ExecuteUpdateAsync(setters => setters
+                                .SetProperty(o => o.CustomerId, customer.Id)
+                                .SetProperty(o => o.CustomerPhone, customer.PhoneNumber)
+                                .SetProperty(o => o.CustomerName, customer.FullName));
+                    }
+
                     await _loyaltyService.EarnPointsAsync(id);
                     await transaction.CommitAsync();
+                    _dashboardCacheInvalidator?.InvalidateSummaryCache();
                     return (PaymentAttemptResult.Paid, await GetOrderByIdAsync(id));
                 }
 
@@ -491,22 +580,28 @@ namespace RestaurantPOS.Application.Services
                 var order = await _context.Orders.Include(o => o.Details).FirstOrDefaultAsync(o => o.Id == id);
                 if (order == null) return null;
 
-                if (IsTerminal(order.Status))
-                    throw new InvalidOperationException("Completed or cancelled orders cannot be changed.");
+                if (!OrderStatusPolicy.CanTransition(
+                        order.Status,
+                        update.Status,
+                        out var normalizedStatus,
+                        out var transitionError))
+                {
+                    throw new InvalidOperationException(transitionError);
+                }
 
                 var oldStatus = order.Status;
-                order.Status = update.Status;
+                order.Status = normalizedStatus;
                 if (!string.IsNullOrEmpty(update.CreatedBy)) order.CreatedBy = update.CreatedBy;
                 if (!string.IsNullOrEmpty(update.BranchName)) order.BranchName = update.BranchName;
 
-                if (!IsTerminal(oldStatus) && (order.Status == "Hoàn thành" || order.Status == "Completed"))
+                if (!OrderStatusPolicy.IsTerminal(oldStatus) && OrderStatusPolicy.IsCompleted(order.Status))
                 {
                     order.PaymentAt ??= DateTime.UtcNow;
                     // Save changes first to ensure order is marked as completed for EarnPointsAsync check
                     await _context.SaveChangesAsync();
                     await _loyaltyService.EarnPointsAsync(id);
                 }
-                else if (!IsTerminal(oldStatus) && (order.Status == "Đã hủy" || order.Status == "Cancelled"))
+                else if (!OrderStatusPolicy.IsTerminal(oldStatus) && OrderStatusPolicy.IsCancelled(order.Status))
                 {
                     // Save changes first to ensure order is marked as cancelled for RefundPointsAsync check
                     await _context.SaveChangesAsync();
@@ -515,12 +610,13 @@ namespace RestaurantPOS.Application.Services
 
                 if (update.BranchId.HasValue && update.BranchId != order.BranchId)
                 {
-                    order.BranchId = update.BranchId;
+                    order.BranchId = update.BranchId.Value;
                     await RecalculateOrderFinancials(order);
                 }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+                _dashboardCacheInvalidator?.InvalidateSummaryCache();
                 return order;
             });
         }
@@ -530,10 +626,11 @@ namespace RestaurantPOS.Application.Services
             var order = await _context.Orders.FindAsync(id);
             if (order == null) return false;
 
-            if (IsTerminal(order.Status)) return false;
+            if (OrderStatusPolicy.IsTerminal(order.Status)) return false;
 
             _context.Orders.Remove(order);
             await _context.SaveChangesAsync();
+            _dashboardCacheInvalidator?.InvalidateSummaryCache();
             return true;
         }
 
@@ -560,9 +657,19 @@ namespace RestaurantPOS.Application.Services
                 return (false, "Không tìm thấy đơn hàng phù hợp để cập nhật.");
             }
 
+            if (!OrderStatusPolicy.CanTransition(
+                    order.Status,
+                    newStatus,
+                    out var normalizedStatus,
+                    out var transitionError))
+            {
+                return (false, transitionError);
+            }
+
             var oldStatus = order.Status;
-            order.Status = newStatus;
+            order.Status = normalizedStatus;
             await _context.SaveChangesAsync();
+            _dashboardCacheInvalidator?.InvalidateSummaryCache();
 
             return (true, $"Đã cập nhật trạng thái đơn '{order.InvoiceCode}' (Bàn: {order.TableName}) từ '{oldStatus}' thành '{newStatus}'.");
         }
@@ -581,11 +688,29 @@ namespace RestaurantPOS.Application.Services
                 return (false, "Bạn không có quyền cập nhật đơn hàng của chi nhánh khác.");
             }
 
+            if (!OrderStatusPolicy.CanTransition(
+                    order.Status,
+                    newStatus,
+                    out var normalizedStatus,
+                    out var transitionError))
+            {
+                return (false, transitionError);
+            }
+
             var oldStatus = order.Status;
-            order.Status = newStatus;
+            order.Status = normalizedStatus;
             await _context.SaveChangesAsync();
+            _dashboardCacheInvalidator?.InvalidateSummaryCache();
 
             return (true, $"Đã cập nhật đơn hàng {orderCode} từ '{oldStatus}' sang '{newStatus}' thành công.");
+        }
+
+        private static string? NormalizeCustomerPhone(string? phoneNumber)
+        {
+            if (string.IsNullOrWhiteSpace(phoneNumber)) return null;
+
+            var normalized = new string(phoneNumber.Where(char.IsDigit).ToArray());
+            return normalized.Length >= 10 ? normalized : null;
         }
 
         public async Task<List<Order>> GetCustomerOrdersAsync(string customerPhone)
@@ -625,10 +750,5 @@ namespace RestaurantPOS.Application.Services
                 .ToListAsync();
         }
 
-        private static bool IsTerminal(string? status) =>
-            string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "Hoàn thành", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "Đã hủy", StringComparison.OrdinalIgnoreCase);
     }
 }

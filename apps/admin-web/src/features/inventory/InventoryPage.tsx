@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Check, ClipboardList, Edit3, History, Package, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { Button, Feedback, FormField, PageHeader, Spinner, StatusBadge, TableCell, TableContainer, TableEmpty, TableHeader, TableLoading } from '../../components/ui';
-import { formatApiError, INVENTORY_UNITS, inventoryApi, type BranchInventory, type InventoryItem, type InventoryOverview, type InventoryQuantityByUnit, type StockDocumentItem, type StockIssue, type StockLineInput, type StockReceipt, type StockStatus, type StockTransaction, type TransactionType } from './inventoryApi';
+import { formatApiError, INVENTORY_UNITS, inventoryApi, type BranchInventory, type InventoryItem, type InventoryOverview, type InventoryPage, type InventoryQuantityByUnit, type StockDocumentItem, type StockIssue, type StockLineInput, type StockReceipt, type StockStatus, type StockTransaction, type TransactionType } from './inventoryApi';
 
 type InventoryView = 'overview' | 'items' | 'receipts' | 'issues' | 'history';
 type Role = 'admin' | 'manager' | 'employee' | 'cashier' | 'kitchen';
@@ -66,6 +66,11 @@ function InventoryTabs({ active, operational = false }: { active: InventoryView;
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return <div className="space-y-3"><Feedback tone="error">{message}</Feedback><Button variant="outline" onClick={onRetry}><RefreshCw size={16} />Thử lại</Button></div>;
+}
+
+function Pagination({ page, pageSize, total, loading, onChange }: { page: number; pageSize: number; total: number; loading: boolean; onChange: (page: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return <div className="mt-4 flex items-center justify-between gap-3 text-sm text-slate-600"><span>Trang {page}/{totalPages} · {total} bản ghi</span><div className="flex gap-2"><Button variant="outline" disabled={loading || page <= 1} onClick={() => onChange(page - 1)}>Trang trước</Button><Button variant="outline" disabled={loading || page >= totalPages} onClick={() => onChange(page + 1)}>Trang sau</Button></div></div>;
 }
 
 function OverviewLegacy({ onRefresh }: { onRefresh: () => void }) {
@@ -147,11 +152,55 @@ function ItemForm({ item, onClose, onSaved }: { item: InventoryItem | null; onCl
 
 function MinimumStockModal({ row, onClose, onSaved }: { row: BranchInventory; onClose: () => void; onSaved: () => void }) { const [value, setValue] = useState(String(row.minimumStock)); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const submit = async (e: React.FormEvent) => { e.preventDefault(); setSaving(true); try { await inventoryApi.updateMinimumStock(row.branchId, row.inventoryItemId, Number(value)); onSaved(); } catch (err) { setError(formatApiError(err)); } finally { setSaving(false); } }; return <Modal title="Đặt mức tồn tối thiểu" onClose={onClose}><form onSubmit={submit} className="space-y-4">{error && <Feedback tone="error">{error}</Feedback>}<p className="text-sm text-slate-600">{row.name} · đơn vị <strong>{row.unitCode}</strong></p><FormField label="Mức tồn tối thiểu" type="number" min="0" step="0.001" value={value} onChange={e => setValue(e.target.value)} required helperText={`Đơn vị: ${row.unitCode}. Không thay đổi tồn hiện tại.`} /><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Hủy</Button><Button type="submit" loading={saving}>Lưu mức tồn</Button></div></form></Modal>; }
 
-function DocumentsPage({ type }: { type: 'receipts' | 'issues' }) {
+function LegacyDocumentsPage({ type }: { type: 'receipts' | 'issues' }) {
   const isReceipt = type === 'receipts'; const [data, setData] = useState<InventoryPageState>(emptyPage); const [status, setStatus] = useState<StockStatus | ''>(''); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [showCreate, setShowCreate] = useState(false); const branchId = selectedBranch();
   const load = async () => { setLoading(true); setError(''); try { const page = isReceipt ? await inventoryApi.getReceipts({ branchId: branchId || undefined, status: status || undefined }) : await inventoryApi.getIssues({ branchId: branchId || undefined, status: status || undefined }); setData(page); } catch (e) { setError(formatApiError(e)); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, [isReceipt, branchId, status]);
   return <><PageHeader title={isReceipt ? 'Phiếu nhập kho' : 'Phiếu xuất kho'} description={isReceipt ? 'Xác nhận phiếu sẽ tăng tồn và ghi nhận chi phí một lần.' : 'Phiếu xuất chỉ được trừ tồn sau khi được xác nhận.'} action={<Button onClick={() => setShowCreate(true)}><Plus size={16} />Tạo phiếu {isReceipt ? 'nhập' : 'xuất'}</Button>} /><div className="mb-4 flex flex-wrap items-end gap-3"><label className="text-xs font-bold text-slate-600">Trạng thái<select value={String(status)} onChange={e => setStatus(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">Tất cả</option><option value="Draft">Nháp</option><option value="Confirmed">Đã xác nhận</option><option value="Cancelled">Đã hủy</option></select></label><Button variant="outline" onClick={() => void load()}><RefreshCw size={16} />Làm mới</Button></div>{error ? <ErrorState message={error} onRetry={() => void load()} /> : loading ? <Spinner /> : <TableContainer><TableHeader><tr><th>Mã phiếu</th><th>Ngày</th><th>{isReceipt ? 'Nhà cung cấp' : 'Lý do'}</th><th>Tổng tiền</th><th>Trạng thái</th><th /></tr></TableHeader><tbody>{data.items.length ? data.items.map(document => <tr key={document.id} className="border-b border-slate-100"><TableCell><Link className="font-bold text-blue-600" to={`/inventory/${type}/${document.id}`}>#{document.id.slice(0, 8)}</Link></TableCell><TableCell>{apiDate(document.createdAtUtc)}</TableCell><TableCell>{isReceipt ? (document as StockReceipt).supplierName || '—' : (document as StockIssue).reason}</TableCell><TableCell>{isReceipt ? money((document as StockReceipt).totalAmount) : '—'}</TableCell><TableCell><StatusBadge tone={statusTone(document.status)}>{statusLabel(document.status)}</StatusBadge></TableCell><TableCell><Link className="text-xs font-bold text-slate-600 hover:text-blue-600" to={`/inventory/${type}/${document.id}`}>Xem</Link></TableCell></tr>) : <TableEmpty colSpan={6}>{isReceipt ? 'Chưa có phiếu nhập kho.' : 'Chưa có phiếu xuất kho.'}</TableEmpty>}</tbody></TableContainer>}{showCreate && (isReceipt ? <ReceiptForm onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); }} /> : <IssueForm onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(); }} />)}</>;
+}
+
+function DocumentsPage({ type }: { type: 'receipts' | 'issues' }) {
+  const isReceipt = type === 'receipts';
+  const [data, setData] = useState<InventoryPageState>(emptyPage);
+  const [status, setStatus] = useState<StockStatus | ''>('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const branchId = selectedBranch();
+  const requestGeneration = useRef(0);
+  const previousQuery = useRef({ isReceipt, branchId, status });
+
+  const load = async (requestedPage = page) => {
+    const generation = ++requestGeneration.current;
+    setLoading(true); setError('');
+    try {
+      const result = isReceipt
+        ? await inventoryApi.getReceipts({ branchId: branchId || undefined, status: status || undefined, page: requestedPage, pageSize: 20 })
+        : await inventoryApi.getIssues({ branchId: branchId || undefined, status: status || undefined, page: requestedPage, pageSize: 20 });
+      if (generation === requestGeneration.current) setData(result);
+    } catch (e) {
+      if (generation === requestGeneration.current) setError(formatApiError(e));
+    } finally {
+      if (generation === requestGeneration.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const queryChanged = previousQuery.current.isReceipt !== isReceipt
+      || previousQuery.current.branchId !== branchId
+      || previousQuery.current.status !== status;
+    previousQuery.current = { isReceipt, branchId, status };
+
+    if (queryChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+
+    void load(queryChanged ? 1 : page);
+  }, [isReceipt, branchId, status, page]);
+
+  return <><PageHeader title={isReceipt ? 'Phiếu nhập kho' : 'Phiếu xuất kho'} description={isReceipt ? 'Xác nhận phiếu sẽ tăng tồn và ghi nhận chi phí một lần.' : 'Phiếu xuất chỉ được trừ tồn sau khi được xác nhận.'} action={<Button onClick={() => setShowCreate(true)}><Plus size={16} />Tạo phiếu {isReceipt ? 'nhập' : 'xuất'}</Button>} /><div className="mb-4 flex flex-wrap items-end gap-3"><label className="text-xs font-bold text-slate-600">Trạng thái<select value={String(status)} onChange={e => setStatus(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">Tất cả</option><option value="Draft">Nháp</option><option value="Confirmed">Đã xác nhận</option><option value="Cancelled">Đã hủy</option></select></label><Button variant="outline" onClick={() => void load(page)}><RefreshCw size={16} />Làm mới</Button></div>{error ? <ErrorState message={error} onRetry={() => void load(page)} /> : loading ? <Spinner /> : <><TableContainer><TableHeader><tr><th>Mã phiếu</th><th>Ngày</th><th>{isReceipt ? 'Nhà cung cấp' : 'Lý do'}</th><th>Tổng tiền</th><th>Trạng thái</th><th /></tr></TableHeader><tbody>{data.items.length ? data.items.map(document => <tr key={document.id} className="border-b border-slate-100"><TableCell><Link className="font-bold text-blue-600" to={`/inventory/${type}/${document.id}`}>#{document.id.slice(0, 8)}</Link></TableCell><TableCell>{apiDate(document.createdAtUtc)}</TableCell><TableCell>{isReceipt ? (document as StockReceipt).supplierName || '—' : (document as StockIssue).reason}</TableCell><TableCell>{isReceipt ? money((document as StockReceipt).totalAmount) : '—'}</TableCell><TableCell><StatusBadge tone={statusTone(document.status)}>{statusLabel(document.status)}</StatusBadge></TableCell><TableCell><Link className="text-xs font-bold text-slate-600 hover:text-blue-600" to={`/inventory/${type}/${document.id}`}>Xem</Link></TableCell></tr>) : <TableEmpty colSpan={6}>{isReceipt ? 'Chưa có phiếu nhập kho.' : 'Chưa có phiếu xuất kho.'}</TableEmpty>}</tbody></TableContainer><Pagination page={data.page} pageSize={data.pageSize} total={data.total} loading={loading} onChange={setPage} /></>}{showCreate && (isReceipt ? <ReceiptForm onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(page); }} /> : <IssueForm onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); void load(page); }} />)}</>;
 }
 
 type InventoryPageState = { items: Array<StockReceipt | StockIssue>; total: number; page: number; pageSize: number };
@@ -188,7 +237,53 @@ function SafeDetailPage({ type }: { type: 'receipts' | 'issues' }) {
 
 function Info({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-bold uppercase text-slate-400">{label}</dt><dd className="mt-1 break-all font-medium text-slate-700">{value}</dd></div>; }
 
-function HistoryPage() { const [items, setItems] = useState<StockTransaction[]>([]); const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]); const [type, setType] = useState<TransactionType | ''>(''); const [itemId, setItemId] = useState(''); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const branchId = selectedBranch(); const load = async () => { setLoading(true); try { const [page, allItems] = await Promise.all([inventoryApi.getTransactions({ branchId: branchId || undefined, type: type || undefined, inventoryItemId: itemId || undefined }), inventoryApi.getItems(true)]); setItems(page.items); setInventoryItems(allItems); } catch (e) { setError(formatApiError(e)); } finally { setLoading(false); } }; useEffect(() => { void load(); }, [branchId, type, itemId]); return <><PageHeader title="Lịch sử kho" description="Lịch sử biến động được đọc từ StockTransaction, mới nhất trước." action={<Button variant="outline" onClick={() => void load()}><RefreshCw size={16} />Làm mới</Button>} /><div className="mb-4 flex flex-wrap gap-3"><label className="text-xs font-bold text-slate-600">Nguyên liệu<select value={itemId} onChange={e => setItemId(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 px-3 py-2 text-sm"><option value="">Tất cả</option>{inventoryItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="text-xs font-bold text-slate-600">Loại<select value={String(type)} onChange={e => setType(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 px-3 py-2 text-sm"><option value="">Tất cả</option><option value="IN">Nhập kho</option><option value="OUT">Xuất kho</option><option value="ADJUSTMENT">Điều chỉnh</option></select></label></div>{error ? <ErrorState message={formatApiError(error)} onRetry={() => void load()} /> : loading ? <Spinner /> : <TableContainer><TableHeader><tr><th>Thời gian</th><th>Nguyên liệu</th><th>Loại</th><th>Số lượng</th><th>Tồn trước</th><th>Tồn sau</th><th>Nguồn</th><th>Người thực hiện</th></tr></TableHeader><tbody>{items.length ? items.map(item => <tr key={item.id} className="border-b border-slate-100"><TableCell>{apiDate(item.createdAtUtc)}</TableCell><TableCell className="font-semibold">{item.inventoryItemName} · {item.unitCode}</TableCell><TableCell><StatusBadge tone={transactionTone(item.type)}>{transactionName(item.type)}</StatusBadge></TableCell><TableCell>{quantity(item.quantity)}</TableCell><TableCell>{quantity(item.beforeQuantity)}</TableCell><TableCell>{quantity(item.afterQuantity)}</TableCell><TableCell>{item.referenceType}</TableCell><TableCell className="text-xs">{item.createdBy}</TableCell></tr>) : <TableEmpty colSpan={8}>Chưa có lịch sử biến động kho.</TableEmpty>}</tbody></TableContainer>}</>; }
+function LegacyHistoryPage() { const [items, setItems] = useState<StockTransaction[]>([]); const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]); const [type, setType] = useState<TransactionType | ''>(''); const [itemId, setItemId] = useState(''); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const branchId = selectedBranch(); const load = async () => { setLoading(true); try { const [page, allItems] = await Promise.all([inventoryApi.getTransactions({ branchId: branchId || undefined, type: type || undefined, inventoryItemId: itemId || undefined }), inventoryApi.getItems(true)]); setItems(page.items); setInventoryItems(allItems); } catch (e) { setError(formatApiError(e)); } finally { setLoading(false); } }; useEffect(() => { void load(); }, [branchId, type, itemId]); return <><PageHeader title="Lịch sử kho" description="Lịch sử biến động được đọc từ StockTransaction, mới nhất trước." action={<Button variant="outline" onClick={() => void load()}><RefreshCw size={16} />Làm mới</Button>} /><div className="mb-4 flex flex-wrap gap-3"><label className="text-xs font-bold text-slate-600">Nguyên liệu<select value={itemId} onChange={e => setItemId(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 px-3 py-2 text-sm"><option value="">Tất cả</option>{inventoryItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="text-xs font-bold text-slate-600">Loại<select value={String(type)} onChange={e => setType(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 px-3 py-2 text-sm"><option value="">Tất cả</option><option value="IN">Nhập kho</option><option value="OUT">Xuất kho</option><option value="ADJUSTMENT">Điều chỉnh</option></select></label></div>{error ? <ErrorState message={formatApiError(error)} onRetry={() => void load()} /> : loading ? <Spinner /> : <TableContainer><TableHeader><tr><th>Thời gian</th><th>Nguyên liệu</th><th>Loại</th><th>Số lượng</th><th>Tồn trước</th><th>Tồn sau</th><th>Nguồn</th><th>Người thực hiện</th></tr></TableHeader><tbody>{items.length ? items.map(item => <tr key={item.id} className="border-b border-slate-100"><TableCell>{apiDate(item.createdAtUtc)}</TableCell><TableCell className="font-semibold">{item.inventoryItemName} · {item.unitCode}</TableCell><TableCell><StatusBadge tone={transactionTone(item.type)}>{transactionName(item.type)}</StatusBadge></TableCell><TableCell>{quantity(item.quantity)}</TableCell><TableCell>{quantity(item.beforeQuantity)}</TableCell><TableCell>{quantity(item.afterQuantity)}</TableCell><TableCell>{item.referenceType}</TableCell><TableCell className="text-xs">{item.createdBy}</TableCell></tr>) : <TableEmpty colSpan={8}>Chưa có lịch sử biến động kho.</TableEmpty>}</tbody></TableContainer>}</>; }
+
+function HistoryPage() {
+  const [data, setData] = useState<InventoryPage<StockTransaction>>({ items: [], total: 0, page: 1, pageSize: 20 });
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [type, setType] = useState<TransactionType | ''>('');
+  const [itemId, setItemId] = useState('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const branchId = selectedBranch();
+  const requestGeneration = useRef(0);
+  const previousQuery = useRef({ branchId, type, itemId });
+
+  const load = async (requestedPage = page) => {
+    const generation = ++requestGeneration.current;
+    setLoading(true); setError('');
+    try {
+      const [transactionPage, allItems] = await Promise.all([
+        inventoryApi.getTransactions({ branchId: branchId || undefined, type: type || undefined, inventoryItemId: itemId || undefined, page: requestedPage, pageSize: 20 }),
+        inventoryApi.getItems(true)
+      ]);
+      if (generation !== requestGeneration.current) return;
+      setData(transactionPage); setInventoryItems(allItems);
+    } catch (e) {
+      if (generation === requestGeneration.current) setError(formatApiError(e));
+    } finally {
+      if (generation === requestGeneration.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const queryChanged = previousQuery.current.branchId !== branchId
+      || previousQuery.current.type !== type
+      || previousQuery.current.itemId !== itemId;
+    previousQuery.current = { branchId, type, itemId };
+
+    if (queryChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+
+    void load(queryChanged ? 1 : page);
+  }, [branchId, type, itemId, page]);
+
+  return <><PageHeader title="Lịch sử kho" description="Lịch sử biến động được đọc từ StockTransaction, mới nhất trước." action={<Button variant="outline" onClick={() => void load(page)}><RefreshCw size={16} />Làm mới</Button>} /><div className="mb-4 flex flex-wrap gap-3"><label className="text-xs font-bold text-slate-600">Nguyên liệu<select value={itemId} onChange={e => setItemId(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 px-3 py-2 text-sm"><option value="">Tất cả</option>{inventoryItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="text-xs font-bold text-slate-600">Loại<select value={String(type)} onChange={e => setType(e.target.value)} className="mt-1 block rounded-xl border border-slate-200 px-3 py-2 text-sm"><option value="">Tất cả</option><option value="IN">Nhập kho</option><option value="OUT">Xuất kho</option><option value="ADJUSTMENT">Điều chỉnh</option></select></label></div>{error ? <ErrorState message={error} onRetry={() => void load(page)} /> : loading ? <Spinner /> : <><TableContainer><TableHeader><tr><th>Thời gian</th><th>Nguyên liệu</th><th>Loại</th><th>Số lượng</th><th>Tồn trước</th><th>Tồn sau</th><th>Nguồn</th><th>Người thực hiện</th></tr></TableHeader><tbody>{data.items.length ? data.items.map(item => <tr key={item.id} className="border-b border-slate-100"><TableCell>{apiDate(item.createdAtUtc)}</TableCell><TableCell className="font-semibold">{item.inventoryItemName} · {item.unitCode}</TableCell><TableCell><StatusBadge tone={transactionTone(item.type)}>{transactionName(item.type)}</StatusBadge></TableCell><TableCell>{quantity(item.quantity)}</TableCell><TableCell>{quantity(item.beforeQuantity)}</TableCell><TableCell>{quantity(item.afterQuantity)}</TableCell><TableCell>{item.referenceType}</TableCell><TableCell className="text-xs">{item.createdBy}</TableCell></tr>) : <TableEmpty colSpan={8}>Chưa có lịch sử biến động kho.</TableEmpty>}</tbody></TableContainer><Pagination page={data.page} pageSize={data.pageSize} total={data.total} loading={loading} onChange={setPage} /></>}</>;
+}
 
 export default function InventoryPage({ view, operational = false }: { view: InventoryView; operational?: boolean }) {
   const params = useParams();

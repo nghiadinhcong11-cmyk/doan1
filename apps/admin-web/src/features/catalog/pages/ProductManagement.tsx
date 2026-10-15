@@ -45,6 +45,15 @@ const ProductManagement = () => {
   const [sizes, setSizes] = useState<ProductOption[]>([]);
   const [availableToppings, setAvailableToppings] = useState<any[]>([]);
   const [selectedToppingIds, setSelectedToppingIds] = useState<string[]>([]);
+  const productRequestGeneration = useRef(0);
+  const productAbortController = useRef<AbortController | null>(null);
+  const toppingRequestGeneration = useRef(0);
+  const toppingAbortController = useRef<AbortController | null>(null);
+  const productQueryRef = useRef({ searchTerm, filterGroup, filterCategory, filterStatus });
+  productQueryRef.current = { searchTerm, filterGroup, filterCategory, filterStatus };
+  const searchEffectInitialized = useRef(false);
+  const productSearchTimer = useRef<number | null>(null);
+  const productRefreshTimer = useRef<number | null>(null);
 
   // Form State
   const [newProduct, setNewProduct] = useState<Product>({
@@ -60,31 +69,44 @@ const ProductManagement = () => {
   });
 
   const fetchToppings = async () => {
+    const generation = ++toppingRequestGeneration.current;
+    toppingAbortController.current?.abort();
+    const controller = new AbortController();
+    toppingAbortController.current = controller;
     try {
-      const res = await fetch(`${API_URL}/api/Topping`);
+      const res = await fetch(`${API_URL}/api/Topping`, { signal: controller.signal });
       const data = await res.json();
-      setAvailableToppings(data);
-    } catch (e) { console.error(e); }
+      if (generation === toppingRequestGeneration.current) setAvailableToppings(data);
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) console.error(e);
+    } finally {
+      if (toppingAbortController.current === controller) toppingAbortController.current = null;
+    }
   };
 
   const fetchProducts = async () => {
+    const { searchTerm: currentSearch, filterGroup: currentGroup, filterCategory: currentCategory, filterStatus: currentStatus } = productQueryRef.current;
+    const generation = ++productRequestGeneration.current;
+    productAbortController.current?.abort();
+    const controller = new AbortController();
+    productAbortController.current = controller;
     try {
       setLoading(true);
-      fetchToppings(); // Fetch toppings list for selection
       let url = `${API_URL}/api/Product`;
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (filterGroup) params.append('group', filterGroup);
-      if (filterCategory) params.append('category', filterCategory);
-      if (filterStatus === 'active') params.append('isActive', 'true');
-      if (filterStatus === 'inactive') params.append('isActive', 'false');
+      if (currentSearch) params.append('search', currentSearch);
+      if (currentGroup) params.append('group', currentGroup);
+      if (currentCategory) params.append('category', currentCategory);
+      if (currentStatus === 'active') params.append('isActive', 'true');
+      if (currentStatus === 'inactive') params.append('isActive', 'false');
 
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller.signal });
       const data: Product[] = await response.json();
+      if (generation !== productRequestGeneration.current) return;
       setProducts(data);
 
       const uniqueGroups = Array.from(new Set(data.map(p => p.group).filter((g): g is string => !!g)));
@@ -95,15 +117,47 @@ const ProductManagement = () => {
         });
       }
     } catch (err) {
-      console.error(err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === productRequestGeneration.current) console.error(err);
     } finally {
-      setLoading(false);
+      if (generation === productRequestGeneration.current) setLoading(false);
+      if (productAbortController.current === controller) productAbortController.current = null;
     }
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, [filterGroup, searchTerm, filterCategory, filterStatus]);
+    void fetchToppings();
+    return () => toppingAbortController.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (productSearchTimer.current !== null) {
+      window.clearTimeout(productSearchTimer.current);
+      productSearchTimer.current = null;
+    }
+    void fetchProducts();
+  }, [filterGroup, filterCategory, filterStatus]);
+
+  useEffect(() => {
+    if (!searchEffectInitialized.current) {
+      searchEffectInitialized.current = true;
+      return;
+    }
+    productSearchTimer.current = window.setTimeout(() => {
+      productSearchTimer.current = null;
+      void fetchProducts();
+    }, 350);
+    return () => {
+      if (productSearchTimer.current !== null) {
+        window.clearTimeout(productSearchTimer.current);
+        productSearchTimer.current = null;
+      }
+    };
+  }, [searchTerm]);
+
+  useEffect(() => () => {
+    productAbortController.current?.abort();
+    if (productRefreshTimer.current !== null) window.clearTimeout(productRefreshTimer.current);
+  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -238,7 +292,11 @@ const ProductManagement = () => {
               body: JSON.stringify({ ...p, group: newName })
             });
           });
-          setTimeout(fetchProducts, 500);
+          if (productRefreshTimer.current !== null) window.clearTimeout(productRefreshTimer.current);
+          productRefreshTimer.current = window.setTimeout(() => {
+            productRefreshTimer.current = null;
+            void fetchProducts();
+          }, 500);
         }
       }
     }

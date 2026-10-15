@@ -7,6 +7,7 @@ using RestaurantPOS.AI.Security;
 using RestaurantPOS.AI.Utils;
 using RestaurantPOS.Application.DTOs.Orders;
 using RestaurantPOS.Application.Services;
+using RestaurantPOS.Domain.Entities;
 
 namespace RestaurantPOS.AI.Tools.Admin
 {
@@ -74,16 +75,7 @@ namespace RestaurantPOS.AI.Tools.Admin
                 }
 
                 var orders = await _orderService.GetOrdersAsync(filter);
-                var results = orders.Take(limit).Select(o => new
-                {
-                    o.InvoiceCode,
-                    o.CreatedAt,
-                    o.TotalAmount,
-                    o.PaidAmount,
-                    o.Status,
-                    o.TableName,
-                    o.BranchName
-                });
+                var results = orders.Take(limit).Select(o => CreateRoleScopedResult(o, userContext.Role));
 
                 if (!results.Any()) return AiToolResult.CreateSuccess("Không tìm thấy đơn hàng nào phù hợp.");
 
@@ -91,8 +83,39 @@ namespace RestaurantPOS.AI.Tools.Admin
             }
             catch (Exception ex)
             {
-                return AiToolResult.CreateError($"Lỗi khi lấy danh sách đơn hàng: {ex.Message}");
+                return AiToolResult.CreateInternalError(ex);
             }
         }
+
+        private static object CreateRoleScopedResult(Order order, string role)
+        {
+            if (CanViewPaymentAmounts(role))
+            {
+                return new
+                {
+                    order.InvoiceCode,
+                    order.CreatedAt,
+                    order.TotalAmount,
+                    order.PaidAmount,
+                    order.Status,
+                    order.TableName,
+                    order.BranchName
+                };
+            }
+
+            return new
+            {
+                order.InvoiceCode,
+                order.CreatedAt,
+                order.Status,
+                order.TableName,
+                order.BranchName
+            };
+        }
+
+        private static bool CanViewPaymentAmounts(string role) =>
+            string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "manager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "cashier", StringComparison.OrdinalIgnoreCase);
     }
 }

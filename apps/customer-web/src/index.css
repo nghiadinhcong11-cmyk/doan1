@@ -3,14 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --ui-primary: #2563eb;
-  --ui-primary-hover: #1d4ed8;
+  --ui-primary: #ee6c36;
+  --ui-primary-hover: #d85625;
+  --ui-secondary: #3e8069;
+  --ui-cream: #f8f6f1;
+  --ui-ink: #22252b;
   --ui-surface: #ffffff;
-  --ui-page: #f9fafb;
-  --ui-border: #e5e7eb;
+  --ui-page: #f8f6f1;
+  --ui-border: #ebe5dc;
   --ui-radius: 1rem;
-  --ui-shadow: 0 10px 25px -12px rgba(37, 99, 235, 0.2);
-  --ui-focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  --ui-shadow: 0 16px 35px -20px rgba(68, 46, 31, 0.32);
+  --ui-focus-ring: 0 0 0 3px rgba(238, 108, 54, 0.25);
   --ui-danger: #dc2626;
   --ui-success: #16a34a;
   --ui-warning: #d97706;
@@ -25,10 +28,40 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--ui-cream);
+  color: var(--ui-ink);
 }
 
 #root {
   width: 100%;
+}
+
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* Keep the existing Tailwind component vocabulary, but give Customer Web a
+   single warm visual language without introducing another styling system. */
+.bg-blue-600 { background-color: var(--ui-primary) !important; }
+.bg-blue-700 { background-color: var(--ui-primary-hover) !important; }
+.bg-blue-50 { background-color: #fff0e9 !important; }
+.text-blue-500, .text-blue-600, .text-blue-700 { color: var(--ui-primary) !important; }
+.border-blue-100, .border-blue-200 { border-color: #f4c8b5 !important; }
+.border-blue-600 { border-color: var(--ui-primary) !important; }
+.shadow-blue-500\/20, .shadow-blue-500\/30, .shadow-blue-500\/40 { --tw-shadow-color: rgba(238, 108, 54, .24) !important; }
+.focus-visible\:ring-blue-500:focus-visible { --tw-ring-color: rgba(238, 108, 54, .55) !important; }
+.hover\:text-blue-600:hover { color: var(--ui-primary) !important; }
+.hover\:bg-blue-700:hover { background-color: var(--ui-primary-hover) !important; }
+.hover\:bg-blue-100:hover { background-color: #ffe2d5 !important; }
+
+.customer-surface {
+  background: var(--ui-cream);
+  color: var(--ui-ink);
+}
+
+.customer-bottom-nav {
+  padding-bottom: max(.75rem, env(safe-area-inset-bottom));
+  min-height: 4.5rem;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -73,3 +106,19 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+@media print {
+  @page receipt80 { size: 80mm auto; margin: 0; }
+  @page receipt58 { size: 58mm auto; margin: 0; }
+  body * { visibility: hidden !important; }
+  #invoice-print, #invoice-print * { visibility: visible !important; }
+  #invoice-print { position: absolute !important; inset: 0 !important; display: block !important; max-height: none !important; overflow: visible !important; padding: 0 !important; background: white !important; }
+  #invoice-print[data-paper-width="80"] { page: receipt80; }
+  #invoice-print[data-paper-width="58"] { page: receipt58; }
+  #invoice-print .receipt-paper { width: 80mm !important; max-width: 80mm !important; min-width: 0 !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow-wrap: anywhere !important; }
+  #invoice-print[data-paper-width="58"] .receipt-paper { width: 58mm !important; max-width: 58mm !important; }
+  #invoice-print .receipt-status { background: white !important; color: black !important; border: 1px solid black !important; border-radius: 0 !important; }
+}
+
+.receipt-paper { font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; line-height: 1.35; overflow-wrap: anywhere; }
+.receipt-logo { display: block; height: auto; max-height: 14mm; object-fit: contain; }

@@ -5,5 +5,6 @@ namespace RestaurantPOS.AI.Models
         public string Message { get; set; } = string.Empty;
         public bool Success { get; set; } = true;
         public string? Error { get; set; }
+        public AiConfirmation? Confirmation { get; set; }
     }
 }

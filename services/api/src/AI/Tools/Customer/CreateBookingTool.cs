@@ -80,7 +80,7 @@ namespace RestaurantPOS.AI.Tools.Customer
             }
             catch (Exception ex)
             {
-                return AiToolResult.CreateError($"Lỗi hệ thống: {ex.Message}");
+                return AiToolResult.CreateInternalError(ex);
             }
         }
     }

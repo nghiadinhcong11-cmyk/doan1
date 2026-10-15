@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, User, Phone, MapPin, Mail, Edit2, Trash2, Loader2, Download, X, Star, History, Save, TrendingUp, Users } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { useRef } from 'react';
 import { notifyFeedback } from '../../../components/ui';
 
 interface Customer {
@@ -20,6 +21,8 @@ interface Customer {
 }
 
 const CustomerManagement = () => {
+  const requestGeneration = useRef(0);
+  const abortController = useRef<AbortController | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,22 +45,31 @@ const CustomerManagement = () => {
     totalSpending: 0
   });
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = async (query = searchTerm) => {
+    const generation = ++requestGeneration.current;
+    abortController.current?.abort();
+    const controller = new AbortController();
+    abortController.current = controller;
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/Customer${searchTerm ? `?search=${searchTerm}` : ''}`);
+      const response = await fetch(`${API_URL}/api/Customer${query ? `?search=${encodeURIComponent(query)}` : ''}`, { signal: controller.signal });
       const data = await response.json();
+      if (generation !== requestGeneration.current) return;
       setCustomers(data);
     } catch (err) {
-      console.error(err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) console.error(err);
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
+      if (abortController.current === controller) abortController.current = null;
     }
   };
 
   useEffect(() => {
-    fetchCustomers();
+    const timer = window.setTimeout(() => void fetchCustomers(), 350);
+    return () => window.clearTimeout(timer);
   }, [searchTerm]);
+
+  useEffect(() => () => abortController.current?.abort(), []);
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(c =>

@@ -1,13 +1,22 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using RestaurantPOS.AI.Models;
 using RestaurantPOS.AI.Tools;
 using RestaurantPOS.AI.Security;
+using RestaurantPOS.Application.Common.Security;
 
 namespace RestaurantPOS.AI.Services
 {
     public class AiPermissionService
     {
+    private static readonly IReadOnlySet<string> AuthenticatedCustomerTools =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "customer_get_menu",
+            "get_my_orders"
+        };
+
         private readonly AiAuthorization _authorization;
 
         public AiPermissionService(AiAuthorization authorization)
@@ -20,9 +29,26 @@ namespace RestaurantPOS.AI.Services
         /// </summary>
         public async Task<bool> CanExecuteAsync(IAiTool tool, AiUserContext context)
         {
-            // Managers are branch-bound. A malformed or incomplete JWT must never
-            // turn a manager AI request into an unscoped/global query.
-            if (string.Equals(context.Role, "manager", StringComparison.OrdinalIgnoreCase) && !context.BranchId.HasValue)
+            if (!RoleNames.IsKnownRole(context.Role))
+            {
+                return false;
+            }
+
+            if (context.IsGuest)
+            {
+                return tool.RiskLevel == ToolRiskLevel.Read &&
+                       string.Equals(tool.Name, "customer_get_menu", StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (string.Equals(context.Role, "customer", StringComparison.OrdinalIgnoreCase) &&
+                !AuthenticatedCustomerTools.Contains(tool.Name))
+            {
+                return false;
+            }
+
+            // Every branch-scoped staff role must remain scoped. Null is never a
+            // valid global scope for staff AI queries.
+            if (RoleNames.IsBranchScopedStaffRole(context.Role) && !context.BranchId.HasValue)
             {
                 return false;
             }

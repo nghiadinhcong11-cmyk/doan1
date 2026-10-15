@@ -106,10 +106,10 @@ namespace RestaurantPOS.WebAPI.Controllers
                     var userBranchId = GetUserBranchId();
                     if (userBranchId == null) return Forbid();
 
-                    if (reservation.BranchId.HasValue && reservation.BranchId != userBranchId)
+                    if (reservation.BranchId != Guid.Empty && reservation.BranchId != userBranchId.Value)
                         return Forbid();
 
-                    reservation.BranchId = userBranchId;
+                    reservation.BranchId = userBranchId.Value;
                 }
 
                 var result = await _reservationService.CreateReservationAsync(reservation);

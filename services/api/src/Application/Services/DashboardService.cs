@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Primitives;
 using RestaurantPOS.Infrastructure.Persistence;
 
 namespace RestaurantPOS.Application.Services
@@ -13,6 +15,8 @@ namespace RestaurantPOS.Application.Services
         private readonly ApplicationDbContext _context;
         private readonly IMemoryCache _cache;
         private const string DashboardCacheKey = "DashboardSummary";
+        private static readonly object CacheInvalidationLock = new();
+        private static CancellationTokenSource DashboardCacheInvalidation = new();
 
         private static readonly TimeZoneInfo VietnamZone = GetVietnamTimeZone();
 
@@ -36,22 +40,39 @@ namespace RestaurantPOS.Application.Services
         /// <summary>Xóa cache dashboard sau khi dữ liệu doanh thu hoặc chi phí thay đổi.</summary>
         public void InvalidateSummaryCache()
         {
-            _cache.Remove(DashboardCacheKey);
-            // Branch-specific keys are short-lived; compacting also removes stale branch summaries.
-            if (_cache is MemoryCache memoryCache)
+            lock (CacheInvalidationLock)
             {
-                memoryCache.Compact(1.0);
+                var previous = DashboardCacheInvalidation;
+                DashboardCacheInvalidation = new CancellationTokenSource();
+                previous.Cancel();
+                previous.Dispose();
+            }
+        }
+
+        private static CancellationToken GetDashboardCacheInvalidationToken()
+        {
+            lock (CacheInvalidationLock)
+            {
+                return DashboardCacheInvalidation.Token;
             }
         }
 
         public async Task<object> GetSummaryAsync(string? branchId)
         {
+            if (!string.IsNullOrWhiteSpace(branchId) && !Guid.TryParse(branchId, out _))
+                throw new ArgumentException("branchId không hợp lệ", nameof(branchId));
+
             string cacheKey = string.IsNullOrEmpty(branchId) ? DashboardCacheKey : $"{DashboardCacheKey}_{branchId}";
 
             if (_cache.TryGetValue(cacheKey, out object? cachedData) && cachedData != null)
             {
                 return cachedData;
             }
+
+            // Keep the invalidation generation used by this calculation. If a
+            // mutation commits while the summary is being built, the old
+            // snapshot must not be stored under the new generation.
+            var calculationInvalidationToken = GetDashboardCacheInvalidationToken();
 
             var nowUtc = DateTime.UtcNow;
             var nowVn = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, VietnamZone);
@@ -78,26 +99,35 @@ namespace RestaurantPOS.Application.Services
             // where PaidAmount > 0.
             var ordersToday = await ordersQuery
                 .Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0)
-                .Select(o => new { o.Id, o.CreatedAt, o.PaidAmount, o.BranchId })
+                .Select(o => new { o.Id, o.CreatedAt, o.PaidAmount, o.BranchId, o.PaymentMethod })
                 .ToListAsync();
 
-            var todayRevenue = ordersToday.Sum(o => (double)o.PaidAmount);
+            var todayRevenue = ordersToday.Sum(o => o.PaidAmount);
 
             // Chi phí đã ghi nhận theo chi nhánh. Đây là cost recording, không phải recipe/stock consumption.
             var expensesQuery = _context.Expenses.AsNoTracking()
                 .Where(e => e.ExpenseDate >= startUtc && e.ExpenseDate < endUtc)
                 .Where(e => !scopedBranchId.HasValue || e.BranchId == scopedBranchId.Value);
-            // SQLite (used by the unit-test provider) cannot translate SUM(decimal).
-            // Keep the production path database-side for PostgreSQL while retaining test-provider compatibility.
-            var totalExpenses = _context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true
-                ? (await expensesQuery.Select(e => e.Amount).ToListAsync()).Sum()
-                : await expensesQuery.Select(e => (decimal?)e.Amount).SumAsync() ?? 0m;
+            Dictionary<Guid, decimal> expensesByBranchId = await expensesQuery
+                .GroupBy(e => e.BranchId)
+                .Select(g => new { BranchId = g.Key, Amount = g.Sum(e => e.Amount) })
+                .ToDictionaryAsync(x => x.BranchId, x => x.Amount);
+            var totalExpenses = expensesByBranchId.Values.Sum();
 
             // Giá vốn được tính từ CostPrice của Product/Topping trong các món đã hoàn thành.
             var completedOrderIds = ordersToday.Select(o => o.Id).ToList();
             var costDetails = await _context.OrderDetails.AsNoTracking()
                 .Where(d => completedOrderIds.Contains(EF.Property<Guid>(d, "OrderId")))
-                .Select(d => new { d.Quantity, d.ProductId, d.ToppingId })
+                .Select(d => new
+                {
+                    BranchId = _context.Orders
+                        .Where(o => o.Id == EF.Property<Guid>(d, "OrderId"))
+                        .Select(o => o.BranchId)
+                        .FirstOrDefault(),
+                    d.Quantity,
+                    d.ProductId,
+                    d.ToppingId
+                })
                 .ToListAsync();
             var productIds = costDetails.Where(d => d.ProductId.HasValue).Select(d => d.ProductId!.Value).Distinct().ToList();
             var toppingIds = costDetails.Where(d => d.ToppingId.HasValue).Select(d => d.ToppingId!.Value).Distinct().ToList();
@@ -110,31 +140,36 @@ namespace RestaurantPOS.Application.Services
             var costOfGoodsSold = costDetails.Sum(d =>
                 d.Quantity * (d.ProductId.HasValue && productCosts.TryGetValue(d.ProductId.Value, out var productCost) ? productCost : 0m)
                 + d.Quantity * (d.ToppingId.HasValue && toppingCosts.TryGetValue(d.ToppingId.Value, out var toppingCost) ? toppingCost : 0m));
-            var netProfit = (decimal)todayRevenue - totalExpenses - costOfGoodsSold;
+            var netProfit = todayRevenue - totalExpenses - costOfGoodsSold;
 
             var yearStartVn = new DateTime(nowVn.Year, 1, 1);
             var yearStartUtc = TimeZoneInfo.ConvertTimeToUtc(yearStartVn, VietnamZone);
             var revenueHistoryStartUtc = yesterdayStartUtc < yearStartUtc ? yesterdayStartUtc : yearStartUtc;
             var revenueHistory = await ordersQuery
-                .Where(o => o.CreatedAt >= revenueHistoryStartUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành")
+                .Where(o => o.CreatedAt >= revenueHistoryStartUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0)
                 .Select(o => new { o.CreatedAt, o.PaidAmount })
                 .ToListAsync();
             var yesterdayRevenue = revenueHistory
                 .Where(o => o.CreatedAt >= yesterdayStartUtc && o.CreatedAt < yesterdayEndUtc)
-                .Sum(o => (double)o.PaidAmount);
+                .Sum(o => o.PaidAmount);
 
-            double revenueTrend = yesterdayRevenue > 0 ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : 100;
+            var revenueTrendState = yesterdayRevenue > 0
+                ? "percentage"
+                : todayRevenue > 0 ? "from_zero" : "no_change";
+            decimal revenueTrend = yesterdayRevenue > 0
+                ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+                : 0m;
 
             // 2. Biểu đồ giờ
             var hourlyDict = ordersToday
                 .Select(o => new { Hour = ToVietnamTime(o.CreatedAt).Hour, o.PaidAmount })
                 .GroupBy(o => o.Hour)
-                .ToDictionary(g => g.Key, g => g.Sum(o => (double)o.PaidAmount));
+                .ToDictionary(g => g.Key, g => g.Sum(o => o.PaidAmount));
 
             var chartData = Enumerable.Range(0, 24).Select(h => new
             {
                 time = h.ToString("D2") + ":00",
-                amount = hourlyDict.ContainsKey(h) ? hourlyDict[h] : 0.0
+                amount = hourlyDict.ContainsKey(h) ? hourlyDict[h] : 0m
             }).ToList();
 
             // 3. Biểu đồ tuần (7 ngày gần nhất), derived from the single history query above.
@@ -147,7 +182,7 @@ namespace RestaurantPOS.Application.Services
                 var date = last7DaysStartVn.AddDays(i);
                 var dayAmount = weekOrders
                     .Where(o => ToVietnamTime(o.CreatedAt).Date == date.Date)
-                    .Sum(o => (double)o.PaidAmount);
+                    .Sum(o => o.PaidAmount);
 
                 string dayLabel = date.DayOfWeek switch {
                     DayOfWeek.Sunday => "CN",
@@ -169,7 +204,7 @@ namespace RestaurantPOS.Application.Services
             var monthlyRevenue = Enumerable.Range(1, 12).Select(m => {
                 var monthAmount = yearOrders
                     .Where(o => ToVietnamTime(o.CreatedAt).Month == m)
-                    .Sum(o => (double)o.PaidAmount);
+                    .Sum(o => o.PaidAmount);
                 return new { month = $"Tháng {m:D2}", amount = monthAmount };
             }).ToList();
 
@@ -189,14 +224,33 @@ namespace RestaurantPOS.Application.Services
                 .Select(b => new { b.Id, b.Name })
                 .ToListAsync();
             var revenueByBranchId = ordersToday
-                .Where(o => o.BranchId.HasValue)
-                .GroupBy(o => o.BranchId!.Value)
-                .ToDictionary(g => g.Key, g => g.Sum(o => (double)o.PaidAmount));
-            var branchRevenue = branchesForDashboard
-                .Select(b => new
+                .GroupBy(o => o.BranchId)
+                .ToDictionary(g => g.Key, g => new
                 {
-                    name = b.Name,
-                    value = revenueByBranchId.TryGetValue(b.Id, out var revenue) ? revenue : 0d
+                    Revenue = g.Sum(o => o.PaidAmount),
+                    OrderCount = g.Count()
+                });
+            var costByBranchId = costDetails
+                .GroupBy(d => d.BranchId)
+                .ToDictionary(g => g.Key, g => g.Sum(d =>
+                    d.Quantity * (d.ProductId.HasValue && productCosts.TryGetValue(d.ProductId.Value, out var productCost) ? productCost : 0m)
+                    + d.Quantity * (d.ToppingId.HasValue && toppingCosts.TryGetValue(d.ToppingId.Value, out var toppingCost) ? toppingCost : 0m)));
+            var branchRevenue = branchesForDashboard
+                .Select(b =>
+                {
+                    revenueByBranchId.TryGetValue(b.Id, out var orderStats);
+                    var revenue = orderStats?.Revenue ?? 0m;
+                    var expenses = expensesByBranchId.TryGetValue(b.Id, out var branchExpenses) ? branchExpenses : 0m;
+                    var cost = costByBranchId.TryGetValue(b.Id, out var branchCost) ? branchCost : 0m;
+                    return new BranchDashboardMetricDto
+                    {
+                        Name = b.Name,
+                        Revenue = revenue,
+                        OrderCount = orderStats?.OrderCount ?? 0,
+                        Expenses = expenses,
+                        CostOfGoodsSold = cost,
+                        EstimatedProfit = revenue - expenses - cost
+                    };
                 })
                 .ToList();
 
@@ -207,25 +261,25 @@ namespace RestaurantPOS.Application.Services
                 .OrderByDescending(x => x.value)
                 .ToListAsync();
 
-            var paymentMethods = await ordersQuery
-                .Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc
-                    && o.Status == "Hoàn thành"
-                    && o.PaidAmount > 0
-                    && o.PaymentMethod != null
-                    && o.PaymentMethod != "")
+            var paymentMethods = ordersToday
+                .Where(o => !string.IsNullOrWhiteSpace(o.PaymentMethod))
                 .GroupBy(o => o.PaymentMethod!)
-                .Select(g => new { name = g.Key, value = g.Sum(o => (double)o.PaidAmount) })
+                .Select(g => new { name = g.Key, value = g.Sum(o => o.PaidAmount) })
                 .OrderByDescending(x => x.value)
-                .ToListAsync();
+                .ToList();
 
-            // 6. Top mặt hàng & Hoạt động. Aggregate top products in PostgreSQL.
-            var topProducts = await _context.OrderDetails.AsNoTracking()
+            // 6. Top mặt hàng & Hoạt động. Keep monetary aggregation in decimal
+            // and materialize the filtered rows before grouping for chart data.
+            var topProductRows = await _context.OrderDetails.AsNoTracking()
                 .Where(d => _context.Orders.Any(o => o.Id == EF.Property<Guid>(d, "OrderId") &&
                     (!scopedBranchId.HasValue || o.BranchId == scopedBranchId.Value) &&
-                    o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành"))
+                    o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0))
+                .Select(d => new { d.ProductName, d.Quantity, d.UnitPrice })
+                .ToListAsync();
+            var topProducts = topProductRows
                 .GroupBy(d => d.ProductName)
-                .Select(g => new { name = g.Key, quantity = g.Sum(x => x.Quantity), revenue = g.Sum(x => (double)x.Quantity * (double)x.UnitPrice) })
-                .OrderByDescending(x => x.quantity).Take(5).ToListAsync();
+                .Select(g => new { name = g.Key, quantity = g.Sum(x => x.Quantity), revenue = g.Sum(x => x.Quantity * x.UnitPrice) })
+                .OrderByDescending(x => x.quantity).Take(5).ToList();
 
             var recentOrders = await ordersQuery
                 .OrderByDescending(o => o.CreatedAt).Take(5)
@@ -233,7 +287,7 @@ namespace RestaurantPOS.Application.Services
                 {
                     invoiceCode = o.InvoiceCode,
                     customerName = o.CustomerName,
-                    totalAmount = (double)o.TotalAmount,
+                    totalAmount = o.TotalAmount,
                     createdAt = o.CreatedAt,
                     tableName = o.TableName,
                     status = o.Status,
@@ -245,10 +299,23 @@ namespace RestaurantPOS.Application.Services
                 .ToListAsync();
 
             // 7. Stats & Employee
+            var employeeScope = _context.Employees.AsNoTracking()
+                .Where(e => !scopedBranchId.HasValue || e.BranchId == scopedBranchId.Value);
+            var employeeCounts = await employeeScope
+                .GroupBy(_ => 1)
+                .Select(g => new { total = g.Count(), active = g.Count(e => e.IsActive) })
+                .FirstOrDefaultAsync();
+            var onDutyQuery = _context.Attendances.AsNoTracking()
+                .Where(a => a.CheckInTime >= startUtc && a.CheckInTime < endUtc && a.CheckOutTime == null)
+                .Where(a => !scopedBranchId.HasValue || _context.Employees.Any(e => e.Id == a.EmployeeId && e.BranchId == scopedBranchId.Value));
+            var onDuty = await onDutyQuery.Select(a => a.EmployeeId).Distinct().CountAsync();
+
             var result = new
             {
                 todayRevenue = todayRevenue,
                 revenueTrend = Math.Round(revenueTrend, 1),
+                revenueTrendState = revenueTrendState,
+                generatedAt = nowUtc,
                 totalOrders = ordersToday.Count,
                 customerCount = await ordersQuery.Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.CustomerName != "Khách lẻ").Select(o => o.CustomerName).Distinct().CountAsync(),
                 topProducts = topProducts,
@@ -263,22 +330,27 @@ namespace RestaurantPOS.Application.Services
                 costOfGoodsSold = costOfGoodsSold,
                 netProfit = netProfit,
                 // Giữ field cũ để frontend hiện tại không bị breaking change.
-                estimatedProfit = (double)netProfit,
+                estimatedProfit = netProfit,
                 employeeStats = new {
-                    total = await _context.Employees
-                        .Where(e => string.IsNullOrEmpty(branchId) || e.BranchId == Guid.Parse(branchId))
-                        .CountAsync(),
-                    active = await _context.Employees
-                        .Where(e => string.IsNullOrEmpty(branchId) || e.BranchId == Guid.Parse(branchId))
-                        .CountAsync(e => e.IsActive),
-                    onDuty = await _context.Attendances.AsNoTracking()
-                        .Where(a => a.CheckInTime >= startUtc && a.CheckInTime < endUtc && a.CheckOutTime == null)
-                        .Where(a => string.IsNullOrEmpty(branchId) || _context.Employees.Any(e => e.Id == a.EmployeeId && e.BranchId == Guid.Parse(branchId)))
-                        .Select(a => a.EmployeeId).Distinct().CountAsync()
+                    total = employeeCounts?.total ?? 0,
+                    active = employeeCounts?.active ?? 0,
+                    onDuty
                 }
             };
 
-            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(2));
+            lock (CacheInvalidationLock)
+            {
+                if (calculationInvalidationToken != DashboardCacheInvalidation.Token)
+                    return result;
+
+                var cacheOptions = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2)
+                };
+                cacheOptions.AddExpirationToken(new CancellationChangeToken(calculationInvalidationToken));
+                _cache.Set(cacheKey, result, cacheOptions);
+            }
+
             return result;
         }
 
@@ -374,9 +446,7 @@ namespace RestaurantPOS.Application.Services
                 expensesQuery = expensesQuery.Where(e => e.BranchId == branchId.Value);
             }
 
-            decimal totalExpenses = _context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true
-                ? (await expensesQuery.Select(e => e.Amount).ToListAsync()).Sum()
-                : await expensesQuery.Select(e => (decimal?)e.Amount).SumAsync() ?? 0m;
+            decimal totalExpenses = await expensesQuery.Select(e => (decimal?)e.Amount).SumAsync() ?? 0m;
 
             var expenseItems = await expensesQuery.Select(e => new { e.Category, e.Amount }).ToListAsync();
             var expenseBreakdown = expenseItems

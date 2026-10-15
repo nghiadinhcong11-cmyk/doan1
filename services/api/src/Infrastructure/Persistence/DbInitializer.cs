@@ -33,9 +33,9 @@ namespace RestaurantPOS.Infrastructure.Persistence
 
                 if (!await context.Areas.AnyAsync())
                 {
-                    var area1 = new Area { Id = Guid.NewGuid(), Name = "Tầng 1", DisplayOrder = 1, CreatedAt = DateTime.UtcNow };
-                    var area2 = new Area { Id = Guid.NewGuid(), Name = "Tầng 2", DisplayOrder = 2, CreatedAt = DateTime.UtcNow };
-                    var areaOutdoor = new Area { Id = Guid.NewGuid(), Name = "Sân Vườn", DisplayOrder = 3, CreatedAt = DateTime.UtcNow };
+                    var area1 = new Area { Id = Guid.NewGuid(), BranchId = mainBranch.Id, Name = "Tầng 1", DisplayOrder = 1, CreatedAt = DateTime.UtcNow };
+                    var area2 = new Area { Id = Guid.NewGuid(), BranchId = mainBranch.Id, Name = "Tầng 2", DisplayOrder = 2, CreatedAt = DateTime.UtcNow };
+                    var areaOutdoor = new Area { Id = Guid.NewGuid(), BranchId = mainBranch.Id, Name = "Sân Vườn", DisplayOrder = 3, CreatedAt = DateTime.UtcNow };
 
                     context.Areas.AddRange(area1, area2, areaOutdoor);
                     await context.SaveChangesAsync();
@@ -43,13 +43,13 @@ namespace RestaurantPOS.Infrastructure.Persistence
                     if (!await context.Tables.AnyAsync())
                     {
                         context.Tables.AddRange(
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 01", AreaName = "Tầng 1", SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 02", AreaName = "Tầng 1", SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 03", AreaName = "Tầng 1", SeatCount = 6, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 11", AreaName = "Tầng 2", SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 12", AreaName = "Tầng 2", SeatCount = 8, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn VIP", AreaName = "Tầng 2", SeatCount = 10, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
-                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn SV1", AreaName = "Sân Vườn", SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow }
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 01", AreaId = area1.Id, SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 02", AreaId = area1.Id, SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 03", AreaId = area1.Id, SeatCount = 6, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 11", AreaId = area2.Id, SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn 12", AreaId = area2.Id, SeatCount = 8, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn VIP", AreaId = area2.Id, SeatCount = 10, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow },
+                            new RestaurantTable { Id = Guid.NewGuid(), Name = "Bàn SV1", AreaId = areaOutdoor.Id, SeatCount = 4, Status = "Trống", BranchId = mainBranch.Id, BranchName = mainBranch.Name, CreatedAt = DateTime.UtcNow }
                         );
                         foreach (var table in context.ChangeTracker.Entries<RestaurantTable>()
                                      .Where(entry => string.IsNullOrEmpty(entry.Entity.QrToken)))

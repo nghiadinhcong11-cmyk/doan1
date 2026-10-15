@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { useRef } from 'react';
 import { LayoutGrid, Loader2, Store, MapPin, User, Clock, RotateCcw } from 'lucide-react';
 import { API_URL } from '../../../config';
 
@@ -13,31 +14,83 @@ interface Table {
 const TableStatusPage = () => {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const requestInFlight = useRef(false);
+  const refreshQueued = useRef(false);
   const branchName = localStorage.getItem('selectedBranchName') || 'Toàn hệ thống';
   const branchId = localStorage.getItem('selectedBranchId');
 
   const fetchTables = async () => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
     try {
-      if (!branchId) return;
+      if (!branchId) {
+        setTables([]);
+        setError('Chưa có chi nhánh trong ngữ cảnh hiện tại. Hãy chọn chi nhánh trước khi xem trạng thái bàn.');
+        return;
+      }
+      setError(null);
       const response = await fetch(`${API_URL}/api/Table?isActive=true&branchId=${branchId}`);
+      if (!response.ok) throw new Error('Không thể tải trạng thái bàn.');
       const data: Table[] = await response.json();
       setTables(data);
     } catch (err) {
       console.error('Error fetching tables:', err);
+      setError(err instanceof Error ? err.message : 'Không thể tải trạng thái bàn.');
     } finally {
       setLoading(false);
+      requestInFlight.current = false;
     }
   };
 
+  const refreshTables = (allowTrailing = false) => {
+    if (requestInFlight.current) {
+      if (allowTrailing) refreshQueued.current = true;
+      return;
+    }
+    void fetchTables().finally(() => {
+      if (refreshQueued.current && document.visibilityState === 'visible') {
+        refreshQueued.current = false;
+        refreshTables(true);
+      } else {
+        refreshQueued.current = false;
+      }
+    });
+  };
+
   useEffect(() => {
-    fetchTables();
-    const interval = setInterval(fetchTables, 10000); // 10s cập nhật 1 lần
-    return () => clearInterval(interval);
+    setLoading(true);
+    refreshTables();
+    if (!branchId) return undefined;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') refreshTables(true);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshTables(true);
+    };
+    const interval = setInterval(() => refreshTables(false), 20000); // 20s cập nhật 1 lần
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      refreshQueued.current = false;
+    };
   }, [branchId]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-full bg-gray-50">
        <Loader2 size={32} className="animate-spin text-blue-600" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex min-h-full items-center justify-center bg-gray-50 p-6">
+      <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-8 text-center shadow-sm">
+        <Store className="mx-auto mb-4 text-amber-500" size={40} />
+        <h1 className="text-lg font-bold text-gray-800">Chưa thể hiển thị trạng thái bàn</h1>
+        <p className="mt-2 text-sm text-gray-500">{error}</p>
+        {branchId && <button type="button" onClick={() => { setLoading(true); refreshTables(); }} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"><RotateCcw size={16} />Thử lại</button>}
+      </div>
     </div>
   );
 
@@ -54,7 +107,7 @@ const TableStatusPage = () => {
             <Store size={12} className="inline mr-1" /> {branchName} | Cập nhật tự động mỗi 10 giây
           </p>
         </div>
-        <button onClick={fetchTables} className="p-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-400 transition-all">
+        <button type="button" onClick={() => refreshTables(true)} disabled={loading} className="p-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-400 transition-all disabled:opacity-50">
           <RotateCcw size={20} />
         </button>
       </div>

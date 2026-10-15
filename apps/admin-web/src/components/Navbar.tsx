@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import * as signalR from '@microsoft/signalr';
 import { Link, useLocation } from 'react-router-dom';
-import { Bell, Settings, User, Search, HelpCircle, ChevronRight, Globe, LogOut, Printer, Users, Store, ShieldCheck, CreditCard, BellRing, Users2, ChevronDown, Clock, Calendar, Info, Loader2, Book, Banknote, Utensils, Settings2, QrCode, X } from 'lucide-react';
+import { Settings, User, Search, HelpCircle, ChevronRight, Globe, LogOut, Printer, Users, Store, ShieldCheck, CreditCard, Users2, ChevronDown, Clock, Calendar, Info, Book, Banknote, Utensils, Settings2, QrCode, X, Bell, BellRing, Loader2 } from 'lucide-react';
 import { API_URL, CUSTOMER_WEB_URL } from '../config';
-import { fetchPendingWebOrderCount, PENDING_ORDER_CHANGED_EVENT } from '../features/notifications/pendingOrderQuery';
+import { fetchBranchList } from '../api/branchQuery';
+import { useNotificationCenter } from '../features/notifications/useNotificationCenter';
+import NotificationBell from '../features/notifications/NotificationBell';
+import BrandLogo from '../../../shared/BrandLogo';
 
 interface Branch {
   id: string;
@@ -17,6 +19,12 @@ interface NavbarProps {
   userRole?: 'admin' | 'manager' | 'cashier' | null;
 }
 
+type NavItem = {
+  id: string;
+  label: string;
+  path: string;
+};
+
 const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -24,18 +32,20 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [pendingOrderCount, setPendingOrderCount] = useState(0);
-  const [loadingNoti, setLoadingNoti] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchLoadError, setBranchLoadError] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [insightToast, setInsightToast] = useState<any | null>(null);
   const location = useLocation();
+  const notificationCenter = useNotificationCenter(userRole === 'manager' ? 'manager' : 'admin');
+  const pendingOrderCount = notificationCenter.pendingCount;
+  const displayedNotifications: any[] = [];
+  const loadingNoti = notificationCenter.loadingNotifications;
+  const notificationError = notificationCenter.error;
 
   const fetchBranches = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/Branch`);
-      const data: Branch[] = await res.json();
+      const data = await fetchBranchList() as Branch[];
       setBranches(data);
 
       const savedBranchId = localStorage.getItem('selectedBranchId');
@@ -43,124 +53,56 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
       if (branch) {
         setSelectedBranch(branch);
         localStorage.setItem('selectedBranchId', branch.id);
-        void refreshPendingOrderCount();
+        window.dispatchEvent(new Event('branch:changed'));
       }
     } catch (err) {
       console.error(err);
+      setBranchLoadError(true);
     }
   };
 
   useEffect(() => {
     fetchBranches();
+    const handleBranchesChanged = () => { void fetchBranches(); };
+    window.addEventListener('branches:changed', handleBranchesChanged);
+    return () => window.removeEventListener('branches:changed', handleBranchesChanged);
   }, []);
 
   const handleBranchChange = (branch: Branch) => {
     if (userRole === 'manager') return;
     setSelectedBranch(branch);
     localStorage.setItem('selectedBranchId', branch.id);
+    window.dispatchEvent(new Event('branch:changed'));
     // Trigger a page reload or event to update other components
     window.location.reload();
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`);
 
-  const navItems = [
+  // This is presentation metadata only. Route layouts may still use their area
+  // for sizing, but area must never remove an allowed admin/manager nav item.
+  const managementNavItems: NavItem[] = [
     { id: 'dashboard', label: 'TỔNG QUAN', path: '/dashboard' },
     { id: 'insights', label: 'CẢNH BÁO', path: '/business-insights' },
-    { id: 'pos', label: 'BÁN HÀNG', path: '/pos' },
-    { id: 'kitchen', label: 'NHÀ BẾP', path: '/kitchen' },
-    { id: 'reservations', label: 'ĐẶT BÀN', path: '/reservations' },
-    { id: 'tables', label: 'PHÒNG BÀN', path: '/tables' },
-    { id: 'invoices', label: 'HÓA ĐƠN', path: '/invoices' },
     { id: 'expenses', label: 'CHI PHÍ', path: '/expenses' },
     ...(userRole === 'admin' || userRole === 'manager' ? [{ id: 'inventory', label: 'KHO HÀNG', path: '/inventory' }] : []),
   ];
-
-  const fetchNotifications = async () => {
-    try {
-      setLoadingNoti(true);
-      const branchId = localStorage.getItem('selectedBranchId');
-      const branchParam = branchId ? `&branchId=${branchId}` : '';
-
-      const res = await fetch(`${API_URL}/api/Order?status=Đang xử lý,Đổi quà${branchParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        // Chỉ lấy đơn từ Web (không có createdBy) hoặc đơn đổi quà
-        const webOrders = Array.isArray(data) ? data.filter((o: any) => o.status === 'Đổi quà' || (!o.createdBy || o.createdBy === '')) : [];
-
-        const formatted = webOrders.map((o: any) => ({
-          id: o.id,
-          title: o.status === 'Đổi quà' ? 'Yêu cầu đổi quà' : 'Đơn hàng mới',
-          desc: o.status === 'Đổi quà'
-            ? `Khách ${o.customerName || o.customerPhone} muốn đổi: ${o.details[0]?.productName || 'Quà tặng'}`
-            : `Bàn ${o.tableName || 'vãng lai'} vừa đặt món: ${o.totalAmount.toLocaleString()}đ`,
-          time: new Date(o.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-          type: o.status === 'Đổi quà' ? 'gift' : 'order',
-          link: o.status === 'Đổi quà' ? '/customers' : `/pos?reviewOrderId=${o.id}`
-        }));
-        setNotifications(formatted);
-      }
-    } catch (err) {
-      console.error("Lỗi lấy thông báo:", err);
-    } finally {
-      setLoadingNoti(false);
-    }
-  };
-
-  const fetchPersistentNotifications = async () => {
-    try {
-      setLoadingNoti(true);
-      const response = await fetch(`${API_URL}/api/Notification`);
-      if (response.ok) setNotifications(await response.json());
-    } catch (err) { console.error('Lỗi lấy notification persistent:', err); }
-    finally { setLoadingNoti(false); }
-  };
-
-  const refreshPendingOrderCount = async () => {
-    try {
-      setPendingOrderCount(await fetchPendingWebOrderCount());
-    } catch (err) {
-      console.error('Lỗi lấy số đơn web đang chờ:', err);
-    }
-  };
+  const operationsNavItems: NavItem[] = [
+    { id: 'pos', label: 'BÁN HÀNG', path: '/pos' },
+    { id: 'kitchen', label: 'NHÀ BẾP', path: '/kitchen' },
+    { id: 'tables', label: 'PHÒNG BÀN', path: '/tables' },
+    { id: 'invoices', label: 'HÓA ĐƠN', path: '/invoices' },
+    { id: 'reservations', label: 'ĐẶT BÀN', path: '/reservations' },
+  ];
 
   useEffect(() => {
-    fetchPersistentNotifications();
-    const interval = setInterval(fetchPersistentNotifications, 30000);
-    refreshPendingOrderCount();
-    const pendingInterval = setInterval(refreshPendingOrderCount, 30000);
-    const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
-    const onNotification = (notification: any) => {
-      setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
-
-      // Special handling for Business Insights - Show Toast
-      if (notification.type === 'BusinessInsight') {
-        setInsightToast(notification);
-        setTimeout(() => setInsightToast(null), 10000); // Auto hide after 10s
-
-        // Notify BusinessInsights page if open
-        window.dispatchEvent(new CustomEvent('business-insight-created', { detail: notification }));
-      }
+    const onInsight = (event: Event) => {
+      const notification = (event as CustomEvent).detail;
+      setInsightToast(notification);
+      window.setTimeout(() => setInsightToast(null), 10000);
     };
-    connection.on('NotificationCreated', onNotification);
-    const onPendingOrderChanged = () => { void refreshPendingOrderCount(); };
-    connection.on('PendingOrderChanged', onPendingOrderChanged);
-    void connection.start().catch(() => undefined);
-
-    // Lắng nghe sự kiện yêu cầu cập nhật thông báo ngay lập tức
-    const handleRefresh = () => fetchPersistentNotifications();
-    window.addEventListener('refresh-notifications', handleRefresh);
-    window.addEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(pendingInterval);
-      connection.off('NotificationCreated', onNotification);
-      connection.off('PendingOrderChanged', onPendingOrderChanged);
-      void connection.stop();
-      window.removeEventListener('refresh-notifications', handleRefresh);
-      window.removeEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
-    };
+    window.addEventListener('business-insight-created', onInsight);
+    return () => window.removeEventListener('business-insight-created', onInsight);
   }, []);
 
   return (
@@ -179,9 +121,9 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
         </button>
 
         {/* Logo/Brand */}
-        <Link to="/dashboard" className="flex items-center mr-4 font-bold text-lg italic tracking-tighter cursor-pointer shrink-0">
-          <div className="bg-white text-[#0070f4] rounded-full w-6 h-6 flex items-center justify-center mr-1 not-italic text-sm font-black">D</div>
-          <span className="hidden sm:inline">DOAN POS</span>
+        {branchLoadError && <span role="status" className="mr-3 hidden text-[10px] font-bold text-amber-100 xl:inline">Không tải được danh sách cơ sở</span>}
+        <Link to="/dashboard" className="mr-4 flex h-10 w-28 shrink-0 items-center cursor-pointer">
+          <BrandLogo className="h-full w-full" imageClassName="h-full w-full" />
         </Link>
 
         {/* Branch Selector Global */}
@@ -225,7 +167,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
 
         {/* Desktop Nav Links */}
         <div className="hidden lg:flex h-full items-center space-x-1">
-          {navItems.map((item) => (
+          {managementNavItems.map((item) => (
             <Link
               key={item.id}
               to={item.path}
@@ -299,7 +241,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           <div className="relative group h-full">
             <button
               className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
-                ['/employees', '/attendance', '/schedule'].includes(location.pathname) ? 'bg-blue-700 shadow-inner' : ''
+                ['/employees', '/attendance', '/schedule', '/shifts'].some(path => isActive(path)) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
               Nhân viên <ChevronDown size={14} className="ml-1 opacity-60 group-hover:rotate-180 transition-transform"/>
@@ -328,15 +270,26 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                      <p className="text-[10px] text-gray-400 font-medium uppercase">Xếp ca, chia lịch hàng tuần</p>
                   </div>
                </Link>
-               <Link to="/shifts" className="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-t border-gray-50">
+               <Link to="/shifts" className={`flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-t border-gray-50 ${isActive('/shifts') ? 'bg-blue-50' : ''}`}>
                   <Banknote size={16} className="mr-3 text-blue-600"/>
                   <div>
-                     <p className="text-[13px] font-bold text-gray-700 uppercase tracking-tight">Lịch sử chốt ca</p>
+                     <p className="text-[13px] font-bold text-gray-700 uppercase tracking-tight">Ca làm</p>
                      <p className="text-[10px] text-gray-400 font-medium uppercase">Đối soát tiền mặt, bàn giao</p>
                   </div>
                </Link>
             </div>
           </div>
+          {operationsNavItems.map((item) => (
+            <Link
+              key={item.id}
+              to={item.path}
+              className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
+                isActive(item.path) ? 'bg-blue-700 shadow-inner' : ''
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -344,7 +297,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 top-12 bg-blue-700 z-[100] animate-in slide-in-from-left duration-300">
            <div className="p-6 space-y-6">
-              {navItems.map((item) => (
+              {managementNavItems.map((item) => (
                 <Link
                   key={item.id}
                   to={item.path}
@@ -355,11 +308,19 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                 </Link>
               ))}
               <div className="pt-6 border-t border-blue-600 space-y-4">
-                 <Link to="/reservations" onClick={() => setIsMobileMenuOpen(false)} className="block text-blue-100 font-black uppercase italic tracking-tighter">Đặt bàn</Link>
-                 <Link to="/customers" onClick={() => setIsMobileMenuOpen(false)} className="block text-blue-100 font-black uppercase italic tracking-tighter">Khách hàng</Link>
-                 <Link to="/promotions" onClick={() => setIsMobileMenuOpen(false)} className="block text-blue-100 font-black uppercase italic tracking-tighter">Khuyến mãi</Link>
-                 <Link to="/employees" onClick={() => setIsMobileMenuOpen(false)} className="block text-blue-100 font-black uppercase italic tracking-tighter">Nhân viên</Link>
-                 <Link to="/attendance" onClick={() => setIsMobileMenuOpen(false)} className="block text-blue-100 font-black uppercase italic tracking-tighter">Chấm công</Link>
+                 <Link to="/products" onClick={() => setIsMobileMenuOpen(false)} className={`block font-black uppercase italic tracking-tighter ${isActive('/products') || isActive('/toppings') ? 'text-white' : 'text-blue-100'}`}>Thực đơn</Link>
+                 <Link to="/toppings" onClick={() => setIsMobileMenuOpen(false)} className="block pl-4 text-sm font-bold text-blue-200">Quản lý Topping</Link>
+                 <Link to="/customers" onClick={() => setIsMobileMenuOpen(false)} className={`block font-black uppercase italic tracking-tighter ${isActive('/customers') || isActive('/promotions') ? 'text-white' : 'text-blue-100'}`}>Khách hàng</Link>
+                 <Link to="/promotions" onClick={() => setIsMobileMenuOpen(false)} className="block pl-4 text-sm font-bold text-blue-200">Khuyến mãi</Link>
+                 <Link to="/employees" onClick={() => setIsMobileMenuOpen(false)} className={`block font-black uppercase italic tracking-tighter ${isActive('/employees') || isActive('/attendance') || isActive('/schedule') || isActive('/shifts') ? 'text-white' : 'text-blue-100'}`}>Nhân viên</Link>
+                 <Link to="/attendance" onClick={() => setIsMobileMenuOpen(false)} className="block pl-4 text-sm font-bold text-blue-200">Chấm công</Link>
+                 <Link to="/schedule" onClick={() => setIsMobileMenuOpen(false)} className="block pl-4 text-sm font-bold text-blue-200">Lịch làm việc</Link>
+                 <Link to="/shifts" onClick={() => setIsMobileMenuOpen(false)} className={`block pl-4 text-sm font-bold ${isActive('/shifts') ? 'text-white' : 'text-blue-200'}`}>Ca làm</Link>
+                 {operationsNavItems.map((item) => (
+                   <Link key={item.id} to={item.path} onClick={() => setIsMobileMenuOpen(false)} className={`block text-lg font-black uppercase italic tracking-tighter ${isActive(item.path) ? 'text-white' : 'text-blue-200'}`}>
+                     {item.label}
+                   </Link>
+                 ))}
                  <button onClick={onLogout} className="text-red-300 font-black uppercase italic tracking-tighter">Đăng xuất</button>
               </div>
            </div>
@@ -380,8 +341,9 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
         </div>
 
         <div className="flex items-center space-x-3 relative">
+          <NotificationBell {...notificationCenter} historyPath="/notifications" />
           {/* Notifications */}
-          <div className="relative">
+          <div className="relative hidden">
             <button
               onClick={() => {
                 setIsNotificationsOpen(!isNotificationsOpen);
@@ -405,23 +367,24 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-2">
                 <div className="p-3 border-b bg-gray-50 flex items-center justify-between text-[12px] font-bold text-gray-700 uppercase">
                   <div className="flex items-center"><BellRing className="h-4 w-4 mr-2 text-blue-600" /> Thông báo mới</div>
-                  {notifications.filter(n => !n.isRead).length > 0 && (
-                    <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded uppercase">{notifications.filter(n => !n.isRead).length} Mới</span>
+                  {displayedNotifications.filter(n => !n.isRead).length > 0 && (
+                    <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded uppercase">{displayedNotifications.filter(n => !n.isRead).length} Mới</span>
                   )}
                 </div>
                 <div className="max-h-96 overflow-y-auto">
-                   {loadingNoti && notifications.length === 0 ? (
+                   {notificationError && <div role="status" className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{notificationError}</div>}
+                   {loadingNoti && displayedNotifications.length === 0 ? (
                      <div className="py-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-600" /></div>
-                   ) : notifications.length === 0 ? (
+                   ) : displayedNotifications.length === 0 ? (
                      <div className="py-10 text-center text-gray-400 text-xs italic uppercase">Không có thông báo mới</div>
                    ) : (
-                     notifications.map((n) => (
+                     displayedNotifications.map((n) => (
                        <Link
                          key={n.id}
                          to={n.route || n.link || '#'}
                          onClick={() => {
                            setIsNotificationsOpen(false);
-                           if (!n.isRead) void fetch(`${API_URL}/api/Notification/${n.id}/read`, { method: 'PATCH' });
+                           if (!n.isPendingOrder && !n.isRead) void fetch(`${API_URL}/api/Notification/${n.id}/read`, { method: 'PATCH' });
                            if (n.type === 'order') {
                               window.dispatchEvent(new CustomEvent('pos-open-notification', { detail: { orderId: n.id } }));
                            }
@@ -445,15 +408,16 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           </div>
 
           {/* Settings Icon & Dropdown */}
-          <div className="relative">
+          {userRole === 'admin' && <div className="relative">
             <button
               onClick={() => {
                 setIsSettingsOpen(!isSettingsOpen);
+                setIsMobileMenuOpen(false);
                 setIsNotificationsOpen(false);
                 setIsHelpOpen(false);
                 setIsUserMenuOpen(false);
               }}
-              className={`p-1 hover:bg-blue-600 rounded transition-colors ${isSettingsOpen || location.pathname === '/settings' ? 'bg-blue-700' : ''}`}
+              className={`p-1 hover:bg-blue-600 rounded transition-colors ${isSettingsOpen || ['/settings', '/settings/receipt', '/print-templates'].some(path => isActive(path)) ? 'bg-blue-700' : ''}`}
               title="Thiết lập"
             >
               <Settings size={18} />
@@ -462,16 +426,15 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
             {isSettingsOpen && (
               <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-2">
                 <div className="p-3 border-b bg-gray-50 flex items-center text-[12px] font-bold text-gray-700 uppercase">
-                  <Settings className="h-4 w-4 mr-2 text-blue-600" /> Thiết lập hệ thống
+                  <Settings className="h-4 w-4 mr-2 text-blue-600" /> Cấu hình chủ quán
                 </div>
                 <div className="p-1">
                    {[
-                     { icon: <Settings className="h-4 w-4" />, label: "Thiết lập tính năng", path: '/settings' },
-                     { icon: <Printer className="h-4 w-4" />, label: "Quản lý mẫu in", path: '/print-templates' },
-                     { icon: <Printer className="h-4 w-4" />, label: "Cấu hình in bill", path: '/settings/receipt' },
-                     userRole === 'admin' && { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", path: '/branches' },
-                     { icon: <Users className="h-4 w-4" />, label: "Quản lý nhân viên", path: '/employees' },
-                   ].filter(Boolean).map((item: any, i) => (
+                     { icon: <Settings className="h-4 w-4" />, label: "Cấu hình nhà hàng", path: '/settings' },
+                     { icon: <Printer className="h-4 w-4" />, label: "Hóa đơn & in bill", path: '/settings/receipt' },
+                     { icon: <Printer className="h-4 w-4" />, label: "Mẫu in", path: '/print-templates' },
+                     { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", path: '/branches' },
+                   ].map((item, i) => (
                      <Link
                        key={i}
                        to={item.path}
@@ -497,7 +460,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Help & Support */}
           <div className="relative">

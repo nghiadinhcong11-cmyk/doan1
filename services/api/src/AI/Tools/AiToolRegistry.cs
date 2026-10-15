@@ -2,11 +2,20 @@ using System;
 using System.Collections.Generic;
 using RestaurantPOS.AI.Models;
 using System.Linq;
+using RestaurantPOS.Application.Common.Security;
+using RestaurantPOS.AI.Security;
 
 namespace RestaurantPOS.AI.Tools
 {
     public class AiToolRegistry
     {
+        private static readonly IReadOnlySet<string> AuthenticatedCustomerTools =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "customer_get_menu",
+                "get_my_orders"
+            };
+
         private readonly IEnumerable<IAiTool> _tools;
 
         public AiToolRegistry(IEnumerable<IAiTool> tools)
@@ -31,12 +40,24 @@ namespace RestaurantPOS.AI.Tools
         }
 
         /// <summary>
-        /// Lấy danh sách Schema các Tool hợp lệ cho Role hiện tại để gửi lên Gemini
+        /// Lấy danh sách schema các Tool hợp lệ cho Role hiện tại để gửi cho AI.
         /// </summary>
-        public object[] GetGeminiToolsDefinition(string role)
+        public object[] GetToolsDefinition(
+            string role,
+            bool readOnlyOnly = false,
+            IReadOnlySet<string>? allowedToolNames = null)
         {
+            if (!RoleNames.IsKnownRole(role))
+            {
+                return Array.Empty<object>();
+            }
+
+            var normalizedRole = role.ToLowerInvariant();
             var allowedTools = _tools.Where(t =>
-                t.AllowedRoles.Contains(role.ToLower(), StringComparer.OrdinalIgnoreCase)
+                t.AllowedRoles.Contains(normalizedRole, StringComparer.OrdinalIgnoreCase) &&
+                (!readOnlyOnly || t.RiskLevel == ToolRiskLevel.Read) &&
+                (normalizedRole != "customer" || AuthenticatedCustomerTools.Contains(t.Name)) &&
+                (allowedToolNames is null || allowedToolNames.Contains(t.Name))
             ).ToList();
 
             if (!allowedTools.Any())
@@ -44,7 +65,7 @@ namespace RestaurantPOS.AI.Tools
                 return Array.Empty<object>();
             }
 
-            // Theo cấu trúc Gemini API: tools là một mảng chứa đối tượng có function_declarations
+            // The existing function-calling contract uses a function_declarations array.
             return new object[]
             {
                 new

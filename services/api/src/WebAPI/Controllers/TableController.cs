@@ -75,7 +75,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// <summary>Tạo bàn mới.</summary>
         [HttpPost]
         [Authorize(Roles = "admin,manager")]
-        public async Task<IActionResult> CreateTable(RestaurantTable table)
+        public async Task<IActionResult> CreateTable([FromBody] TableRequestDto request)
         {
             try
             {
@@ -85,12 +85,16 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (!IsAdmin())
                 {
                     if (branchId == null) return Forbid();
-                    if (table.BranchId.HasValue && table.BranchId != branchId)
+                    if (request.BranchId != Guid.Empty && request.BranchId != branchId.Value)
                         return Forbid();
                 }
 
-                var result = await _tableService.CreateTableAsync(table, IsAdmin() ? null : branchId);
+                var result = await _tableService.CreateTableAsync(request, IsAdmin() ? null : branchId);
                 return Ok(TableResponseDto.From(result));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -104,7 +108,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// <summary>Cập nhật thông tin bàn.</summary>
         [HttpPut("{id}")]
         [Authorize(Roles = "admin,manager")]
-        public async Task<IActionResult> UpdateTable(Guid id, RestaurantTable tableUpdate)
+        public async Task<IActionResult> UpdateTable(Guid id, [FromBody] TableRequestDto request)
         {
             var branchId = GetUserBranchId();
 
@@ -112,14 +116,21 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!IsAdmin())
             {
                 if (branchId == null) return Forbid();
-                if (tableUpdate.BranchId.HasValue && tableUpdate.BranchId != branchId)
+                if (request.BranchId != Guid.Empty && request.BranchId != branchId.Value)
                     return Forbid();
             }
 
-            var result = await _tableService.UpdateTableAsync(id, tableUpdate, IsAdmin() ? null : branchId);
-            if (result == null) return NotFound();
+            try
+            {
+                var result = await _tableService.UpdateTableAsync(id, request, IsAdmin() ? null : branchId);
+                if (result == null) return NotFound();
 
-            return Ok(TableResponseDto.From(result));
+                return Ok(TableResponseDto.From(result));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         /// <summary>Cập nhật trạng thái sử dụng của bàn.</summary>

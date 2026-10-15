@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
-import { User, Store, Package, History, Shield, Settings, LogOut, ChevronRight, Moon, Globe, Camera, Save, CheckCircle2, X, CreditCard, Lock, AlertCircle, MapPin, Phone, Zap } from 'lucide-react';
+import { User, Store, Package, History, Shield, Settings, LogOut, ChevronRight, Moon, Globe, Camera, CheckCircle2, X, CreditCard, Lock, AlertCircle, MapPin, Phone, Zap } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../../../config';
 import { Button, Feedback, FormField } from '../../../components/ui';
 
@@ -19,6 +20,7 @@ interface ProfileData {
 }
 
 const ProfilePage = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('account'); // account, package, billing, security
   const [isEditing, setIsEditing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -91,46 +93,6 @@ const ProfilePage = () => {
 
     fetchData();
   }, []);
-
-  const handleSave = async () => {
-    if (!branchData) return;
-    setProfileError('');
-
-    try {
-      const payload = {
-        ...branchData,
-        name: profile.storeName,
-        address: profile.address,
-        phoneNumber: profile.phone,
-        representativeName: profile.representative,
-        representativeEmail: profile.email,
-        taxCode: profile.taxCode,
-        industry: profile.industry,
-        businessType: profile.businessType,
-        imageUrl: profile.avatarUrl
-      };
-
-      const response = await fetch(`${API_URL}/api/Branch/${branchData.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        setIsEditing(false);
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
-      } else {
-        const err = await response.json();
-        setProfileError(err.message || 'Không thể lưu thay đổi.');
-      }
-    } catch (err) {
-      setProfileError('Lỗi kết nối máy chủ khi lưu hồ sơ.');
-    }
-  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -507,29 +469,12 @@ const ProfilePage = () => {
                 )}
 
                 {activeTab === 'account' && userRole === 'admin' && (
-                  !isEditing ? (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="px-8 py-3 bg-[#dc2626] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-500/20 hover:bg-red-700 transition-all active:scale-95"
-                    >
-                      CHỈNH SỬA HỒ SƠ
-                    </button>
-                  ) : (
-                    <div className="flex space-x-3 animate-in fade-in zoom-in-95 duration-200">
-                      <button
-                        onClick={() => setIsEditing(false)}
-                        className="px-6 py-3 bg-white border-2 border-gray-100 text-gray-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-50 transition-all"
-                      >
-                        HỦY BỎ
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        className="px-8 py-3 bg-green-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-green-500/20 hover:bg-green-700 transition-all flex items-center"
-                      >
-                        <Save size={16} className="mr-2" /> LƯU THAY ĐỔI
-                      </button>
-                    </div>
-                  )
+                  <button
+                    onClick={() => navigate(`/branches?branchId=${encodeURIComponent(branchData?.id || '')}`)}
+                    className="px-8 py-3 bg-[#dc2626] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-500/20 hover:bg-red-700 transition-all active:scale-95"
+                  >
+                    CHỈNH SỬA THÔNG TIN CHI NHÁNH
+                  </button>
                 )}
              </div>
              {profileError && <div className="mt-4"><Feedback tone="error" onDismiss={() => setProfileError('')}>{profileError}</Feedback></div>}
@@ -542,7 +487,7 @@ const ProfilePage = () => {
                  <div className="absolute -bottom-14 left-12 flex items-end">
                     <div className="w-32 h-32 bg-white rounded-[2.5rem] p-1.5 shadow-2xl relative">
                        <div
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => navigate(`/branches?branchId=${encodeURIComponent(branchData?.id || '')}`)}
                           className="w-full h-full bg-blue-50 rounded-[2rem] flex items-center justify-center text-[#0070f4] relative group overflow-hidden cursor-pointer border-2 border-white shadow-inner"
                         >
                           {profile.avatarUrl ? (
@@ -554,13 +499,6 @@ const ProfilePage = () => {
                              <Camera size={24} className="text-white" />
                           </div>
                        </div>
-                       <input
-                         type="file"
-                         ref={fileInputRef}
-                         className="hidden"
-                         accept="image/*"
-                         onChange={handleImageUpload}
-                       />
                        <div className="absolute -bottom-2 -right-2 bg-green-500 text-white p-2 rounded-full border-4 border-white shadow-lg">
                           <CheckCircle2 size={16} />
                        </div>

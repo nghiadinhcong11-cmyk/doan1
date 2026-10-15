@@ -1,46 +1,50 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { Search, ChevronRight, Settings, Users, Store, Printer, CreditCard, ShieldCheck, Bell, Database, Lock, Trash2, ShoppingBag, Utensils, ClipboardList, Users2, BarChart3, Receipt, QrCode, Truck, MessageSquare, Info, Smartphone, Eye, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronRight, Settings, Users, Store, Printer, CreditCard, ShieldCheck, Bell, Database, Lock, Trash2, ShoppingBag, Utensils, ClipboardList, Users2, BarChart3, Receipt, QrCode, Truck, MessageSquare, Info, Smartphone, Eye, Save, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { notifyFeedback } from '../../../components/ui';
+import type { BranchManagementRecord } from '../branchTypes';
 
 const SystemSettings = () => {
+  const navigate = useNavigate();
   const [activeSubTab, setActiveSubTab] = useState('store-info');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const navigate = useNavigate();
 
-  const [mainBranch, setMainBranch] = useState<any>(null);
+  const [selectedBranch, setSelectedBranch] = useState<BranchManagementRecord | null>(null);
   const [loadingBranch, setLoadingBranch] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
 
   const DEFAULT_SETTINGS = {
-    autoPrint: true,
-    requireStaff: true,
     vatPercent: 8,
     serviceFee: 0,
-    allowPriceChange: false,
-    loyaltyEnabled: true,
-    autoRank: true,
-    qrDynamic: true,
-    showRevenuePos: true,
-    loyaltyMessages: false,
-    qrPaymentEnabled: true,
-    dailyRevenueReport: true,
-    hideCostForStaff: true,
-    priceBookEnabled: false,
-    allowReturn: true,
-    stockWarning: true
   };
 
   const [settings, setSettings] = useState<any>(DEFAULT_SETTINGS);
-  const selectedBranchId = localStorage.getItem('selectedBranchId') || '';
+  const [serviceFeeKey, setServiceFeeKey] = useState<'serviceFee' | 'serviceFeePercent'>('serviceFee');
+  const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('selectedBranchId') || '');
   const userRole = localStorage.getItem('userRole');
 
   useEffect(() => {
+    const handleBranchChanged = () => setSelectedBranchId(localStorage.getItem('selectedBranchId') || '');
+    window.addEventListener('branch:changed', handleBranchChanged);
+    const syncTimer = window.setTimeout(handleBranchChanged, 0);
+    return () => {
+      window.clearTimeout(syncTimer);
+      window.removeEventListener('branch:changed', handleBranchChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     const init = async () => {
-      await fetchMainBranch();
-      await fetchSettings();
+      setBranchError(null);
+      const branch = await fetchSelectedBranch();
+      if (branch) await fetchSettings();
+      else {
+        setSettings(DEFAULT_SETTINGS);
+        setIsLoading(false);
+      }
     };
     init();
   }, [selectedBranchId]);
@@ -65,6 +69,13 @@ const SystemSettings = () => {
           else if (!isNaN(val) && val !== '') (parsedSettings as any)[key] = Number(val);
           else (parsedSettings as any)[key] = val;
         });
+        const effectiveServiceFeeKey = Object.prototype.hasOwnProperty.call(data, 'serviceFeePercent')
+          ? 'serviceFeePercent'
+          : 'serviceFee';
+        setServiceFeeKey(effectiveServiceFeeKey);
+        if (effectiveServiceFeeKey === 'serviceFeePercent' && data.serviceFeePercent !== undefined) {
+          parsedSettings.serviceFee = Number(data.serviceFeePercent) || 0;
+        }
         setSettings(parsedSettings);
       }
     } catch (err) {
@@ -74,76 +85,45 @@ const SystemSettings = () => {
     }
   };
 
-  const fetchMainBranch = async () => {
+  const fetchSelectedBranch = async (): Promise<BranchManagementRecord | null> => {
+    if (!selectedBranchId) {
+      setSelectedBranch(null);
+      setBranchError('Vui lòng chọn một chi nhánh trước khi mở cấu hình.');
+      return null;
+    }
     try {
       setLoadingBranch(true);
-      const response = await fetch(`${API_URL}/api/Branch`);
-      const data = await response.json();
-      const main = data.find((b: any) => b.isMain) || data[0];
-      setMainBranch(main);
+      const response = await fetch(`${API_URL}/api/Branch/management`);
+      if (!response.ok) throw new Error(`Không thể tải thông tin chi nhánh (${response.status}).`);
+      const data = await response.json() as BranchManagementRecord[];
+      const branch = data.find(item => item.id === selectedBranchId && item.isActive) || null;
+      setSelectedBranch(branch);
+      if (!branch) setBranchError('Chi nhánh đang chọn không hợp lệ hoặc đã ngừng hoạt động. Vui lòng chọn lại chi nhánh.');
+      return branch;
     } catch (err) {
       console.error("Lỗi lấy thông tin trụ sở:", err);
-    } finally {
-      setLoadingBranch(false);
-    }
-  };
-
-  const handleUpdateStoreInfo = async () => {
-    if (!mainBranch) return;
-    try {
-      setLoadingBranch(true);
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`${API_URL}/api/Branch/${mainBranch.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(mainBranch)
-      });
-      if (response.ok) {
-        setShowSaveSuccess(true);
-        setTimeout(() => setShowSaveSuccess(false), 3000);
-      }
-    } catch (err) {
-      notifyFeedback("Lỗi cập nhật thông tin cửa hàng");
+      setSelectedBranch(null);
+      setBranchError(err instanceof Error ? err.message : 'Không thể tải thông tin chi nhánh.');
+      return null;
     } finally {
       setLoadingBranch(false);
     }
   };
 
 
-  const sidebarItems = [
-    { group: 'Bán hàng', items: [
-      { id: 'menu-mgmt', icon: <ShoppingBag size={14}/>, label: 'Thực đơn & Giá bán' },
-      { id: 'orders', icon: <ClipboardList size={14}/>, label: 'Đơn hàng & In ấn' },
-      { id: 'loyalty', icon: <Users2 size={14}/>, label: 'Ưu đãi & Thành viên' },
-      { id: 'reports', icon: <BarChart3 size={14}/>, label: 'Báo cáo doanh thu' },
-    ]},
-    { group: 'Thanh toán', items: [
-      { id: 'qr-payment', icon: <QrCode size={14}/>, label: 'Thanh toán mã QR' },
-      { id: 'invoice-out', icon: <Receipt size={14}/>, label: 'Hóa đơn đầu ra' },
-    ]},
-    { group: 'Cửa hàng', items: [
-      (userRole === 'admin' || userRole === 'manager') && { id: 'store-info', icon: <Settings size={14}/>, label: 'Thông tin cửa hàng' },
-      { id: 'emp-mgmt', icon: <Users size={14}/>, label: 'Quản lý nhân viên' },
-      userRole === 'admin' && { id: 'branch-mgmt', icon: <Store size={14}/>, label: 'Quản lý chi nhánh' },
-    ].filter(Boolean) as any },
-    { group: 'Dữ liệu', items: [
-      { id: 'lock-book', icon: <Lock size={14}/>, label: 'Khóa sổ doanh thu' },
-    ]},
-  ];
 
   const handleSave = async () => {
+    if (!selectedBranchId) {
+      notifyFeedback('Vui lòng chọn một chi nhánh trước khi lưu thuế và phí.');
+      return;
+    }
     try {
       setIsSaving(true);
       const token = localStorage.getItem('adminToken');
 
       // Convert all values to strings for the API
-      const payload: Record<string, string> = {};
-      Object.keys(settings).forEach(key => {
-        payload[key] = String(settings[key]);
-      });
+      const payload: Record<string, string> = { vatPercent: String(settings.vatPercent) };
+      payload[serviceFeeKey] = String(settings.serviceFee);
 
       const response = await fetch(`${API_URL}/api/SystemSettings?branchId=${selectedBranchId}`, {
         method: 'PUT',
@@ -208,24 +188,28 @@ const SystemSettings = () => {
       );
     }
 
+    if (!selectedBranch) {
+      return <div className="p-10 bg-white"><div className="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center"><h3 className="text-lg font-black text-amber-900">Chưa có chi nhánh hợp lệ</h3><p className="mt-2 text-sm text-amber-800">{branchError || 'Vui lòng chọn chi nhánh từ bộ chọn trên thanh điều hướng.'}</p></div></div>;
+    }
+
     switch (activeSubTab) {
       case 'store-info':
-        if (loadingBranch && !mainBranch) {
-           return <div className="flex-1 flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={32} /><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Đang tải thông tin trụ sở...</p></div>;
+        if (loadingBranch) {
+           return <div className="flex-1 flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={32} /><p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Đang tải thông tin chi nhánh...</p></div>;
         }
         return (
           <div className="p-10 bg-white flex-1 overflow-y-auto">
              <div className="max-w-3xl mx-auto space-y-10">
                 <div className="flex items-center space-x-6 border-b pb-8">
-                   <div className="w-24 h-24 bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl flex items-center justify-center text-blue-600 border border-blue-200 shadow-inner">
-                      <Store size={48} />
+                   <div className="w-24 h-24 bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl flex items-center justify-center text-blue-600 border border-blue-200 shadow-inner overflow-hidden">
+                      {selectedBranch.imageUrl ? <img src={selectedBranch.imageUrl} alt="Logo chi nhánh" className="h-full w-full object-cover" /> : <Store size={48} />}
                    </div>
                    <div>
-                      <h3 className="text-2xl font-black text-gray-800 tracking-tight uppercase">Thông tin cửa hàng</h3>
-                      <p className="text-sm text-gray-400">Thiết lập định danh và thông tin liên hệ chính thức</p>
+                      <h3 className="text-2xl font-black text-gray-800 tracking-tight uppercase">Chi nhánh đang chọn</h3>
+                      <p className="text-sm text-gray-400">Thông tin chỉ đọc của chi nhánh hiện tại; chỉnh sửa tại Quản lý chi nhánh.</p>
                       <div className="mt-2 flex space-x-3">
-                         <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-tighter uppercase">ID: {mainBranch?.id?.substring(0,8).toUpperCase()}</span>
-                         <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded tracking-tighter uppercase italic">Trụ sở chính</span>
+                         <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-tighter uppercase">ID: {selectedBranch.id?.substring(0,8).toUpperCase()}</span>
+                         {selectedBranch.isMain && <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded tracking-tighter uppercase italic">Trụ sở chính</span>}
                       </div>
                    </div>
                 </div>
@@ -236,8 +220,8 @@ const SystemSettings = () => {
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.name || ''}
-                        onChange={e => setMainBranch({...mainBranch, name: e.target.value})}
+                        value={selectedBranch.name || ''}
+                        readOnly
                       />
                    </div>
                    <div className="space-y-1 group">
@@ -245,8 +229,8 @@ const SystemSettings = () => {
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.phoneNumber || ''}
-                        onChange={e => setMainBranch({...mainBranch, phoneNumber: e.target.value})}
+                        value={selectedBranch.phoneNumber || ''}
+                        readOnly
                       />
                    </div>
                    <div className="col-span-2 space-y-1 group">
@@ -254,8 +238,8 @@ const SystemSettings = () => {
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.address || ''}
-                        onChange={e => setMainBranch({...mainBranch, address: e.target.value})}
+                        value={selectedBranch.address || ''}
+                        readOnly
                       />
                    </div>
                    <div className="space-y-1 group">
@@ -263,17 +247,21 @@ const SystemSettings = () => {
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.representativeName || ''}
-                        onChange={e => setMainBranch({...mainBranch, representativeName: e.target.value})}
+                        value={selectedBranch.representativeName || ''}
+                        readOnly
                       />
+                   </div>
+                   <div className="space-y-1 group">
+                      <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Email đại diện</label>
+                      <input type="email" className="w-full border-b-2 border-gray-100 py-2 outline-none font-bold text-gray-700 bg-transparent" value={selectedBranch.representativeEmail || ''} readOnly />
                    </div>
                    <div className="space-y-1 group">
                       <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Mã số thuế</label>
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.taxCode || ''}
-                        onChange={e => setMainBranch({...mainBranch, taxCode: e.target.value})}
+                        value={selectedBranch.taxCode || ''}
+                        readOnly
                       />
                    </div>
                    <div className="space-y-1 group">
@@ -281,8 +269,8 @@ const SystemSettings = () => {
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.bankName || ''}
-                        onChange={e => setMainBranch({...mainBranch, bankName: e.target.value})}
+                        value={selectedBranch.bankName || ''}
+                        readOnly
                       />
                    </div>
                    <div className="space-y-1 group">
@@ -290,35 +278,34 @@ const SystemSettings = () => {
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.accountNumber || ''}
-                        onChange={e => setMainBranch({...mainBranch, accountNumber: e.target.value})}
+                        value={selectedBranch.accountNumber || ''}
+                        readOnly
                       />
+                   </div>
+                   <div className="space-y-1 group">
+                      <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Chủ tài khoản</label>
+                      <input type="text" className="w-full border-b-2 border-gray-100 py-2 outline-none font-bold text-gray-700 bg-transparent" value={selectedBranch.accountHolder || ''} readOnly />
                    </div>
                    <div className="space-y-1 group">
                       <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Lĩnh vực hoạt động</label>
                       <input
                         type="text"
                         className="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 font-bold text-gray-700 transition-all bg-transparent"
-                        value={mainBranch?.industry || ''}
-                        onChange={e => setMainBranch({...mainBranch, industry: e.target.value})}
+                        value={selectedBranch.industry || ''}
+                        readOnly
                       />
+                   </div>
+                   <div className="space-y-1 group">
+                      <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Loại hình kinh doanh</label>
+                      <input type="text" className="w-full border-b-2 border-gray-100 py-2 outline-none font-bold text-gray-700 bg-transparent" value={selectedBranch.businessType || ''} readOnly />
                    </div>
                 </div>
 
                 <div className="pt-10 flex items-center justify-between">
                    <div className="flex items-center text-gray-400 text-xs italic">
-                      <Info size={14} className="mr-2" /> Dữ liệu này được đồng bộ trực tiếp từ Quản lý chi nhánh.
+                      <Info size={14} className="mr-2" /> Dữ liệu này được đọc trực tiếp từ Quản lý chi nhánh.
                    </div>
-                   {userRole === 'admin' && (
-                     <button
-                       onClick={handleUpdateStoreInfo}
-                       disabled={loadingBranch}
-                       className="bg-blue-600 text-white px-10 py-3 rounded-full font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center"
-                     >
-                        {loadingBranch ? <Loader2 size={14} className="animate-spin mr-2" /> : <Save size={14} className="mr-2" />}
-                        Cập nhật trụ sở
-                     </button>
-                   )}
+                   <button type="button" onClick={() => navigate(`/branches?branchId=${encodeURIComponent(selectedBranch.id || '')}`)} className="bg-blue-600 text-white px-6 py-3 rounded-full font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-widest text-xs">Chỉnh sửa thông tin chi nhánh</button>
                 </div>
              </div>
           </div>
@@ -355,13 +342,13 @@ const SystemSettings = () => {
              <div className="max-w-3xl mx-auto space-y-6">
                 <div className="flex items-center space-x-3 mb-8 border-b pb-4">
                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><ShoppingBag size={20}/></div>
-                   <h3 className="text-lg font-black uppercase text-gray-800 tracking-tight">Thiết lập Thực đơn & Giá bán</h3>
+                   <h3 className="text-lg font-black uppercase text-gray-800 tracking-tight">Quy tắc bán hàng</h3>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
                    <ToggleItem title="Quản lý theo bảng giá" desc="Sử dụng nhiều bảng giá khác nhau cho từng nhóm khách hàng hoặc khung giờ vàng." settingKey="priceBookEnabled" />
                    <ToggleItem title="Cho phép trả hàng" desc="Người dùng có thể tạo phiếu trả hàng từ hóa đơn đã thanh toán." settingKey="allowReturn" />
                    <ToggleItem title="Cảnh báo khi hết hàng" desc="Hiển thị thông báo trên màn hình POS khi sản phẩm trong kho sắp hết." settingKey="stockWarning" />
-                   {(userRole === 'admin' || userRole === 'manager') && (
+                   {userRole === 'admin' && (
                      <div className="pt-6 flex justify-end">
                         <button
                           onClick={handleSave}
@@ -384,11 +371,9 @@ const SystemSettings = () => {
              <div className="max-w-3xl mx-auto space-y-6">
                 <div className="flex items-center space-x-3 mb-8 border-b pb-4">
                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><ClipboardList size={20}/></div>
-                   <h3 className="text-lg font-black uppercase text-gray-800 tracking-tight">Cấu hình Đơn hàng & In ấn</h3>
+                   <h3 className="text-lg font-black uppercase text-gray-800 tracking-tight">Thuế & phí dịch vụ</h3>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
-                   <ToggleItem title="In hóa đơn tự động" desc="Hệ thống tự động in hóa đơn ngay sau khi bấm nút Thanh toán." settingKey="autoPrint" />
-                   <ToggleItem title="Bắt buộc chọn nhân viên phục vụ" desc="Yêu cầu chọn nhân viên khi tạo đơn để tính hoa hồng bán hàng cuối tháng." settingKey="requireStaff" />
                    <div className="p-4 border rounded-xl border-gray-100 bg-gray-50/50 space-y-4">
                       <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Thuế & Phí dịch vụ</p>
                       <div className="grid grid-cols-2 gap-6">
@@ -412,8 +397,7 @@ const SystemSettings = () => {
                          </div>
                       </div>
                    </div>
-                   <ToggleItem title="Cho phép thay đổi giá bán" desc="Nhân viên có thể sửa giá trực tiếp trên màn hình POS (Cần thận trọng)." settingKey="allowPriceChange" />
-                   {(userRole === 'admin' || userRole === 'manager') && (
+                   {userRole === 'admin' && (
                      <div className="pt-6 flex justify-end">
                         <button
                           onClick={handleSave}
@@ -531,7 +515,7 @@ const SystemSettings = () => {
              </div>
              <h3 className="text-lg font-black text-gray-600 uppercase tracking-tighter">Dữ liệu đang được đồng bộ</h3>
              <p className="text-xs max-w-xs mt-3 leading-relaxed italic font-medium">
-                Tính năng "{sidebarItems.flatMap(g => g.items).find(i => i.id === activeSubTab)?.label}" đang trong giai đoạn cấu hình cuối cùng. Vui lòng quay lại sau!
+                Thiết lập này chưa có nội dung khả dụng. Vui lòng quay lại trang cấu hình chung.
              </p>
              <button onClick={() => setActiveSubTab('store-info')} className="mt-8 text-[11px] font-bold text-blue-600 uppercase tracking-widest hover:underline">Quay lại trang chủ thiết lập</button>
           </div>
@@ -540,7 +524,7 @@ const SystemSettings = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-48px)] bg-[#f0f2f5] overflow-hidden text-gray-700 font-sans relative">
+    <div className="relative min-w-0 bg-[#f0f2f5] text-gray-700 font-sans">
 
       {/* Toast Success Message */}
       {showSaveSuccess && (
@@ -549,64 +533,14 @@ const SystemSettings = () => {
         </div>
       )}
 
-      {/* Sidebar Settings Menu */}
-      <div className="w-64 bg-white border-r flex flex-col shadow-sm">
-        <div className="p-6 border-b">
-          <h2 className="font-black text-lg text-gray-800 uppercase tracking-tighter flex items-center italic">
-             <Settings className="mr-2 text-blue-600" size={20}/> Thiết lập
-          </h2>
-          <div className="relative mt-4 group">
-            <Search className="absolute left-3 top-3 h-3.5 w-3.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-            <input
-              type="text"
-              placeholder="Tìm thiết lập..."
-              className="w-full pl-9 pr-2 py-2 bg-gray-50 border border-gray-100 rounded-lg text-[11px] font-bold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-5 custom-scrollbar">
-          {sidebarItems.map((group, idx) => (
-            <div key={idx}>
-              <p className="px-3 text-[10px] font-black text-gray-300 uppercase tracking-widest mb-2 mt-2">{group.group}</p>
-              <div className="space-y-0.5">
-                {group.items.map((item: any, i: number) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      if (item.id === 'emp-mgmt') navigate('/employees');
-                      else if (item.id === 'branch-mgmt') navigate('/branches');
-                      else if (item.id === 'print-templates') navigate('/print-templates');
-                      else setActiveSubTab(item.id);
-                    }}
-                    className={`w-full flex items-center px-3 py-2 text-xs rounded-lg transition-all ${
-                      activeSubTab === item.id
-                        ? 'bg-blue-600 text-white font-bold shadow-lg shadow-blue-500/30'
-                        : 'hover:bg-blue-50 text-gray-500 font-medium'
-                    }`}
-                  >
-                    <span className={`mr-3 ${activeSubTab === item.id ? 'text-white' : 'text-gray-400'}`}>{item.icon}</span>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="p-4 border-t bg-gray-50/50">
-           <div className="flex items-center space-x-2 text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Hệ thống đang trực tuyến</span>
-           </div>
-        </div>
+      <div className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <button type="button" onClick={() => setActiveSubTab('store-info')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeSubTab === 'store-info' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Thông tin nhà hàng</button>
+        <button type="button" onClick={() => setActiveSubTab('orders')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeSubTab === 'orders' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Thuế & phí dịch vụ</button>
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-hidden flex flex-col p-6">
-        <div className="bg-white rounded-3xl shadow-xl shadow-blue-500/5 border border-gray-200/60 flex-1 flex flex-col overflow-hidden animate-in fade-in duration-500">
-           {renderContent()}
-        </div>
+      <div className="min-w-0 overflow-hidden">
+        {renderContent()}
       </div>
     </div>
   );

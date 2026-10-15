@@ -11,7 +11,6 @@ The system contains:
 * Kitchen Display System
 * Restaurant/branch management
 * Employee management
-* Payroll
 * Receipt configuration
 * System settings
 * Loyalty configuration
@@ -62,7 +61,7 @@ Do not perform large refactors unless explicitly requested.
 
 ## AI
 
-* Gemini
+* Deterministic Mock AI provider
 * AI tool registry
 * AiPermissionService
 
@@ -449,7 +448,6 @@ Examples:
 
 * branch management
 * system settings modification
-* payroll
 * employee administration
 * sensitive financial operations
 * AI tools capable of modifying data
@@ -750,7 +748,6 @@ Owner Settings currently covers:
 * Profile
 * Branches
 * Employees
-* Payroll
 * Print Templates
 * Receipt Settings
 * System Settings
@@ -778,25 +775,6 @@ Do not allow a manager from Branch A to modify Branch B's receipt configuration.
 
 ---
 
-# 29. PAYROLL
-
-Payroll is financially sensitive.
-
-Before changing payroll logic:
-
-Inspect:
-
-* Employee
-* PayrollSettings
-* attendance data
-* salary profiles
-* payroll locking
-* existing calculation rules
-
-Never change salary formulas without explicitly confirming the business requirement.
-
-Once payroll is locked, do not silently recalculate historical payroll.
-
 ---
 
 # 30. PROFILE / BRANCH DATA
@@ -817,7 +795,6 @@ Never commit:
 * JWT secrets
 * database passwords
 * PFX passwords
-* Gemini keys
 * Supabase secrets
 * access tokens
 
@@ -991,7 +968,6 @@ float
 for:
 
 * price
-* salary
 * subtotal
 * tax
 * fee
@@ -1197,7 +1173,6 @@ Prefer a confirmation workflow.
 Examples:
 
 * deleting employee
-* changing payroll
 * changing branch settings
 * modifying orders
 * changing prices
@@ -1449,7 +1424,6 @@ or similar network errors:
 
 Do not immediately assume:
 
-* Gemini token expired
 * API quota exhausted
 * database broken
 
@@ -1469,24 +1443,9 @@ Network failures and API quota failures are different categories.
 
 ---
 
-# 61. GEMINI / AI API
+# 61. AI provider boundary
 
-Never commit Gemini API keys.
-
-AI model configuration must come from environment/configuration (e.g., `Gemini:Model` in `appsettings.json`).
-
-When changing Gemini integration:
-
-Check:
-
-* current configuration (e.g., `gemini-3.7-flash` is the current default)
-* API endpoint
-* authentication
-* quota
-* retry behavior
-* error handling
-
-Do not assume a specific model version is permanently available without checking settings.
+The current runtime uses `MockAiProvider` through `IAiProvider`. It is deterministic and does not call an external model. Preserve the orchestrator, tool registry, permission and confirmation boundaries; do not add a provider fallback or describe Mock AI as a live model integration.
 
 ---
 
@@ -1554,7 +1513,6 @@ Examples may include:
 * payment
 * order mutation
 * inventory mutation
-* payroll locking
 
 Do not introduce transactions everywhere without need.
 
@@ -1964,7 +1922,6 @@ Do NOT change without explicit justification:
 * Docker configuration
 * PostgreSQL configuration
 * Supabase configuration
-* Gemini model configuration
 * environment variables
 * HTTPS certificates
 * firewall configuration
@@ -2102,7 +2059,6 @@ For example:
 Do NOT immediately conclude:
 
 ```text
-Gemini quota exhausted
 ```
 
 when the error is:
@@ -2249,7 +2205,6 @@ The agent must stop and ask for clarification when a change could materially aff
 * financial calculations
 * payment
 * refunds
-* payroll
 * authorization
 * branch isolation
 * database destruction

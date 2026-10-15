@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using RestaurantPOS.AI.Services;
 using RestaurantPOS.Domain.Entities;
@@ -9,12 +10,12 @@ namespace RestaurantPOS.Application.Services;
 
 public class InsightExplanationService : IInsightExplanationService
 {
-    private readonly IGeminiService _geminiService;
+    private readonly IAiProvider _aiProvider;
     private readonly ILogger<InsightExplanationService> _logger;
 
-    public InsightExplanationService(IGeminiService geminiService, ILogger<InsightExplanationService> logger)
+    public InsightExplanationService(IAiProvider aiProvider, ILogger<InsightExplanationService> logger)
     {
-        _geminiService = geminiService;
+        _aiProvider = aiProvider;
         _logger = logger;
     }
 
@@ -58,7 +59,7 @@ Trả về kết quả dưới dạng JSON với cấu trúc sau:
 
         try
         {
-            var jsonResponse = await _geminiService.GenerateContentAsync(requestBody);
+            var jsonResponse = await _aiProvider.GenerateContentAsync(requestBody, CancellationToken.None);
             using var doc = JsonDocument.Parse(jsonResponse);
             var text = doc.RootElement
                 .GetProperty("candidates")[0]
@@ -69,7 +70,7 @@ Trả về kết quả dưới dạng JSON với cấu trúc sau:
 
             if (!string.IsNullOrEmpty(text))
             {
-                // Gemini sometimes returns markdown code blocks even with responseMimeType
+                // Mock responses use the same JSON text envelope and may be wrapped in markdown.
                 var cleanJson = text;
                 if (text.StartsWith("```json"))
                 {
@@ -87,7 +88,7 @@ Trả về kết quả dưới dạng JSON với cấu trúc sau:
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error explaining insight {InsightId} with Gemini.", insight.Id);
+            _logger.LogError(ex, "Error explaining insight {InsightId} with Mock AI.", insight.Id);
             // We intentionally leave AiExplanation and AiRecommendation null if AI fails.
         }
     }

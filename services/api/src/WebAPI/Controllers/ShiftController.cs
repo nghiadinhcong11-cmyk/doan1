@@ -111,15 +111,15 @@ namespace RestaurantPOS.WebAPI.Controllers
                 .Where(o => o.BranchId == shift.BranchId && o.CreatedAt >= shift.StartTime && o.Status == "Hoàn thành" && o.CreatedBy == shift.EmployeeName)
                 .ToListAsync();
 
-            var cashRev = shiftOrders.Where(o => o.PaymentMethod == "Tiền mặt").Sum(o => (double)o.PaidAmount);
-            var transferRev = shiftOrders.Where(o => o.PaymentMethod == "Chuyển khoản").Sum(o => (double)o.PaidAmount);
+            var cashRev = shiftOrders.Where(o => o.PaymentMethod == "Tiền mặt").Sum(o => o.PaidAmount);
+            var transferRev = shiftOrders.Where(o => o.PaymentMethod == "Chuyển khoản").Sum(o => o.PaidAmount);
             var totalRev = cashRev + transferRev;
 
             shift.EndTime = DateTime.UtcNow;
             shift.EndingCash = request.EndingCash;
-            shift.CashRevenue = (decimal)cashRev;
-            shift.TransferRevenue = (decimal)transferRev;
-            shift.TotalRevenue = (decimal)totalRev;
+            shift.CashRevenue = cashRev;
+            shift.TransferRevenue = transferRev;
+            shift.TotalRevenue = totalRev;
             shift.Status = "Closed";
             shift.Note = request.Note ?? "";
 

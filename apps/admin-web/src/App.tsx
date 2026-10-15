@@ -1,21 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import CashierNavbar from './components/CashierNavbar';
-import KitchenNavbar from './components/KitchenNavbar';
-import StaffNavbar from './components/StaffNavbar';
-import { Dashboard, InvoiceHistory, BusinessInsights } from './features/analytics';
-import { ProductManagement, ToppingManagement, PromotionManagement } from './features/catalog';
-import { TableManagement, ReservationManagement, CustomerManagement, ExpenseManagement } from './features/operations';
-import { EmployeeManagement, AttendanceManagement, ShiftManagement, WorkSchedulePage, EmployeeProfile, EmployeeAttendance, EmployeeSchedule } from './features/hrm';
-import { BranchManagement, SystemSettings, SupportPage, ReceiptSettingsPage } from './features/settings';
-import { POSPage, TableStatusPage, PrintTemplates } from './features/pos';
-import { KitchenPage, KitchenHistoryPage } from './features/kitchen';
-import { InventoryPage } from './features/inventory';
-import { LoginPage, ProfilePage } from './features/auth';
-import ChatBot from './components/ChatBot';
-import ForbiddenPage from './components/ForbiddenPage';
+import { LoginPage } from './features/auth';
 import { installApiAuthInterceptor } from './apiClient';
+import ManagementRoutes from './app/routes/ManagementRoutes';
+import CashierRoutes from './app/routes/CashierRoutes';
+import StaffRoutes from './app/routes/StaffRoutes';
+import KitchenRoutes from './app/routes/KitchenRoutes';
 
 installApiAuthInterceptor();
 
@@ -109,116 +99,27 @@ function App() {
     );
   }
 
-  // GIAO DIỆN THU NGÂN
   if (userRole === 'cashier') {
-    return (
-      <div className="min-h-screen bg-[#f0f2f5]">
-        <CashierNavbar onLogout={handleLogout} userName={userName} userRole={userRole} userPosition={userPosition} />
-        <main className="h-[calc(100dvh-48px)] min-h-0">
-          <Routes>
-            <Route path="/pos" element={<POSPage onLogout={handleLogout} userName={userName} userRole={userRole} userPosition={userPosition} />} />
-            <Route path="/pos/invoices" element={<InvoiceHistory />} />
-            <Route path="/pos/settings/receipt" element={<ReceiptSettingsPage />} />
-            <Route path="/pos/attendance" element={<EmployeeAttendance />} />
-            <Route path="/pos/schedule" element={<EmployeeSchedule />} />
-            <Route path="/pos/shifts" element={<ShiftManagement />} />
-            <Route path="/pos/reservations" element={<ReservationManagement />} />
-            <Route path="/pos/profile" element={<EmployeeProfile userName={userName} onLogout={handleLogout} />} />
-            <Route path="/forbidden" element={<ForbiddenPage />} />
-            <Route path="*" element={<Navigate to="/pos" replace />} />
-          </Routes>
-        </main>
-        <ChatBot />
-      </div>
-    );
+    return <CashierRoutes userName={userName} userPosition={userPosition} onLogout={handleLogout} />;
   }
 
   if (userRole === 'employee') {
-    return (
-      <div className="min-h-screen bg-[#f0f2f5]">
-        <StaffNavbar onLogout={handleLogout} userName={userName} />
-        <main className="min-h-[calc(100dvh-48px)] overflow-auto">
-          <Routes>
-            <Route path="/staff" element={<Navigate to="/staff/profile" replace />} />
-            <Route path="/staff/profile" element={<EmployeeProfile userName={userName} onLogout={handleLogout} />} />
-            <Route path="/staff/attendance" element={<EmployeeAttendance />} />
-            <Route path="/staff/schedule" element={<EmployeeSchedule />} />
-            <Route path="/staff/inventory" element={<InventoryPage view="overview" operational />} />
-            <Route path="/forbidden" element={<ForbiddenPage />} />
-            <Route path="*" element={<Navigate to="/staff/profile" replace />} />
-          </Routes>
-        </main>
-        <ChatBot />
-      </div>
-    );
+    return <StaffRoutes userName={userName} userPosition={userPosition} onLogout={handleLogout} />;
   }
 
-  // GIAO DIỆN NHÀ BẾP
   if (userRole === 'kitchen') {
-    return (
-      <div className="min-h-screen bg-[#f0f2f5]">
-        <KitchenNavbar onLogout={handleLogout} userName={userName} />
-        <main className="h-[calc(100dvh-48px)] min-h-0">
-          <Routes>
-            <Route path="/kitchen" element={<KitchenPage />} />
-            <Route path="/kitchen/history" element={<KitchenHistoryPage />} />
-            <Route path="/kitchen/tables" element={<TableStatusPage />} />
-            <Route path="/kitchen/attendance" element={<EmployeeAttendance />} />
-            <Route path="/kitchen/schedule" element={<EmployeeSchedule />} />
-            <Route path="/kitchen/reservations" element={<ReservationManagement readOnly={true} />} />
-            <Route path="/kitchen/profile" element={<EmployeeProfile userName={userName} onLogout={handleLogout} />} />
-            <Route path="/forbidden" element={<ForbiddenPage />} />
-            <Route path="*" element={<Navigate to="/kitchen" replace />} />
-          </Routes>
-        </main>
-        <ChatBot />
-      </div>
-    );
+    return <KitchenRoutes userName={userName} onLogout={handleLogout} />;
   }
 
-  // GIAO DIỆN QUẢN TRỊ
+  // Admin and manager share the management auth/session flow. Their POS/KDS
+  // routes are composed by ManagementRoutes under the operations shell.
   return (
-    <div className="min-h-screen bg-[#f0f2f5]">
-      <Navbar onLogout={handleLogout} userName={userName} userRole={userRole} />
-      <main className="h-[calc(100vh-48px)] overflow-auto">
-        <Routes>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/business-insights" element={<BusinessInsights />} />
-          <Route path="/products" element={<ProductManagement />} />
-          <Route path="/tables" element={<TableManagement />} />
-          <Route path="/invoices" element={<InvoiceHistory />} />
-          <Route path="/expenses" element={<ExpenseManagement />} />
-          <Route path="/inventory" element={<InventoryPage view="overview" />} />
-          <Route path="/inventory/items" element={<InventoryPage view="items" />} />
-          <Route path="/inventory/receipts" element={<InventoryPage view="receipts" />} />
-          <Route path="/inventory/receipts/:id" element={<InventoryPage view="receipts" />} />
-          <Route path="/inventory/issues" element={<InventoryPage view="issues" />} />
-          <Route path="/inventory/issues/:id" element={<InventoryPage view="issues" />} />
-          <Route path="/inventory/history" element={<InventoryPage view="history" />} />
-          <Route path="/employees" element={<EmployeeManagement />} />
-          <Route path="/attendance" element={<AttendanceManagement />} />
-          <Route path="/schedule" element={<WorkSchedulePage />} />
-          <Route path="/customers" element={<CustomerManagement />} />
-          <Route path="/promotions" element={<PromotionManagement />} />
-          <Route path="/branches" element={userRole === 'admin' ? <BranchManagement /> : <Navigate to="/forbidden" replace />} />
-          <Route path="/shifts" element={<ShiftManagement />} />
-          <Route path="/reservations" element={<ReservationManagement />} />
-          <Route path="/print-templates" element={<PrintTemplates />} />
-          <Route path="/settings/receipt" element={<ReceiptSettingsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/settings" element={userRole === 'admin' || userRole === 'manager' ? <SystemSettings /> : <Navigate to="/forbidden" replace />} />
-          <Route path="/toppings" element={<ToppingManagement />} />
-          <Route path="/kitchen" element={<KitchenPage />} />
-          <Route path="/kitchen/history" element={<KitchenHistoryPage />} />
-          <Route path="/support" element={<SupportPage />} />
-          <Route path="/pos" element={<POSPage onLogout={() => navigate('/dashboard')} userName={userName} userRole={userRole} userPosition={userPosition} />} />
-          <Route path="/forbidden" element={<ForbiddenPage />} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
-      <ChatBot />
-    </div>
+    <ManagementRoutes
+      userRole={userRole === 'admin' ? 'admin' : 'manager'}
+      userName={userName}
+      userPosition={userPosition}
+      onLogout={handleLogout}
+    />
   );
 }
 

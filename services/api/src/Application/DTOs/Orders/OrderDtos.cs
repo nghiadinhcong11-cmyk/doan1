@@ -28,6 +28,9 @@ namespace RestaurantPOS.Application.DTOs.Orders
     {
         public decimal Amount { get; set; }
         public string PaymentMethod { get; set; } = string.Empty;
+        public string? CustomerPhone { get; set; }
+        public string? CustomerName { get; set; }
+        public bool CreateMember { get; set; }
     }
 
     public class OrderRedeemDto
@@ -68,6 +71,12 @@ namespace RestaurantPOS.Application.DTOs.Orders
     public class OrderQueryFilter
     {
         /// <summary>
+        /// Internal request correlation value for sanitized diagnostics only.
+        /// It is never populated from client input or persisted.
+        /// </summary>
+        public string? DiagnosticCorrelationId { get; set; }
+
+        /// <summary>
         /// Từ khóa tìm kiếm (theo mã đơn, tên món, tên khách)
         /// </summary>
         public string? Search { get; set; }
@@ -81,6 +90,12 @@ namespace RestaurantPOS.Application.DTOs.Orders
         /// Số điện thoại khách hàng
         /// </summary>
         public string? CustomerPhone { get; set; }
+
+        /// <summary>
+        /// Dùng cho ownership customer: không cho phép nhánh tìm kiếm theo tên
+        /// làm rộng phạm vi của số điện thoại trong JWT.
+        /// </summary>
+        public bool ExactCustomerPhone { get; set; }
 
         /// <summary>
         /// Lọc theo ID chi nhánh
@@ -101,5 +116,40 @@ namespace RestaurantPOS.Application.DTOs.Orders
         /// Ngày kết thúc (định dạng yyyy-MM-dd)
         /// </summary>
         public string? ToDate { get; set; }
+    }
+
+    /// <summary>
+    /// Thông tin tối thiểu mà Customer Web được phép xem cho lịch sử đơn hàng.
+    /// Không đưa các trường vận hành nội bộ (ví dụ CreatedBy) ra ngoài scope này.
+    /// </summary>
+    public sealed class CustomerOrderDto
+    {
+        public Guid Id { get; set; }
+        public string? InvoiceCode { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? PaymentAt { get; set; }
+        public string? Status { get; set; }
+        public string? PaymentMethod { get; set; }
+        public decimal TotalAmount { get; set; }
+        public decimal PaidAmount { get; set; }
+        public decimal? SubTotal { get; set; }
+        public decimal Discount { get; set; }
+        public decimal? VatAmount { get; set; }
+        public decimal? VatPercent { get; set; }
+        public decimal? ServiceFeeAmount { get; set; }
+        public decimal? ServiceFeePercent { get; set; }
+        public string? Note { get; set; }
+        public string? TableName { get; set; }
+        public Guid BranchId { get; set; }
+        public string? BranchName { get; set; }
+        public List<CustomerOrderDetailDto> Details { get; set; } = new();
+    }
+
+    public sealed class CustomerOrderDetailDto
+    {
+        public string? ProductName { get; set; }
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public string? Options { get; set; }
     }
 }

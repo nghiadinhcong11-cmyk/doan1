@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
 using RestaurantPOS.Application.Services;
 
 namespace RestaurantPOS.WebAPI.Controllers
@@ -16,10 +17,12 @@ namespace RestaurantPOS.WebAPI.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly IDashboardService _dashboardService;
+        private readonly ILogger<DashboardController>? _logger;
 
-        public DashboardController(IDashboardService dashboardService)
+        public DashboardController(IDashboardService dashboardService, ILogger<DashboardController>? logger = null)
         {
             _dashboardService = dashboardService;
+            _logger = logger;
         }
 
         /// <summary>
@@ -27,10 +30,14 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// </summary>
         /// <param name="branchId">Tùy chọn lọc theo chi nhánh cụ thể (hoặc null nếu xem toàn chuỗi)</param>
         [HttpGet("summary")]
+        [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
         public async Task<IActionResult> GetSummary([FromQuery] string? branchId = null)
         {
             var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
             if (role != "admin" && role != "manager") return Forbid();
+
+            if (role == "admin" && !string.IsNullOrWhiteSpace(branchId) && !Guid.TryParse(branchId, out _))
+                return BadRequest(new { message = "branchId không hợp lệ" });
 
             if (role == "manager")
             {
@@ -48,7 +55,8 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = ex.Message });
+                _logger?.LogError(ex, "Dashboard summary failed for an authorized request.");
+                return StatusCode(500, new { message = "Không thể tải dữ liệu dashboard." });
             }
         }
     }

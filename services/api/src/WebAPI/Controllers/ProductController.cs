@@ -21,19 +21,21 @@ namespace RestaurantPOS.WebAPI.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IHubContext<KitchenHub> _hub;
         private readonly INotificationService _notifications;
+        private readonly IDashboardService? _dashboardService;
 
-        public ProductController(ApplicationDbContext context, IHubContext<KitchenHub> hub, INotificationService notifications)
+        public ProductController(ApplicationDbContext context, IHubContext<KitchenHub> hub, INotificationService notifications, IDashboardService? dashboardService = null)
         {
             _context = context;
             _hub = hub;
             _notifications = notifications;
+            _dashboardService = dashboardService;
         }
 
         /// <summary>Lấy danh sách món theo các bộ lọc.</summary>
         [HttpGet]
         public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive)
         {
-            var query = _context.Products.AsQueryable();
+            var query = _context.Products.AsNoTracking().AsQueryable();
 
             // Public and customer-facing menu reads must not expose disabled products.
             if (User.Identity?.IsAuthenticated != true || User.IsInRole("customer"))
@@ -103,6 +105,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
+            _dashboardService?.InvalidateSummaryCache();
             return NoContent();
         }
 
@@ -142,6 +145,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             try
             {
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
             }
             catch (DbUpdateConcurrencyException)
             {

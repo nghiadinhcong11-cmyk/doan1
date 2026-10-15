@@ -77,22 +77,25 @@ namespace RestaurantPOS.Application.Services
                 }
 
                 // If reservation.BranchId is not set, take it from the table
-                if (!reservation.BranchId.HasValue)
+                if (reservation.BranchId == Guid.Empty)
                 {
                     reservation.BranchId = table.BranchId;
                     reservation.BranchName = table.BranchName;
                 }
-                else if (table.BranchId != reservation.BranchId.Value)
+                else if (table.BranchId != reservation.BranchId)
                 {
                     throw new InvalidOperationException("Bàn được chọn không thuộc chi nhánh này.");
                 }
                 reservation.TableName = table.Name;
             }
 
+            if (reservation.BranchId == Guid.Empty)
+                throw new InvalidOperationException("Đặt bàn phải thuộc một chi nhánh.");
+
             // Ensure BranchName is populated if BranchId is set
-            if (reservation.BranchId.HasValue && string.IsNullOrEmpty(reservation.BranchName))
+            if (string.IsNullOrEmpty(reservation.BranchName))
             {
-                var branch = await _context.Branches.FindAsync(reservation.BranchId.Value);
+                var branch = await _context.Branches.FindAsync(reservation.BranchId);
                 if (branch != null) reservation.BranchName = branch.Name;
             }
 
@@ -115,11 +118,14 @@ namespace RestaurantPOS.Application.Services
             if (!string.IsNullOrEmpty(authorizedCustomerPhone) && !string.Equals(res.CustomerPhone?.Trim(), authorizedCustomerPhone.Trim(), StringComparison.OrdinalIgnoreCase))
                 return null;
 
+            if (update.BranchId == Guid.Empty && res.BranchId == Guid.Empty)
+                throw new InvalidOperationException("Đặt bàn phải thuộc một chi nhánh.");
+
             // If branch is changing, validate it (only for staff who are NOT branch-restricted, i.e. Admins)
-            if (!authorizedBranchId.HasValue && update.BranchId.HasValue && update.BranchId != res.BranchId)
+            if (!authorizedBranchId.HasValue && update.BranchId != Guid.Empty && update.BranchId != res.BranchId)
             {
                 res.BranchId = update.BranchId;
-                var branch = await _context.Branches.FindAsync(update.BranchId.Value);
+                var branch = await _context.Branches.FindAsync(update.BranchId);
                 res.BranchName = branch?.Name;
             }
 
@@ -132,7 +138,7 @@ namespace RestaurantPOS.Application.Services
                     throw new InvalidOperationException("Bàn được chọn không tồn tại.");
                 }
 
-                if (res.BranchId.HasValue && table.BranchId != res.BranchId.Value)
+                if (table.BranchId != res.BranchId)
                 {
                     throw new InvalidOperationException("Bàn được chọn không thuộc chi nhánh này.");
                 }

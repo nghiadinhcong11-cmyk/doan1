@@ -10,7 +10,7 @@ namespace RestaurantPOS.WebAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Roles = "admin")]
 public class SystemSettingsController : ControllerBase
 {
     private readonly ISystemSettingService _settingService;
@@ -31,13 +31,6 @@ public class SystemSettingsController : ControllerBase
     [HttpPut]
     public async Task<IActionResult> Put([FromBody] Dictionary<string, string> settings, [FromQuery] Guid? branchId)
     {
-        var role = User.FindFirstValue(ClaimTypes.Role);
-
-        // Chỉ admin (Global) hoặc manager (Own Branch) mới được sửa thiết lập hệ thống
-        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(role, "manager", StringComparison.OrdinalIgnoreCase))
-            return Forbid();
-
         if (!TryBranch(branchId, out var effective)) return Forbid();
 
         await _settingService.UpdateSettingsAsync(effective, settings);
@@ -52,7 +45,8 @@ public class SystemSettingsController : ControllerBase
         // Admin được phép truy cập mọi branch (bao gồm global settings - branchId null)
         if (string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)) return true;
 
-        // Manager và các role khác bị giới hạn trong branch của mình
+        // This controller is owner-admin only. Keep the explicit branch check so
+        // a future authorization change cannot accidentally broaden global scope.
         var branchClaim = User.FindFirst("branchId")?.Value;
         if (!Guid.TryParse(branchClaim, out var branch)) return false;
 

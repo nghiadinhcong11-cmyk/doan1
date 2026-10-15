@@ -6,6 +6,7 @@ public sealed class TableResponseDto
 {
     public Guid Id { get; init; }
     public string Name { get; init; } = string.Empty;
+    public Guid AreaId { get; init; }
     public string AreaName { get; init; } = string.Empty;
     public int SeatCount { get; init; }
     public string? Description { get; init; }
@@ -20,7 +21,9 @@ public sealed class TableResponseDto
     {
         Id = table.Id,
         Name = table.Name,
-        AreaName = table.AreaName,
+        AreaId = table.AreaId,
+        AreaName = table.Area?.Name
+            ?? throw new InvalidOperationException("Không thể tải khu vực của bàn từ quan hệ AreaId."),
         SeatCount = table.SeatCount,
         Description = table.Description,
         IsActive = table.IsActive,

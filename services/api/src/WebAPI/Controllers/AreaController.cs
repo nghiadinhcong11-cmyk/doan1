@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -24,9 +25,23 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         /// <summary>Gets all service areas.</summary>
         [HttpGet]
-        public async Task<IActionResult> GetAreas()
+        [Authorize(Roles = "admin,manager,employee,cashier,kitchen")]
+        public async Task<IActionResult> GetAreas([FromQuery] Guid? branchId)
         {
-            return Ok(await _context.Areas.OrderBy(a => a.DisplayOrder).ToListAsync());
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            Guid? effectiveBranchId = branchId;
+            if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!Guid.TryParse(User.FindFirst("branchId")?.Value, out var userBranchId)) return Forbid();
+                if (branchId.HasValue && branchId.Value != userBranchId) return Forbid();
+                effectiveBranchId = userBranchId;
+            }
+
+            var query = _context.Areas.AsNoTracking().OrderBy(a => a.DisplayOrder).AsQueryable();
+            if (effectiveBranchId.HasValue)
+                query = query.Where(a => a.BranchId == effectiveBranchId.Value).OrderBy(a => a.DisplayOrder);
+
+            return Ok(await query.ToListAsync());
         }
 
         /// <summary>Creates a service area.</summary>
@@ -36,6 +51,10 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             area.Id = Guid.NewGuid();
             area.CreatedAt = DateTime.UtcNow;
+            if (area.BranchId == Guid.Empty)
+                return BadRequest(new { message = "Khu vực mới phải thuộc một chi nhánh." });
+            if (!await _context.Branches.AnyAsync(b => b.Id == area.BranchId))
+                return BadRequest(new { message = "Chi nhánh không tồn tại." });
             _context.Areas.Add(area);
             await _context.SaveChangesAsync();
             return Ok(area);
@@ -49,18 +68,8 @@ namespace RestaurantPOS.WebAPI.Controllers
             var area = await _context.Areas.FindAsync(id);
             if (area == null) return NotFound();
 
-            // Lưu tên cũ để cập nhật các bàn liên quan
-            var oldName = area.Name;
-
             area.Name = areaUpdate.Name;
             area.DisplayOrder = areaUpdate.DisplayOrder;
-
-            // Cập nhật tên khu vực cho tất cả các bàn thuộc khu vực này
-            var tablesInArea = await _context.Tables.Where(t => t.AreaName == oldName).ToListAsync();
-            foreach (var table in tablesInArea)
-            {
-                table.AreaName = areaUpdate.Name;
-            }
 
             await _context.SaveChangesAsync();
             return Ok(area);
@@ -75,7 +84,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (area == null) return NotFound();
 
             // Kiểm tra xem có bàn nào đang thuộc khu vực này không
-            var hasTables = await _context.Tables.AnyAsync(t => t.AreaName == area.Name);
+            var hasTables = await _context.Tables.AnyAsync(t => t.AreaId == area.Id);
             if (hasTables)
             {
                 return BadRequest(new { message = "Không thể xóa khu vực đang có bàn. Vui lòng xóa bàn hoặc chuyển bàn sang khu vực khác trước." });

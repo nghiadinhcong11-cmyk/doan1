@@ -13,7 +13,7 @@ namespace RestaurantPOS.AI.Tools
         ToolRiskLevel RiskLevel { get; }
 
         /// <summary>
-        /// Trả về schema JSON cho Gemini Tool Declaration
+        /// Trả về schema JSON cho function declaration của AI contract.
         /// </summary>
         object GetSchema();
 

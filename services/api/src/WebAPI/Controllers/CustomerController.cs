@@ -89,6 +89,9 @@ namespace RestaurantPOS.WebAPI.Controllers
         [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("moderate-limiter")]
         public async Task<IActionResult> CreateOrUpdate(Customer customer)
         {
+            if (GuestSessionContext.IsGuest(User))
+                return Forbid();
+
             var existing = await _context.Customers.FirstOrDefaultAsync(c => c.PhoneNumber == customer.PhoneNumber);
 
             if (existing != null)
@@ -121,6 +124,12 @@ namespace RestaurantPOS.WebAPI.Controllers
             else
             {
                 // TRƯỜNG HỢP ĐĂNG KÝ MỚI: Cho phép công khai
+                // Public registered-customer accounts must establish a password.
+                // Staff-created walk-in records may remain passwordless and cannot
+                // use the registered customer token endpoint until a password exists.
+                if (User?.Identity?.IsAuthenticated != true && string.IsNullOrWhiteSpace(customer.Password))
+                    return BadRequest(new { message = "Mật khẩu là bắt buộc khi đăng ký tài khoản khách hàng." });
+
                 customer.Id = Guid.NewGuid();
                 customer.CreatedAt = DateTime.UtcNow;
                 customer.UpdatedAt = DateTime.UtcNow;
@@ -130,7 +139,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 customer.TotalOrders = 0;
                 if (customer.Birthday.HasValue) customer.Birthday = DateTime.SpecifyKind(customer.Birthday.Value, DateTimeKind.Utc);
 
-                if (!string.IsNullOrEmpty(customer.Password))
+                if (!string.IsNullOrWhiteSpace(customer.Password))
                 {
                     var passwordError = PasswordPolicy.Validate(customer.Password);
                     if (passwordError != null) return BadRequest(new { message = passwordError });
@@ -141,6 +150,51 @@ namespace RestaurantPOS.WebAPI.Controllers
                 await _context.SaveChangesAsync();
                 return Ok(MapToDto(customer));
             }
+        }
+
+        /// <summary>
+        /// Creates a membership record at the cashier after explicit confirmation.
+        /// No fixed/default password is assigned.
+        /// </summary>
+        [HttpPost("walk-in")]
+        [Authorize(Roles = "admin,manager,employee,cashier")]
+        public async Task<IActionResult> CreateWalkInMember([FromBody] WalkInMemberCreateDto request)
+        {
+            var phoneNumber = NormalizePhone(request?.PhoneNumber);
+            if (phoneNumber == null || string.IsNullOrWhiteSpace(request?.FullName))
+                return BadRequest(new { message = "Họ tên và số điện thoại là bắt buộc." });
+
+            var existing = await _context.Customers.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.PhoneNumber == phoneNumber);
+            if (existing != null)
+                return Conflict(new { message = "Số điện thoại đã có tài khoản thành viên." });
+
+            var customer = new Customer
+            {
+                Id = Guid.NewGuid(),
+                FullName = request.FullName.Trim(),
+                PhoneNumber = phoneNumber,
+                Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
+                Password = null,
+                IsActive = true,
+                LoyaltyPoints = 0,
+                TotalSpending = 0,
+                TotalOrders = 0,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.Customers.Add(customer);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // The unique phone index is the final race-safe boundary.
+                return Conflict(new { message = "Số điện thoại đã có tài khoản thành viên." });
+            }
+            return Ok(MapToDto(customer));
         }
 
         /// <summary>Lấy lịch sử tích điểm của khách hàng.</summary>
@@ -210,6 +264,13 @@ namespace RestaurantPOS.WebAPI.Controllers
         };
 
         private bool IsCustomer() => User?.FindFirst(ClaimTypes.Role)?.Value?.Equals("customer", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        private static string? NormalizePhone(string? phoneNumber)
+        {
+            if (string.IsNullOrWhiteSpace(phoneNumber)) return null;
+            var normalized = new string(phoneNumber.Where(char.IsDigit).ToArray());
+            return normalized.Length >= 10 ? normalized : null;
+        }
     }
 
     /// <summary>Dữ liệu được phép cập nhật trong hồ sơ khách hàng.</summary>
@@ -227,5 +288,12 @@ namespace RestaurantPOS.WebAPI.Controllers
         public DateTime? Birthday { get; set; }
         /// <summary>Mật khẩu mới, nếu khách hàng muốn đổi mật khẩu.</summary>
         public string? NewPassword { get; set; }
+    }
+
+    public sealed class WalkInMemberCreateDto
+    {
+        public string? FullName { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Email { get; set; }
     }
 }

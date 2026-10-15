@@ -1,7 +1,8 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import * as signalR from '@microsoft/signalr';
-import { Search, Filter, FileText, Download, ChevronRight, Calendar, Loader2, X, Clock, MapPin, User, Printer } from 'lucide-react';
+import { useRef } from 'react';
+import { Search, Filter, FileText, Download, ChevronRight, Calendar, Loader2, X, Clock, MapPin, User, Printer, RefreshCw } from 'lucide-react';
 import { API_URL } from '../../../config';
+import ReceiptPreview from '../../../components/ReceiptPreview';
 
 interface OrderDetail {
   id: string;
@@ -52,11 +53,17 @@ const InvoiceHistory = () => {
   const [paymentMethod, setPaymentMethod] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const requestController = useRef<AbortController | null>(null);
+  const requestGeneration = useRef(0);
   const [branches, setBranches] = useState<any[]>([]);
   const [receiptSettings, setReceiptSettings] = useState<any>({ showLogo: true, showAddress: true, showPhone: true, showStaff: true, showPaymentMethod: true, showOrderNote: true, showThankYou: true, thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!' });
   const pageSize = 20;
 
   const fetchOrders = async () => {
+    const generation = ++requestGeneration.current;
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     try {
       setLoading(true);
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), _t: String(Date.now()) });
@@ -66,15 +73,17 @@ const InvoiceHistory = () => {
       if (paymentMethod) params.set('paymentMethod', paymentMethod);
       if (filterStatus === 'Hoàn thành') params.set('paymentStatus', 'Completed');
       if (filterStatus === 'Đang xử lý') params.set('paymentStatus', 'Pending');
-      const response = await fetch(`${API_URL}/api/Invoice?${params}`, { cache: 'no-store' });
+      const response = await fetch(`${API_URL}/api/Invoice?${params}`, { cache: 'no-store', signal: controller.signal });
       if (!response.ok) throw new Error(`Invoice API ${response.status}`);
       const result = await response.json();
+      if (generation !== requestGeneration.current) return;
       setOrders((result.items || []).map((order: Order) => ({ ...order, status: displayStatus(order) })));
       setTotalPages(Math.max(1, result.totalPages || 1));
     } catch (err) {
-      console.error('Error fetching orders:', err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) console.error('Error fetching orders:', err);
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
+      if (requestController.current === controller) requestController.current = null;
     }
   };
 
@@ -83,21 +92,14 @@ const InvoiceHistory = () => {
   }, []);
 
   useEffect(() => {
-    fetchOrders();
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' })
-      .withAutomaticReconnect()
-      .build();
-    const refresh = () => { void fetchOrders(); };
-    connection.on('PaymentCompleted', refresh);
-    void connection.start().catch(() => undefined);
-    const poll = window.setInterval(() => { void fetchOrders(); }, 10000);
-    return () => {
-      window.clearInterval(poll);
-      connection.off('PaymentCompleted', refresh);
-      void connection.stop();
-    };
+    void fetchOrders();
   }, [fromDate, toDate, searchTerm, filterStatus, paymentMethod, page]);
+
+  useEffect(() => () => {
+    requestGeneration.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+  }, []);
 
   const selectedBranch = branches.find(branch => branch.id === selectedOrder?.branchId);
 
@@ -209,7 +211,10 @@ const InvoiceHistory = () => {
         <div className="bg-white border-b p-4 flex justify-between items-center shadow-sm">
           <h1 className="text-xl font-semibold text-gray-800 tracking-tight">Lịch sử hóa đơn</h1>
           <div className="flex space-x-2">
-            <button className="bg-[#0070f4] text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center active:scale-95">
+            <button type="button" onClick={() => void fetchOrders()} disabled={loading} className="border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all flex items-center active:scale-95 disabled:cursor-wait disabled:opacity-60">
+               <RefreshCw size={14} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Làm mới
+            </button>
+            <button type="button" className="bg-[#0070f4] text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center active:scale-95">
                <Download size={14} className="mr-2" /> Xuất file EXCEL
             </button>
           </div>
@@ -309,7 +314,10 @@ const InvoiceHistory = () => {
                  <button onClick={() => setSelectedOrder(null)} className="print-hide bg-white/10 p-2 rounded-full hover:rotate-90 transition-all"><X size={24}/></button>
               </div>
 
-              <div className="p-8">
+              <div className="p-8 flex justify-center overflow-auto">
+                 <ReceiptPreview settings={receiptSettings} branch={selectedBranch || { name: selectedOrder.branchName }} order={selectedOrder} />
+              </div>
+              <div className="hidden">
                  <div className="mb-6 border-b border-dashed border-gray-300 pb-5 text-center font-mono text-sm text-gray-800">
                     {receiptSettings.showLogo && <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-white">R</div>}
                     <p className="font-bold">{selectedBranch?.name || selectedOrder.branchName || 'Nhà hàng'}</p>

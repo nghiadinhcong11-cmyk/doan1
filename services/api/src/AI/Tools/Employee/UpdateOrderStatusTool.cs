@@ -32,7 +32,7 @@ namespace RestaurantPOS.AI.Tools.Employee
                 properties = new
                 {
                     orderCode = new { type = "string", description = "Mã đơn hàng cần cập nhật." },
-                    newStatus = new { type = "string", description = "Trạng thái mới: Processing, Served, Completed, Cancelled." }
+                    newStatus = new { type = "string", description = "Trạng thái mới hợp lệ: Đang xử lý, Hoàn thành, Đã hủy (hoặc các giá trị tương thích Pending, Completed, Cancelled)." }
                 },
                 required = new[] { "orderCode", "newStatus" }
             }
@@ -60,7 +60,7 @@ namespace RestaurantPOS.AI.Tools.Employee
             }
             catch (Exception ex)
             {
-                return AiToolResult.CreateError($"Lỗi khi cập nhật trạng thái đơn: {ex.Message}");
+                return AiToolResult.CreateInternalError(ex);
             }
         }
     }

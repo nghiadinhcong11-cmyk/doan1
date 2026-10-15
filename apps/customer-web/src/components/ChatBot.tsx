@@ -3,10 +3,30 @@ import { MessageCircle, X, Send, Bot, User, Sparkles, ChevronRight } from 'lucid
 import { API_URL } from '../config';
 import { useLocation } from 'react-router-dom';
 
+const getUsableCustomerToken = (): string | null => {
+  const token = localStorage.getItem('customerToken');
+  if (!token) return null;
+
+  try {
+    const payloadSegment = token.split('.')[1];
+    if (!payloadSegment) throw new Error('Malformed token');
+    const payload = JSON.parse(atob(payloadSegment.replace(/-/g, '+').replace(/_/g, '/')));
+    if (typeof payload.exp === 'number' && payload.exp <= Math.floor(Date.now() / 1000)) {
+      throw new Error('Expired token');
+    }
+    return token;
+  } catch {
+    // Never send a malformed or expired bearer token to the public guest route.
+    localStorage.removeItem('customerToken');
+    localStorage.removeItem('customerInfo');
+    return null;
+  }
+};
+
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([
-    { id: 1, text: "Xin chào! Tôi là trợ lý ảo DOAN POS. Tôi có thể giúp bạn đặt bàn hoặc xem thực đơn hôm nay đấy!", isBot: true }
+    { id: 1, text: "Xin chào! Tôi là trợ lý DOAN. Bạn muốn xem thực đơn, giá món hay hỏi nhanh điều gì hôm nay?", isBot: true }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -118,13 +138,13 @@ const ChatBot = () => {
     setIsTyping(true);
 
     try {
-      // Lấy 6 tin nhắn gần nhất làm lịch sử đàm thoại cho Gemini
+      // Lấy 6 tin nhắn gần nhất làm lịch sử đàm thoại cho Mock AI
       const history = messages.slice(-6).map(m => ({
         role: m.isBot ? "model" : "user",
         content: m.text
       }));
 
-      const token = localStorage.getItem('customerToken');
+      const token = getUsableCustomerToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
@@ -132,7 +152,8 @@ const ChatBot = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${API_URL}/api/Ai/chat`, {
+      const endpoint = token ? `${API_URL}/api/Ai/chat` : `${API_URL}/api/Ai/guest-chat`;
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({ message: text, history })
@@ -165,10 +186,11 @@ const ChatBot = () => {
     >
       {/* Nút bong bóng Chat */}
       <button
+        aria-label={isOpen ? 'Đóng trợ lý DOAN' : 'Mở trợ lý DOAN'}
         onMouseDown={onMouseDown}
         onTouchStart={onTouchStart}
         onClick={handleToggle}
-        className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${isOpen ? 'bg-gray-800 rotate-90' : 'bg-blue-600 hover:scale-110 active:scale-95'} ${!isOpen && !isDragging ? 'animate-bounce' : ''}`}
+        className={`flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all duration-300 ${isOpen ? 'rotate-90 bg-[#22252b]' : 'bg-orange-600 hover:scale-110 active:scale-95'} ${!isOpen && !isDragging ? 'animate-bounce' : ''}`}
       >
         {isOpen ? <X className="text-white" /> : <MessageCircle className="text-white" size={28} />}
         {!isOpen && (
@@ -188,7 +210,7 @@ const ChatBot = () => {
           }}
         >
           {/* Header */}
-          <div className="bg-blue-600 p-6 text-white flex items-center space-x-3">
+          <div className="flex items-center space-x-3 bg-[#3e8069] p-5 text-white">
             <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center">
               <Bot size={24} />
             </div>
@@ -231,7 +253,7 @@ const ChatBot = () => {
                  <button
                   key={i}
                   onClick={() => handleSend(s)}
-                  className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors border border-blue-100"
+                  className="rounded-full border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-600 transition-colors hover:bg-orange-100"
                  >
                    {s}
                  </button>
@@ -240,18 +262,20 @@ const ChatBot = () => {
 
             <form
               onSubmit={(e) => { e.preventDefault(); handleSend(input); }}
-              className="relative"
+                className="relative"
             >
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Nhập câu hỏi của bạn..."
-                className="w-full pl-4 pr-12 py-3.5 bg-gray-100 border-none rounded-2xl text-xs font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                aria-label="Nội dung câu hỏi"
+                className="w-full rounded-2xl border border-[#ebe5dc] bg-[#f8f6f1] py-3.5 pl-4 pr-12 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-300"
               />
               <button
                 type="submit"
-                className="absolute right-2 top-2 w-9 h-9 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg hover:bg-blue-700 transition-all active:scale-95"
+                aria-label="Gửi câu hỏi"
+                className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600 text-white shadow-lg transition-all hover:bg-orange-700 active:scale-95"
               >
                 <Send size={16} />
               </button>

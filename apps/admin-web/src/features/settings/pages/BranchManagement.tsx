@@ -2,25 +2,9 @@
 import { Plus, Search, Store, MapPin, Phone, Globe, Edit2, Trash2, CheckCircle2, X, Loader2, Save, Lock, Unlock } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { notifyFeedback } from '../../../components/ui';
+import type { BranchManagementRecord } from '../branchTypes';
 
-interface Branch {
-  id?: string;
-  name: string;
-  address?: string;
-  phoneNumber?: string;
-  isMain: boolean;
-  isActive: boolean;
-  bankName?: string;
-  accountNumber?: string;
-  accountHolder?: string;
-  imageUrl?: string;
-  taxCode?: string;
-  representativeName?: string;
-  representativeEmail?: string;
-  industry?: string;
-  businessType?: string;
-  createdAt?: string;
-}
+type Branch = BranchManagementRecord;
 
 const BranchManagement = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -30,6 +14,7 @@ const BranchManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [filterType, setFilterType] = useState<'all' | 'main' | 'branch'>('all');
+  const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
 
   const [newBranch, setNewBranch] = useState<Branch>({
     name: '',
@@ -50,11 +35,21 @@ const BranchManagement = () => {
   const fetchBranches = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/Branch`);
-      const data = await response.json();
+      const response = await fetch(`${API_URL}/api/Branch/management`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        notifyFeedback(data?.message || `Không thể tải danh sách chi nhánh (${response.status})`);
+        return;
+      }
       setBranches(data);
+      const requestedBranchId = new URLSearchParams(window.location.search).get('branchId');
+      if (requestedBranchId && data.some((branch: Branch) => branch.id === requestedBranchId)) {
+        setFocusedBranchId(requestedBranchId);
+        window.setTimeout(() => document.getElementById(`branch-${requestedBranchId}`)?.scrollIntoView({ block: 'center' }), 0);
+      }
     } catch (err) {
       console.error('Error fetching branches:', err);
+      notifyFeedback('Không thể kết nối đến máy chủ khi tải chi nhánh');
     } finally {
       setLoading(false);
     }
@@ -63,6 +58,20 @@ const BranchManagement = () => {
   useEffect(() => {
     fetchBranches();
   }, []);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [isModalOpen]);
 
   const handleSaveBranch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,9 +105,10 @@ const BranchManagement = () => {
         setEditingBranch(null);
         resetForm();
         fetchBranches();
+        window.dispatchEvent(new Event('branches:changed'));
       } else {
-        const error = await response.json();
-        notifyFeedback(error.message || 'Lỗi khi lưu chi nhánh');
+        const error = await response.json().catch(() => null);
+        notifyFeedback(error?.message || `Lỗi khi lưu chi nhánh (${response.status})`);
       }
     } catch (err) {
       notifyFeedback('Lỗi kết nối đến server');
@@ -165,9 +175,10 @@ const BranchManagement = () => {
       }
       if (response.ok) {
         fetchBranches();
+        window.dispatchEvent(new Event('branches:changed'));
       } else {
-        const error = await response.json();
-        notifyFeedback(error.message || 'Lỗi khi xóa chi nhánh');
+        const error = await response.json().catch(() => null);
+        notifyFeedback(error?.message || `Lỗi khi xóa chi nhánh (${response.status})`);
       }
     } catch (err) {
       notifyFeedback('Lỗi khi xóa chi nhánh');
@@ -189,6 +200,10 @@ const BranchManagement = () => {
       }
       if (response.ok) {
         fetchBranches();
+        window.dispatchEvent(new Event('branches:changed'));
+      } else {
+        const error = await response.json().catch(() => null);
+        notifyFeedback(error?.message || `Lỗi khi cập nhật trạng thái (${response.status})`);
       }
     } catch (err) {
       notifyFeedback('Lỗi khi cập nhật trạng thái');
@@ -311,7 +326,7 @@ const BranchManagement = () => {
                 <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Không tìm thấy chi nhánh nào</p>
              </div>
           ) : filteredBranches.map(b => (
-            <div key={b.id} className={`bg-white rounded-[2rem] shadow-xl shadow-blue-500/5 border-2 p-6 hover:border-blue-500 transition-all relative overflow-hidden group ${!b.isActive ? 'opacity-70 bg-gray-50 border-gray-100' : 'border-white'}`}>
+            <div id={`branch-${b.id}`} key={b.id} className={`bg-white rounded-[2rem] shadow-xl shadow-blue-500/5 border-2 p-6 hover:border-blue-500 transition-all relative overflow-hidden group ${focusedBranchId === b.id ? 'border-blue-500 ring-4 ring-blue-100' : !b.isActive ? 'opacity-70 bg-gray-50 border-gray-100' : 'border-white'}`}>
               {b.isMain && (
                 <div className="absolute top-0 right-0 bg-[#0070f4] text-white text-[9px] font-black px-4 py-1 rounded-bl-2xl uppercase z-10 tracking-widest italic">
                   Trụ sở chính
@@ -374,14 +389,15 @@ const BranchManagement = () => {
 
       {/* MODAL FORM */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[300] flex justify-center items-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-           <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-              <div className="bg-[#0070f4] p-6 text-white flex justify-between items-center">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm animate-in fade-in duration-200 sm:p-4">
+           <div className="flex h-[90dvh] max-h-[760px] min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl animate-in zoom-in-95 duration-200 sm:rounded-[3rem]">
+              <div className="flex shrink-0 items-center justify-between bg-[#0070f4] p-5 text-white sm:p-6">
                  <h3 className="font-black text-xl uppercase italic tracking-tighter flex items-center"><Store size={24} className="mr-3"/> {editingBranch ? 'Cập nhật chi nhánh' : 'Thêm chi nhánh mới'}</h3>
-                 <button onClick={() => setIsModalOpen(false)} className="bg-white/10 p-2 rounded-full hover:rotate-90 transition-transform"><X size={24}/></button>
+                 <button type="button" aria-label="Đóng biểu mẫu chi nhánh" onClick={() => setIsModalOpen(false)} className="shrink-0 bg-white/10 p-2 rounded-full hover:rotate-90 transition-transform"><X size={24}/></button>
               </div>
 
-              <form onSubmit={handleSaveBranch} className="p-10 space-y-6">
+              <form onSubmit={handleSaveBranch} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-5 sm:p-10">
                  <div className="space-y-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tên chi nhánh <span className="text-blue-500">*</span></label>
                     <input
@@ -404,7 +420,7 @@ const BranchManagement = () => {
                       onChange={e => setNewBranch({...newBranch, imageUrl: e.target.value})}
                     />
                  </div>
-                 <div className="grid grid-cols-2 gap-6">
+                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Số điện thoại</label>
                         <input
@@ -416,7 +432,7 @@ const BranchManagement = () => {
                         />
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Loại hình</label>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Trạng thái cơ sở</label>
                         <div className="pt-2 flex items-center">
                            <label className="flex items-center cursor-pointer mr-4">
                               <input
@@ -427,13 +443,6 @@ const BranchManagement = () => {
                               />
                               <span className="text-[11px] font-black text-gray-600 uppercase">Trụ sở</span>
                            </label>
-                           <input
-                              type="text"
-                              className="flex-1 border-b border-gray-100 py-1 outline-none focus:border-blue-500 text-[10px] font-bold text-gray-600"
-                              placeholder="Cá nhân/Doanh nghiệp..."
-                              value={newBranch.businessType}
-                              onChange={e => setNewBranch({...newBranch, businessType: e.target.value})}
-                           />
                         </div>
                     </div>
                  </div>
@@ -447,7 +456,7 @@ const BranchManagement = () => {
                     />
                  </div>
 
-                 <div className="grid grid-cols-2 gap-6">
+                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Người đại diện</label>
                         <input
@@ -491,11 +500,21 @@ const BranchManagement = () => {
                           onChange={e => setNewBranch({...newBranch, industry: e.target.value})}
                         />
                     </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Loại hình kinh doanh</label>
+                        <input
+                          type="text"
+                          className="w-full border-b-2 border-gray-100 py-1.5 focus:border-blue-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
+                          placeholder="VD: Cá nhân, Doanh nghiệp..."
+                          value={newBranch.businessType || ''}
+                          onChange={e => setNewBranch({...newBranch, businessType: e.target.value})}
+                        />
+                    </div>
                  </div>
 
                  <div className="bg-gray-50 p-6 rounded-[2rem] space-y-4 border border-gray-100 shadow-inner">
                     <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Thông tin chuyển khoản (VietQR)</p>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                        <div className="space-y-1">
                           <label className="text-[10px] font-black text-gray-400 uppercase">Ngân hàng</label>
                           <input
@@ -516,15 +535,26 @@ const BranchManagement = () => {
                             onChange={e => setNewBranch({...newBranch, accountNumber: e.target.value})}
                           />
                        </div>
+                       <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-400 uppercase">Chủ tài khoản</label>
+                          <input
+                            type="text"
+                            className="w-full border-b-2 border-transparent bg-transparent py-1 outline-none focus:border-blue-300 text-xs font-bold"
+                            placeholder="Tên chủ tài khoản..."
+                            value={newBranch.accountHolder || ''}
+                            onChange={e => setNewBranch({...newBranch, accountHolder: e.target.value})}
+                          />
+                       </div>
                     </div>
                  </div>
 
-                 <button
-                   type="submit"
-                   className="w-full py-5 bg-[#0070f4] text-white rounded-3xl font-black uppercase tracking-[0.2em] shadow-xl shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center text-xs"
-                 >
-                   <Save size={18} className="mr-2"/> XÁC NHẬN LƯU CƠ SỞ
-                 </button>
+                </div>
+                <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-4 sm:justify-end sm:px-10 sm:py-5">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 rounded-2xl bg-gray-100 px-5 py-3 font-black text-[10px] uppercase tracking-widest text-gray-500 hover:bg-gray-200 sm:flex-none">Hủy</button>
+                  <button type="submit" className="flex-1 rounded-2xl bg-[#0070f4] px-5 py-3 font-black text-[10px] uppercase tracking-widest text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all sm:flex-none">
+                    <Save size={16} className="mr-2 inline"/> XÁC NHẬN LƯU CƠ SỞ
+                  </button>
+                </div>
               </form>
            </div>
         </div>

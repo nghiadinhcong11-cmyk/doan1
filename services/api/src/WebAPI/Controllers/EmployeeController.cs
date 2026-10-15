@@ -23,12 +23,14 @@ namespace RestaurantPOS.WebAPI.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IPasswordHasher<Employee> _passwordHasher;
         private readonly IEmployeeService _employeeService;
+        private readonly IDashboardService? _dashboardService;
 
-        public EmployeeController(ApplicationDbContext context, IPasswordHasher<Employee> passwordHasher, IEmployeeService employeeService)
+        public EmployeeController(ApplicationDbContext context, IPasswordHasher<Employee> passwordHasher, IEmployeeService employeeService, IDashboardService? dashboardService = null)
         {
             _context = context;
             _passwordHasher = passwordHasher;
             _employeeService = employeeService;
+            _dashboardService = dashboardService;
         }
 
         /// <summary>Lấy danh sách nhân viên theo các bộ lọc.</summary>
@@ -38,7 +40,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             if (!IsAdmin() && !IsManager()) return Forbid();
 
-            var query = _context.Employees.AsQueryable();
+            var query = _context.Employees.AsNoTracking().AsQueryable();
 
             if (IsManager())
             {
@@ -63,8 +65,34 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!string.IsNullOrEmpty(position))
                 query = query.Where(e => e.Position == position);
 
-            var employees = await query.OrderByDescending(e => e.CreatedAt).ToListAsync();
-            foreach (var e in employees) e.Password = null;
+            // Keep the established entity-shaped response for existing Admin Web consumers,
+            // but never materialize the password hash for a read-only list response.
+            var employees = await query
+                .OrderByDescending(e => e.CreatedAt)
+                .Select(e => new Employee
+                {
+                    Id = e.Id,
+                    EmployeeCode = e.EmployeeCode,
+                    EmployeeType = e.EmployeeType,
+                    FullName = e.FullName,
+                    PhoneNumber = e.PhoneNumber,
+                    Position = e.Position,
+                    Department = e.Department,
+                    BasicSalary = e.BasicSalary,
+                    BranchId = e.BranchId,
+                    BranchName = e.BranchName,
+                    CitizenId = e.CitizenId,
+                    BirthDate = e.BirthDate,
+                    Gender = e.Gender,
+                    Address = e.Address,
+                    StartDate = e.StartDate,
+                    IsActive = e.IsActive,
+                    Role = e.Role,
+                    Note = e.Note,
+                    Username = e.Username,
+                    CreatedAt = e.CreatedAt
+                })
+                .ToListAsync();
             return Ok(employees);
         }
 
@@ -94,6 +122,10 @@ namespace RestaurantPOS.WebAPI.Controllers
         public async Task<IActionResult> CreateEmployee(Employee employee)
         {
             if (!IsAdmin() && !IsManager()) return Forbid();
+
+            if (!RoleNames.TryNormalizeStaffRole(employee.Role, out var normalizedRole))
+                return BadRequest(new { message = "Role nhân viên không hợp lệ." });
+            employee.Role = normalizedRole;
 
             // Manager chỉ được tạo nhân viên cho chi nhánh mình
             if (IsManager())
@@ -132,6 +164,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 _context.Employees.Add(employee);
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
 
                 employee.Password = null;
                 return Ok(employee);
@@ -150,6 +183,10 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!IsAdmin() && !IsManager()) return Forbid();
             if (id != employee.Id) return BadRequest(new { message = "ID không khớp" });
 
+            if (!RoleNames.TryNormalizeStaffRole(employee.Role, out var normalizedRole))
+                return BadRequest(new { message = "Role nhân viên không hợp lệ." });
+            employee.Role = normalizedRole;
+
             var existing = await _context.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id);
             if (existing == null) return NotFound();
 
@@ -166,6 +203,10 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
                 else return Forbid();
             }
+
+            if (!RoleNames.TryNormalizeStaffRole(employee.Role, out var finalNormalizedRole))
+                return BadRequest(new { message = "Role nhân viên không hợp lệ." });
+            employee.Role = finalNormalizedRole;
 
             // Ép kiểu sang UTC cho PostgreSQL
             employee.StartDate = DateTime.SpecifyKind(employee.StartDate, DateTimeKind.Utc);
@@ -191,6 +232,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             try
             {
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
 
                 employee.Password = null;
                 return Ok(employee);
@@ -219,6 +261,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             emp.IsActive = !emp.IsActive;
             await _context.SaveChangesAsync();
+            _dashboardService?.InvalidateSummaryCache();
             return Ok(new { isActive = emp.IsActive });
         }
 
@@ -240,6 +283,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             _context.Employees.Remove(emp);
             await _context.SaveChangesAsync();
+            _dashboardService?.InvalidateSummaryCache();
             return NoContent();
         }
 

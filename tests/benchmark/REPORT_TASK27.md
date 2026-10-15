@@ -1,47 +1,49 @@
-# REPORT TASK 27 — AI RBAC & VALIDATOR HARDENING
+# REPORT TASK 27 â€” AI RBAC & VALIDATOR HARDENING
 
 ## Executive Summary
-Hệ thống AI đã được rà soát và thắt chặt bảo mật tại tầng **Backend Authorization** và **Argument Validation**. Các vai trò vận hành (`cashier`, `kitchen`, `manager`) hiện đã có quyền truy cập đúng đắn vào các công cụ AI cần thiết cho nghiệp vụ thực tế, trong khi các giới hạn bảo mật quan trọng (Admin-only, Branch Isolation) vẫn được duy trì nghiêm ngặt. `AiToolValidator` đã được nâng cấp để xử lý các tham số không hợp lệ mà không gây treo hoặc lỗi server.
+Há»‡ thá»‘ng AI Ä‘Ă£ Ä‘Æ°á»£c rĂ  soĂ¡t vĂ  tháº¯t cháº·t báº£o máº­t táº¡i táº§ng **Backend Authorization** vĂ  **Argument Validation**. CĂ¡c vai trĂ² váº­n hĂ nh (`cashier`, `kitchen`, `manager`) hiá»‡n Ä‘Ă£ cĂ³ quyá»n truy cáº­p Ä‘Ăºng Ä‘áº¯n vĂ o cĂ¡c cĂ´ng cá»¥ AI cáº§n thiáº¿t cho nghiá»‡p vá»¥ thá»±c táº¿, trong khi cĂ¡c giá»›i háº¡n báº£o máº­t quan trá»ng (Admin-only, Branch Isolation) váº«n Ä‘Æ°á»£c duy trĂ¬ nghiĂªm ngáº·t. `AiToolValidator` Ä‘Ă£ Ä‘Æ°á»£c nĂ¢ng cáº¥p Ä‘á»ƒ xá»­ lĂ½ cĂ¡c tham sá»‘ khĂ´ng há»£p lá»‡ mĂ  khĂ´ng gĂ¢y treo hoáº·c lá»—i server.
 
 ## RBAC Changes
-Đã cập nhật `AllowedRoles` cho các công cụ sau để phù hợp với luồng nghiệp vụ thực tế:
+ÄĂ£ cáº­p nháº­t `AllowedRoles` cho cĂ¡c cĂ´ng cá»¥ sau Ä‘á»ƒ phĂ¹ há»£p vá»›i luá»“ng nghiá»‡p vá»¥ thá»±c táº¿:
 
 | Tool | Previous Roles | Updated Roles | Reason |
 | :--- | :--- | :--- | :--- |
-| `customer_get_menu` | admin, employee, customer | admin, manager, employee, cashier, kitchen, customer | Manager/Cashier/Kitchen cần tra cứu menu để hỗ trợ khách và chuẩn bị món. |
-| `get_my_shift` | employee | employee, cashier, kitchen | Mọi nhân viên (bao gồm thu ngân và bếp) đều cần xem lịch làm việc. |
-| `employee_get_table_summary`| admin, manager, employee | admin, manager, employee, cashier, kitchen | Thu ngân và bếp cần biết trạng thái bàn để điều phối phục vụ. |
-| `update_order_status` | admin, manager, employee | admin, manager, employee, cashier, kitchen | Thu ngân xác nhận hoàn thành, bếp xác nhận bắt đầu chế biến. |
-| `get_order_list` | admin, manager, employee | admin, manager, employee, cashier, kitchen | Thu ngân cần danh sách đơn để thanh toán, bếp cần danh sách để xử lý. |
-| `get_best_sellers` | admin, manager, employee | admin, manager, employee, cashier, kitchen | Hỗ trợ nhân viên tư vấn món cho khách. |
+| `customer_get_menu` | admin, employee, customer | admin, manager, employee, cashier, kitchen, customer | Manager/Cashier/Kitchen cáº§n tra cá»©u menu Ä‘á»ƒ há»— trá»£ khĂ¡ch vĂ  chuáº©n bá»‹ mĂ³n. |
+| `get_my_shift` | employee | employee, cashier, kitchen | Má»i nhĂ¢n viĂªn (bao gá»“m thu ngĂ¢n vĂ  báº¿p) Ä‘á»u cáº§n xem lá»‹ch lĂ m viá»‡c. |
+| `employee_get_table_summary`| admin, manager, employee | admin, manager, employee, cashier, kitchen | Thu ngĂ¢n vĂ  báº¿p cáº§n biáº¿t tráº¡ng thĂ¡i bĂ n Ä‘á»ƒ Ä‘iá»u phá»‘i phá»¥c vá»¥. |
+| `update_order_status` | admin, manager, employee | admin, manager, employee, cashier, kitchen | Thu ngĂ¢n xĂ¡c nháº­n hoĂ n thĂ nh, báº¿p xĂ¡c nháº­n báº¯t Ä‘áº§u cháº¿ biáº¿n. |
+| `get_order_list` | admin, manager, employee | admin, manager, employee, cashier, kitchen | Thu ngĂ¢n cáº§n danh sĂ¡ch Ä‘Æ¡n Ä‘á»ƒ thanh toĂ¡n, báº¿p cáº§n danh sĂ¡ch Ä‘á»ƒ xá»­ lĂ½. |
+| `get_best_sellers` | admin, manager, employee | admin, manager, employee, cashier, kitchen | Há»— trá»£ nhĂ¢n viĂªn tÆ° váº¥n mĂ³n cho khĂ¡ch. |
 
 ## Validator Changes
-Đã thực hiện các cải tiến tại `AiToolValidator.cs`:
-1.  **Object Enforcement**: Thêm phương thức `EnsureObject` để kiểm tra `ValueKind == JsonValueKind.Object`. Các hàm `GetString`, `GetInt32`, `GetDecimal` giờ đây an toàn hơn khi nhận tham số không phải là object.
-2.  **Graceful Error Handling**: Thay vì để server ném ngoại lệ không kiểm soát, validator ném `ArgumentException` với thông báo tiếng Việt rõ ràng (ví dụ: "Cấu trúc tham số không hợp lệ", "Thiếu tham số bắt buộc").
-3.  **Hỗ trợ Null/Undefined**: `ValidateRequired` giờ đây xử lý an toàn khi toàn bộ arguments là `null` hoặc `undefined`.
+ÄĂ£ thá»±c hiá»‡n cĂ¡c cáº£i tiáº¿n táº¡i `AiToolValidator.cs`:
+1.  **Object Enforcement**: ThĂªm phÆ°Æ¡ng thá»©c `EnsureObject` Ä‘á»ƒ kiá»ƒm tra `ValueKind == JsonValueKind.Object`. CĂ¡c hĂ m `GetString`, `GetInt32`, `GetDecimal` giá» Ä‘Ă¢y an toĂ n hÆ¡n khi nháº­n tham sá»‘ khĂ´ng pháº£i lĂ  object.
+2.  **Graceful Error Handling**: Thay vĂ¬ Ä‘á»ƒ server nĂ©m ngoáº¡i lá»‡ khĂ´ng kiá»ƒm soĂ¡t, validator nĂ©m `ArgumentException` vá»›i thĂ´ng bĂ¡o tiáº¿ng Viá»‡t rĂµ rĂ ng (vĂ­ dá»¥: "Cáº¥u trĂºc tham sá»‘ khĂ´ng há»£p lá»‡", "Thiáº¿u tham sá»‘ báº¯t buá»™c").
+3.  **Há»— trá»£ Null/Undefined**: `ValidateRequired` giá» Ä‘Ă¢y xá»­ lĂ½ an toĂ n khi toĂ n bá»™ arguments lĂ  `null` hoáº·c `undefined`.
 
 ## Security Verification
--   **Branch Isolation**: Đã kiểm tra lại logic `ValidateBranchIsolation`. Hệ thống tiếp tục sử dụng `BranchId` từ JWT (UserContext) làm nguồn tin cậy duy nhất. User không thể gửi `branchId` giả mạo qua AI Tool Arguments để xem dữ liệu chi nhánh khác.
--   **RBAC Boundary**: Các công cụ tài chính (`get_revenue`, `get_financial_analysis`, `get_business_summary`) vẫn được giới hạn chặt chẽ cho `admin` và `manager`.
--   **Write Tool Safety**: Các công cụ thay đổi dữ liệu (`update_product_price`, `update_order_status`) vẫn tuân thủ logic kiểm tra quyền tại tầng Service của Backend.
+-   **Branch Isolation**: ÄĂ£ kiá»ƒm tra láº¡i logic `ValidateBranchIsolation`. Há»‡ thá»‘ng tiáº¿p tá»¥c sá»­ dá»¥ng `BranchId` tá»« JWT (UserContext) lĂ m nguá»“n tin cáº­y duy nháº¥t. User khĂ´ng thá»ƒ gá»­i `branchId` giáº£ máº¡o qua AI Tool Arguments Ä‘á»ƒ xem dá»¯ liá»‡u chi nhĂ¡nh khĂ¡c.
+-   **RBAC Boundary**: CĂ¡c cĂ´ng cá»¥ tĂ i chĂ­nh (`get_revenue`, `get_financial_analysis`, `get_business_summary`) váº«n Ä‘Æ°á»£c giá»›i háº¡n cháº·t cháº½ cho `admin` vĂ  `manager`.
+-   **Write Tool Safety**: CĂ¡c cĂ´ng cá»¥ thay Ä‘á»•i dá»¯ liá»‡u (`update_product_price`, `update_order_status`) váº«n tuĂ¢n thá»§ logic kiá»ƒm tra quyá»n táº¡i táº§ng Service cá»§a Backend.
 
 ## Test Results
--   **New Tests**: Đã thêm `AiSecurityAuditTests.cs` bao gồm:
-    -   Kiểm tra ma trận quyền hạn (RBAC Matrix) cho mọi Role.
-    -   Kiểm tra độ bền của Validator với các tham số `null`, `empty`, hoặc sai định dạng.
-    -   Kiểm tra cơ chế cách ly chi nhánh (Branch Isolation).
--   **Total Tests**: 173 bài test (tăng từ 135 bài).
+-   **New Tests**: ÄĂ£ thĂªm `AiSecurityAuditTests.cs` bao gá»“m:
+    -   Kiá»ƒm tra ma tráº­n quyá»n háº¡n (RBAC Matrix) cho má»i Role.
+    -   Kiá»ƒm tra Ä‘á»™ bá»n cá»§a Validator vá»›i cĂ¡c tham sá»‘ `null`, `empty`, hoáº·c sai Ä‘á»‹nh dáº¡ng.
+    -   Kiá»ƒm tra cÆ¡ cháº¿ cĂ¡ch ly chi nhĂ¡nh (Branch Isolation).
+-   **Total Tests**: 173 bĂ i test (tÄƒng tá»« 135 bĂ i).
 -   **Status**: **173/173 PASS**.
 
 ## Before/After
--   **Before**: Nhân viên thu ngân (cashier) và nhân viên bếp (kitchen) hầu như không thể sử dụng AI để tra cứu thông tin vận hành cơ bản. Validator có thể ném ngoại lệ không mong muốn nếu model sinh JSON sai định dạng.
--   **After**: Các vai trò vận hành có thể sử dụng AI để hỗ trợ công việc hàng ngày. Hệ thống ổn định hơn trước các lỗi sinh tham số của LLM.
+-   **Before**: NhĂ¢n viĂªn thu ngĂ¢n (cashier) vĂ  nhĂ¢n viĂªn báº¿p (kitchen) háº§u nhÆ° khĂ´ng thá»ƒ sá»­ dá»¥ng AI Ä‘á»ƒ tra cá»©u thĂ´ng tin váº­n hĂ nh cÆ¡ báº£n. Validator cĂ³ thá»ƒ nĂ©m ngoáº¡i lá»‡ khĂ´ng mong muá»‘n náº¿u model sinh JSON sai Ä‘á»‹nh dáº¡ng.
+-   **After**: CĂ¡c vai trĂ² váº­n hĂ nh cĂ³ thá»ƒ sá»­ dá»¥ng AI Ä‘á»ƒ há»— trá»£ cĂ´ng viá»‡c hĂ ng ngĂ y. Há»‡ thá»‘ng á»•n Ä‘á»‹nh hÆ¡n trÆ°á»›c cĂ¡c lá»—i sinh tham sá»‘ cá»§a LLM.
 
 ## Remaining Issues
--   Các thông báo lỗi của Validator hữu ích cho AI nhưng đôi khi có thể được Gemini tự ý diễn đạt lại cho người dùng.
--   Chưa có cơ chế giới hạn tần suất gọi Write Tools cho từng cá nhân (ngoài Rate Limiting chung).
+-   CĂ¡c thĂ´ng bĂ¡o lá»—i cá»§a Validator há»¯u Ă­ch cho AI nhÆ°ng Ä‘Ă´i khi cĂ³ thá»ƒ Ä‘Æ°á»£c AI provider tá»± Ă½ diá»…n Ä‘áº¡t láº¡i cho ngÆ°á»i dĂ¹ng.
+-   ChÆ°a cĂ³ cÆ¡ cháº¿ giá»›i háº¡n táº§n suáº¥t gá»i Write Tools cho tá»«ng cĂ¡ nhĂ¢n (ngoĂ i Rate Limiting chung).
 
 ## Recommendations for TASK 29
--   Tối ưu hóa **Tool Description** để hướng dẫn Gemini cung cấp tham số chính xác ngay từ lượt đầu tiên (đặc biệt là các giá trị enum cho `period`).
--   Bổ sung thêm các ví dụ sử dụng (few-shot) trong System Prompt để Gemini phân biệt rõ ranh giới giữa các công cụ tương đồng.
+-   Tá»‘i Æ°u hĂ³a **Tool Description** Ä‘á»ƒ hÆ°á»›ng dáº«n AI provider cung cáº¥p tham sá»‘ chĂ­nh xĂ¡c ngay tá»« lÆ°á»£t Ä‘áº§u tiĂªn (Ä‘áº·c biá»‡t lĂ  cĂ¡c giĂ¡ trá»‹ enum cho `period`).
+-   Bá»• sung thĂªm cĂ¡c vĂ­ dá»¥ sá»­ dá»¥ng (few-shot) trong System Prompt Ä‘á»ƒ AI provider phĂ¢n biá»‡t rĂµ ranh giá»›i giá»¯a cĂ¡c cĂ´ng cá»¥ tÆ°Æ¡ng Ä‘á»“ng.
+
+

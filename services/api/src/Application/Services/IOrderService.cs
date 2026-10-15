@@ -11,7 +11,8 @@ namespace RestaurantPOS.Application.Services
         Paid,
         NotFound,
         AlreadyPaid,
-        NotPayable
+        NotPayable,
+        MemberAlreadyRewarded
     }
 
     public enum WebOrderAcceptResult
@@ -29,7 +30,7 @@ namespace RestaurantPOS.Application.Services
         Task<Order?> GetOrderByIdAsync(Guid id);
         Task<Order> CreateOrUpdateOrderAsync(Order order);
         Task<(WebOrderAcceptResult Result, Order? Order)> AcceptWebOrderAsync(Guid id, Guid? tableId, Guid? allowedBranchId, string acceptedBy);
-        Task<(PaymentAttemptResult Result, Order? Order)> PayOrderAsync(Guid id, decimal amount, string paymentMethod);
+        Task<(PaymentAttemptResult Result, Order? Order)> PayOrderAsync(Guid id, decimal amount, string paymentMethod, string? customerPhone = null, string? customerName = null, bool createMember = false);
         Task<Order?> UpdateOrderStatusAsync(Guid id, OrderUpdateDto update);
         Task<bool> DeleteOrderAsync(Guid id);
         Task<(bool Success, string Message)> UpdateOrderStatusByTableOrInvoiceAsync(string? invoiceCode, string? tableName, string newStatus);

@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using RestaurantPOS.Application.Services;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -16,10 +17,12 @@ namespace RestaurantPOS.WebAPI.Controllers
     public class BranchController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IDashboardService? _dashboardService;
 
-        public BranchController(ApplicationDbContext context)
+        public BranchController(ApplicationDbContext context, IDashboardService? dashboardService = null)
         {
             _context = context;
+            _dashboardService = dashboardService;
         }
 
         /// <summary>Lấy danh sách chi nhánh.</summary>
@@ -49,6 +52,59 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
         }
 
+        /// <summary>Lấy danh sách đầy đủ cho màn hình quản trị chi nhánh.</summary>
+        [HttpGet("management")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> GetManagementBranches()
+        {
+            var branches = await _context.Branches
+                .OrderByDescending(b => b.IsMain)
+                .ThenBy(b => b.Name)
+                .Select(b => new BranchManagementDto
+                {
+                    Id = b.Id,
+                    Name = b.Name,
+                    Address = b.Address,
+                    PhoneNumber = b.PhoneNumber,
+                    IsMain = b.IsMain,
+                    IsActive = b.IsActive,
+                    BankName = b.BankName,
+                    AccountNumber = b.AccountNumber,
+                    AccountHolder = b.AccountHolder,
+                    ImageUrl = b.ImageUrl,
+                    TaxCode = b.TaxCode,
+                    RepresentativeName = b.RepresentativeName,
+                    RepresentativeEmail = b.RepresentativeEmail,
+                    Industry = b.Industry,
+                    BusinessType = b.BusinessType,
+                    CreatedAt = b.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(branches);
+        }
+
+        /// <summary>Lấy thông tin VietQR của một chi nhánh cho POS đã xác thực.</summary>
+        [HttpGet("{id:guid}/payment-info")]
+        [Authorize(Roles = "admin,manager,employee,cashier")]
+        public async Task<IActionResult> GetPaymentInfo(Guid id)
+        {
+            if (!HasBranchAccess(id)) return Forbid();
+
+            var paymentInfo = await _context.Branches
+                .Where(b => b.Id == id && b.IsActive)
+                .Select(b => new BranchPaymentInfoDto
+                {
+                    Id = b.Id,
+                    BankName = b.BankName,
+                    AccountNumber = b.AccountNumber,
+                    AccountHolder = b.AccountHolder
+                })
+                .FirstOrDefaultAsync();
+
+            return paymentInfo == null ? NotFound() : Ok(paymentInfo);
+        }
+
         /// <summary>Tạo chi nhánh mới.</summary>
         [HttpPost]
         [Authorize(Roles = "admin")]
@@ -72,6 +128,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 _context.Branches.Add(branch);
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return Ok(branch);
             }
             catch (Exception ex)
@@ -119,6 +176,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return Ok(existingBranch);
             }
             catch (Exception ex)
@@ -139,6 +197,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 branch.IsActive = !branch.IsActive;
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return Ok(new { isActive = branch.IsActive });
             }
             catch (Exception ex)
@@ -160,12 +219,20 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 _context.Branches.Remove(branch);
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return NoContent();
             }
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = ex.Message });
             }
+        }
+
+        private bool HasBranchAccess(Guid branchId)
+        {
+            if (User.IsInRole("admin")) return true;
+            return Guid.TryParse(User.FindFirst("branchId")?.Value, out var userBranchId)
+                && userBranchId == branchId;
         }
     }
 
@@ -176,5 +243,33 @@ namespace RestaurantPOS.WebAPI.Controllers
         public string? Address { get; init; }
         public string? PhoneNumber { get; init; }
         public string? ImageUrl { get; init; }
+    }
+
+    public sealed class BranchManagementDto
+    {
+        public Guid Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public string? Address { get; init; }
+        public string? PhoneNumber { get; init; }
+        public bool IsMain { get; init; }
+        public bool IsActive { get; init; }
+        public string? BankName { get; init; }
+        public string? AccountNumber { get; init; }
+        public string? AccountHolder { get; init; }
+        public string? ImageUrl { get; init; }
+        public string? TaxCode { get; init; }
+        public string? RepresentativeName { get; init; }
+        public string? RepresentativeEmail { get; init; }
+        public string? Industry { get; init; }
+        public string? BusinessType { get; init; }
+        public DateTime CreatedAt { get; init; }
+    }
+
+    public sealed class BranchPaymentInfoDto
+    {
+        public Guid Id { get; init; }
+        public string? BankName { get; init; }
+        public string? AccountNumber { get; init; }
+        public string? AccountHolder { get; init; }
     }
 }

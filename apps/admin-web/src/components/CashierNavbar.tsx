@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as signalR from '@microsoft/signalr';
 import { Link, useLocation } from 'react-router-dom';
 import { Utensils, User, Camera, Calendar, LogOut, ChevronDown, Store, ShieldCheck, Clock, ChevronRight, Bell, BellRing, Loader2, Receipt } from 'lucide-react';
 import { API_URL } from '../config';
-import { fetchPendingWebOrderCount, PENDING_ORDER_CHANGED_EVENT } from '../features/notifications/pendingOrderQuery';
+import { fetchPendingWebOrderCount, fetchPendingWebOrderNotifications, PENDING_ORDER_CHANGED_EVENT } from '../features/notifications/pendingOrderQuery';
+import { useNotificationCenter } from '../features/notifications/useNotificationCenter';
+import NotificationBell from '../features/notifications/NotificationBell';
 
 interface CashierNavbarProps {
   onLogout: () => void;
@@ -16,54 +18,129 @@ const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userR
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [pendingOrderNotifications, setPendingOrderNotifications] = useState<any[]>([]);
   const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [loadingNoti, setLoadingNoti] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const persistentRequestInFlight = useRef(false);
+  const pendingNotificationsRequestInFlight = useRef(false);
+  const pendingCountRequestInFlight = useRef(false);
   const location = useLocation();
+  const notificationCenter = useNotificationCenter('cashier');
   const branchName = localStorage.getItem('selectedBranchName') || 'Toàn hệ thống';
 
   const refreshPendingOrderCount = async () => {
+    if (pendingCountRequestInFlight.current) return;
+    pendingCountRequestInFlight.current = true;
     try {
       setPendingOrderCount(await fetchPendingWebOrderCount());
     } catch (err) {
+      setNotificationError('Không thể cập nhật số đơn đang chờ.');
       console.error('Lỗi lấy số đơn web đang chờ:', err);
+    } finally {
+      pendingCountRequestInFlight.current = false;
+    }
+  };
+
+  const fetchPendingOrderNotificationsForDisplay = async () => {
+    if (pendingNotificationsRequestInFlight.current) return;
+    pendingNotificationsRequestInFlight.current = true;
+    try {
+      setPendingOrderNotifications(await fetchPendingWebOrderNotifications());
+    } catch (err) {
+      setNotificationError('Không thể tải thông báo đơn đang chờ.');
+      console.error('Lỗi lấy thông báo đơn web đang chờ:', err);
+    } finally {
+      pendingNotificationsRequestInFlight.current = false;
     }
   };
 
   useEffect(() => {
+    return;
+    let disposed = false;
     fetchPersistentNotifications();
-    const interval = setInterval(fetchPersistentNotifications, 30000); // 30s cập nhật 1 lần
+    void fetchPendingOrderNotificationsForDisplay();
+    const refreshIfVisible = (refresh: () => void) => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const interval = setInterval(() => refreshIfVisible(fetchPersistentNotifications), 30000); // 30s cập nhật 1 lần
+    const pendingNotificationInterval = setInterval(() => refreshIfVisible(fetchPendingOrderNotificationsForDisplay), 30000);
     refreshPendingOrderCount();
-    const pendingInterval = setInterval(refreshPendingOrderCount, 30000);
+    const pendingInterval = setInterval(() => refreshIfVisible(refreshPendingOrderCount), 30000);
     const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
-    const onNotification = (notification: any) => setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
+    const onNotification = (notification: any) => {
+      if (disposed) return;
+      setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
+    };
     connection.on('NotificationCreated', onNotification);
-    const onPendingOrderChanged = () => { void refreshPendingOrderCount(); };
+    const onPendingOrderChanged = () => {
+      if (disposed) return;
+      void refreshPendingOrderCount();
+      void fetchPendingOrderNotificationsForDisplay();
+    };
     connection.on('PendingOrderChanged', onPendingOrderChanged);
-    void connection.start().catch(() => undefined);
+    connection.onreconnected(() => {
+      if (disposed) return;
+      if (document.visibilityState !== 'visible') return;
+      void fetchPersistentNotifications();
+      void fetchPendingOrderNotificationsForDisplay();
+      void refreshPendingOrderCount();
+    });
+    void connection.start().catch(error => {
+      if (!disposed) console.warn('Notification hub connection failed to start.', error);
+    });
 
     // Lắng nghe sự kiện yêu cầu cập nhật thông báo ngay lập tức
-    const handleRefresh = () => { void fetchPersistentNotifications(); };
+    const handleRefresh = () => {
+      if (disposed) return;
+      void fetchPersistentNotifications();
+      void fetchPendingOrderNotificationsForDisplay();
+    };
     window.addEventListener('refresh-notifications', handleRefresh);
     window.addEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
+    const handleVisibilityChange = () => {
+      if (disposed) return;
+      if (document.visibilityState === 'visible') {
+        void fetchPersistentNotifications();
+        void fetchPendingOrderNotificationsForDisplay();
+        void refreshPendingOrderCount();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      disposed = true;
       clearInterval(interval);
+      clearInterval(pendingNotificationInterval);
       clearInterval(pendingInterval);
       connection.off('NotificationCreated', onNotification);
       connection.off('PendingOrderChanged', onPendingOrderChanged);
-      void connection.stop();
       window.removeEventListener('refresh-notifications', handleRefresh);
       window.removeEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      void connection.stop().catch(error => {
+        console.warn('Notification hub cleanup failed.', error);
+      });
     };
   }, []);
 
+  const displayedNotifications = [...pendingOrderNotifications, ...notifications]
+    .filter((notification, index, all) => all.findIndex(item => item.id === notification.id) === index);
+
   const fetchPersistentNotifications = async () => {
+    if (persistentRequestInFlight.current) return;
+    persistentRequestInFlight.current = true;
     try {
       setLoadingNoti(true);
       const response = await fetch(`${API_URL}/api/Notification`);
-      if (response.ok) setNotifications(await response.json());
-    } catch (err) { console.error('Lỗi lấy notification persistent:', err); }
-    finally { setLoadingNoti(false); }
+      if (!response.ok) throw new Error('Không thể tải thông báo.');
+      setNotifications(await response.json());
+      setNotificationError(null);
+    } catch (err) { setNotificationError('Không thể tải thông báo.'); console.error('Lỗi lấy notification persistent:', err); }
+    finally {
+      setLoadingNoti(false);
+      persistentRequestInFlight.current = false;
+    }
   };
 
   const navItems = [
@@ -95,8 +172,9 @@ const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userR
 
        {/* Right Section: Notifications + User */}
        <div className="flex items-center space-x-4">
+          <NotificationBell {...notificationCenter} historyPath="/pos/notifications" />
           {/* Notifications */}
-          <div className="relative">
+          <div className="relative hidden">
             <button
               onClick={() => {
                 setIsNotificationsOpen(!isNotificationsOpen);
@@ -119,26 +197,27 @@ const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userR
                   <div className="flex items-center font-black text-sm text-gray-700">
                     <BellRing className="h-4 w-4 mr-2 text-blue-600" /> THÔNG BÁO MỚI
                   </div>
-                  {notifications.filter(n => !n.isRead).length > 0 && (
-                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-black uppercase">{notifications.filter(n => !n.isRead).length} Mới</span>
+                  {displayedNotifications.filter(n => !n.isRead).length > 0 && (
+                    <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-black uppercase">{displayedNotifications.filter(n => !n.isRead).length} Mới</span>
                   )}
                 </div>
 
                 <div className="max-h-[400px] overflow-y-auto no-scrollbar">
-                   {loadingNoti && notifications.length === 0 ? (
+                   {notificationError && <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">{notificationError}</div>}
+                   {loadingNoti && displayedNotifications.length === 0 ? (
                      <div className="py-12 text-center"><Loader2 className="animate-spin mx-auto text-blue-600" /></div>
-                   ) : notifications.length === 0 ? (
+                   ) : displayedNotifications.length === 0 ? (
                      <div className="py-12 text-center">
                         <p className="text-gray-400 text-xs font-bold uppercase tracking-widest italic">Tuyệt vời! Không có yêu cầu chờ</p>
                      </div>
                    ) : (
-                     notifications.map((n) => (
+                     displayedNotifications.map((n) => (
                        <Link
                          key={n.id}
                          to={n.route || n.link || '#'}
                          onClick={() => {
                            setIsNotificationsOpen(false);
-                           if (!n.isRead) void fetch(`${API_URL}/api/Notification/${n.id}/read`, { method: 'PATCH' });
+                           if (!n.isPendingOrder && !n.isRead) void fetch(`${API_URL}/api/Notification/${n.id}/read`, { method: 'PATCH' });
                            if (n.type === 'order') {
                               window.dispatchEvent(new CustomEvent('pos-open-notification', { detail: { orderId: n.id } }));
                            } else if (n.type === 'reservation') {

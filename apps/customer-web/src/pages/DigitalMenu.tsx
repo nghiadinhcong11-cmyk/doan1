@@ -1,30 +1,137 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, ChevronRight, Star, Plus, Minus, Search, Loader2, CheckCircle2, Clock, MapPin, X, Gift, Percent } from 'lucide-react';
+import { useRef } from 'react';
+import { ShoppingBag, ChevronRight, Star, CheckCircle2, X, Gift, Percent } from 'lucide-react';
 import { API_URL } from '../config';
 import Feedback, { FeedbackTone } from '../components/ui/Feedback';
+import CustomerCategoryTabs from '../features/digital-menu/components/CustomerCategoryTabs';
+import CustomerProductList from '../features/digital-menu/components/CustomerProductList';
+import CustomerProductOptionsModal, { type ProductOption } from '../features/digital-menu/components/CustomerProductOptionsModal';
+import CustomerOrderConfirmationModal from '../features/digital-menu/components/CustomerOrderConfirmationModal';
+import type { CartItem, Product } from '../features/digital-menu/types';
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  group?: string;
-  imageUrl?: string;
-  description?: string;
-  sizesJson?: string;
-  toppingsJson?: string;
-  availabilityStatus?: string;
-}
+const getQrDiagnosticPhase = (qrToken: string | null) => {
+  if (!qrToken) return 'normal-link';
+  return sessionStorage.getItem('guestQrSession') === 'true'
+    ? 'after-qr-bootstrap'
+    : 'before-or-during-qr-bootstrap';
+};
 
-interface CartItem extends Product {
-  quantity: number;
-  selectedSize?: any;
-  selectedToppings?: any[];
-  totalItemPrice: number;
-  note?: string; // Thêm trường ghi chú cho khách
-}
+const fetchWithDiagnostics = async (endpointPath: string, input: RequestInfo, init?: RequestInit, phase = 'unknown') => {
+  try {
+    const response = await fetch(input, init);
+    if (import.meta.env.DEV) {
+      console.info('[DigitalMenu] fetch response', {
+        endpointPath,
+        phase,
+        status: response.status,
+        contentType: response.headers.get('content-type') || null
+      });
+    }
+    return response;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[DigitalMenu] fetch failure', {
+        endpointPath,
+        phase,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+    }
+    throw error;
+  }
+};
+
+const parseJsonWithDiagnostics = async (response: Response, endpointPath: string, phase: string) => {
+  try {
+    const payload = await response.json();
+    if (import.meta.env.DEV) {
+      console.info('[DigitalMenu] JSON parsed', {
+        endpointPath,
+        phase,
+        jsonParsed: true,
+        responseShape: Array.isArray(payload) ? 'array' : payload === null ? 'null' : typeof payload
+      });
+    }
+    return payload;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[DigitalMenu] JSON parse failure', {
+        endpointPath,
+        phase,
+        jsonParsed: false,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+    }
+    throw error;
+  }
+};
+
+type DiagnosticFetchState = {
+  state: 'idle' | 'pending' | 'success' | 'http-error' | 'network-error' | 'json-error' | 'shape-error';
+  status: number | null;
+  errorName: string | null;
+  errorMessage: string | null;
+};
+
+const initialDiagnosticFetchState: DiagnosticFetchState = {
+  state: 'idle',
+  status: null,
+  errorName: null,
+  errorMessage: null
+};
+
+const sanitizeDiagnosticError = (error: unknown) => {
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    errorName: name.slice(0, 80),
+    errorMessage: message
+      .replace(/https?:\/\/[^\s]+/gi, '[url]')
+      .replace(/([?&](?:qr|token|access_token)=)[^&\s]+/gi, '$1[redacted]')
+      .slice(0, 240)
+  };
+};
+
+const DebugMenuPanel = ({
+  qrPresent,
+  bootstrapState,
+  productState,
+  toppingState,
+  productCountBeforeFilter,
+  productCountAfterFilter
+}: {
+  qrPresent: boolean;
+  bootstrapState: 'idle' | 'pending' | 'success' | 'error';
+  productState: DiagnosticFetchState;
+  toppingState: DiagnosticFetchState;
+  productCountBeforeFilter: number | null;
+  productCountAfterFilter: number | null;
+}) => {
+  const api = new URL(API_URL, window.location.origin);
+  const currentPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+  const apiPort = api.port || (api.protocol === 'https:' ? '443' : '80');
+
+  return (
+    <aside className="mx-4 mt-4 rounded-2xl border-2 border-purple-300 bg-purple-50 p-4 text-[11px] font-mono text-purple-950" role="status">
+      <p className="mb-2 font-black">QR MENU DIAGNOSTIC v1</p>
+      <p>bundle: diagnostic-panel-enabled</p>
+      <p>frontend: {window.location.hostname}:{currentPort}</p>
+      <p>api: {api.hostname}:{apiPort}</p>
+      <p>qrParameterPresent: {String(qrPresent)}</p>
+      <p>bootstrap: {bootstrapState}</p>
+      <p>product: {productState.state} / HTTP {productState.status ?? 'n/a'}</p>
+      <p>productError: {productState.errorName || 'none'} / {productState.errorMessage || 'none'}</p>
+      <p>topping: {toppingState.state} / HTTP {toppingState.status ?? 'n/a'}</p>
+      <p>toppingError: {toppingState.errorName || 'none'} / {toppingState.errorMessage || 'none'}</p>
+      <p>productCountBeforeFilter: {productCountBeforeFilter ?? 'n/a'}</p>
+      <p>productCountAfterFilter: {productCountAfterFilter ?? 'n/a'}</p>
+    </aside>
+  );
+};
 
 const DigitalMenu = () => {
+  type QrBootstrapState = 'idle' | 'loading' | 'success' | 'error';
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>(['Tất cả']);
   const [activeCategory, setActiveCategory] = useState('Tất cả');
@@ -39,6 +146,12 @@ const DigitalMenu = () => {
   const [branches, setBranches] = useState<any[]>([]);
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<any>(null);
+  const [qrBootstrapState, setQrBootstrapState] = useState<QrBootstrapState>('idle');
+  const [productFetchState, setProductFetchState] = useState<DiagnosticFetchState>(initialDiagnosticFetchState);
+  const [toppingFetchState, setToppingFetchState] = useState<DiagnosticFetchState>(initialDiagnosticFetchState);
+  const [productCountBeforeFilter, setProductCountBeforeFilter] = useState<number | null>(null);
+  const [productCountAfterFilter, setProductCountAfterFilter] = useState<number | null>(null);
+  const requestInFlight = useRef(false);
 
   // States cho Loyalty
   const [currentLoyaltyPoints, setCurrentLoyaltyPoints] = useState<number>(0);
@@ -58,6 +171,7 @@ const DigitalMenu = () => {
   // Lấy tableId từ URL ?tableId=...
   const urlParams = new URLSearchParams(window.location.search);
   const qrToken = urlParams.get('qr');
+  const debugMenu = urlParams.get('debugMenu') === '1';
 
   useEffect(() => {
     fetchProducts();
@@ -117,24 +231,81 @@ const DigitalMenu = () => {
   }, [cart, isBranchModalOpen]);
 
   const fetchProducts = async () => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
     try {
       setLoading(true);
+      setProductFetchState({ ...initialDiagnosticFetchState, state: 'pending' });
+      setToppingFetchState({ ...initialDiagnosticFetchState, state: 'pending' });
+      setProductCountBeforeFilter(null);
+      setProductCountAfterFilter(null);
+      const phase = getQrDiagnosticPhase(qrToken);
 
-      // Lấy đồng thời Sản phẩm và Topping
-      const [prodRes, toppingRes] = await Promise.all([
-        fetch(`${API_URL}/api/Product`),
-        fetch(`${API_URL}/api/Topping`)
+      // Load products independently so a topping endpoint failure does not hide the main menu.
+      const [productResult, toppingResult] = await Promise.allSettled([
+        fetchWithDiagnostics('/api/Product', `${API_URL}/api/Product`, undefined, phase),
+        fetchWithDiagnostics('/api/Topping', `${API_URL}/api/Topping`, undefined, phase)
       ]);
 
-      if (!prodRes.ok || !toppingRes.ok) {
-        throw new Error(`Menu API failed: ${prodRes.status}/${toppingRes.status}`);
+      const productStatus = productResult.status === 'fulfilled' ? productResult.value.status : null;
+      const toppingStatus = toppingResult.status === 'fulfilled' ? toppingResult.value.status : null;
+      if (productResult.status === 'rejected') {
+        setProductFetchState({ state: 'network-error', status: null, ...sanitizeDiagnosticError(productResult.reason) });
+      } else if (!productResult.value.ok) {
+        setProductFetchState({ state: 'http-error', status: productResult.value.status, errorName: 'HttpError', errorMessage: `HTTP ${productResult.value.status}` });
+      }
+      if (toppingResult.status === 'rejected') {
+        setToppingFetchState({ state: 'network-error', status: null, ...sanitizeDiagnosticError(toppingResult.reason) });
+      } else if (!toppingResult.value.ok) {
+        setToppingFetchState({ state: 'http-error', status: toppingResult.value.status, errorName: 'HttpError', errorMessage: `HTTP ${toppingResult.value.status}` });
+      }
+      if (import.meta.env.DEV) {
+        console.info('[DigitalMenu] menu API diagnostics', {
+          productStatus,
+          toppingStatus,
+          productRequestSucceeded: productResult.status === 'fulfilled',
+          toppingRequestSucceeded: toppingResult.status === 'fulfilled'
+        });
       }
 
-      const productsData = await prodRes.json();
-      const toppingsData = await toppingRes.json();
+      if (productResult.status === 'rejected' || !productResult.value.ok) {
+        throw new Error(`Product API failed: ${productStatus ?? 'network'}`);
+      }
 
-      if (!Array.isArray(productsData) || !Array.isArray(toppingsData)) {
-        throw new Error('Menu API returned an invalid response.');
+      let productsData: any;
+      try {
+        productsData = await parseJsonWithDiagnostics(productResult.value, '/api/Product', phase);
+      } catch (error) {
+        setProductFetchState({ state: 'json-error', status: productResult.value.status, ...sanitizeDiagnosticError(error) });
+        throw error;
+      }
+      const productCountBeforeFilter = Array.isArray(productsData) ? productsData.length : null;
+      setProductCountBeforeFilter(productCountBeforeFilter);
+      if (!Array.isArray(productsData)) {
+        setProductFetchState({ state: 'shape-error', status: productResult.value.status, errorName: 'ResponseShapeError', errorMessage: 'Product response is not an array.' });
+        throw new Error('Product API returned an invalid response.');
+      }
+      setProductFetchState({ state: 'success', status: productResult.value.status, errorName: null, errorMessage: null });
+
+      let toppingsData: any[] = [];
+      let toppingLoadFailed = false;
+      if (toppingResult.status === 'fulfilled' && toppingResult.value.ok) {
+        let parsedToppings: any;
+        try {
+          parsedToppings = await parseJsonWithDiagnostics(toppingResult.value, '/api/Topping', phase);
+        } catch (error) {
+          setToppingFetchState({ state: 'json-error', status: toppingResult.value.status, ...sanitizeDiagnosticError(error) });
+          throw error;
+        }
+        if (Array.isArray(parsedToppings)) {
+          toppingsData = parsedToppings;
+          setToppingFetchState({ state: 'success', status: toppingResult.value.status, errorName: null, errorMessage: null });
+        } else {
+          toppingLoadFailed = true;
+          setToppingFetchState({ state: 'shape-error', status: toppingResult.value.status, errorName: 'ResponseShapeError', errorMessage: 'Topping response is not an array.' });
+        }
+      } else {
+        toppingLoadFailed = true;
       }
 
       // Biến đổi Topping thành định dạng giống Sản phẩm để hiển thị chung
@@ -153,21 +324,43 @@ const DigitalMenu = () => {
         product.isActive !== false && (!product.availabilityStatus || product.availabilityStatus === 'Available'));
       const allItems = [...sellableProducts, ...toppingProducts];
       setProducts(allItems);
+      setProductCountAfterFilter(sellableProducts.length);
+
+      if (import.meta.env.DEV) {
+        console.info('[DigitalMenu] product counts', {
+          productCountBeforeFilter,
+          productCountAfterFilter: sellableProducts.length,
+          toppingCount: toppingProducts.length,
+          totalMenuItemCount: allItems.length
+        });
+      }
+
+      if (toppingLoadFailed) {
+        setFeedbackTone('warning');
+        setFeedbackMessage('Đã tải món chính; danh sách topping tạm thời không khả dụng.');
+      } else if (allItems.length === 0) {
+        setFeedbackTone('warning');
+        setFeedbackMessage('Thực đơn hiện chưa có món đang bán.');
+      }
 
       const cats = Array.from(new Set(allItems.map((p: any) => p.category).filter((c: any) => !!c))) as string[];
       setCategories(['Tất cả', ...cats]);
     } catch (err) {
       console.error(err);
+      if (import.meta.env.DEV) {
+      console.warn('[DigitalMenu] menu load failure', {
+          phase: getQrDiagnosticPhase(qrToken),
+          errorName: err instanceof Error ? err.name : 'UnknownError',
+          errorMessage: err instanceof Error ? err.message : String(err)
+        });
+      }
+      setFeedbackTone('error');
       setFeedbackMessage('Không thể tải thực đơn. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
+      requestInFlight.current = false;
     }
   };
-
-  useEffect(() => {
-    const timer = window.setInterval(() => void fetchProducts(), 10000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const fetchBranches = async () => {
     try {
@@ -181,18 +374,25 @@ const DigitalMenu = () => {
 
   const fetchTableInfo = async () => {
     if (!qrToken) return;
+    setQrBootstrapState('loading');
     try {
-      const response = await fetch(`${API_URL}/api/guest/bootstrap`, {
+      const phase = getQrDiagnosticPhase(qrToken);
+      const response = await fetchWithDiagnostics('/api/guest/bootstrap', `${API_URL}/api/guest/bootstrap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qrToken })
-      });
+      }, phase);
       if (response.ok) {
-        const bootstrap = await response.json();
-        localStorage.setItem('guestToken', bootstrap.token);
+        const bootstrap = await parseJsonWithDiagnostics(response, '/api/guest/bootstrap', phase);
+        if (!bootstrap?.token || !bootstrap?.table?.name || !bootstrap?.branch?.id) {
+          throw new Error('QR bootstrap returned incomplete context.');
+        }
+        sessionStorage.removeItem('guestDirectSession');
+        sessionStorage.removeItem('guestDirectBranchId');
+        sessionStorage.setItem('guestToken', bootstrap.token);
         sessionStorage.setItem('guestQrSession', 'true');
         setTableInfo({
-          id: '',
+          id: bootstrap.table.id || '',
           name: bootstrap.table.name,
           branchId: bootstrap.branch.id,
           branchName: bootstrap.branch.name
@@ -203,15 +403,42 @@ const DigitalMenu = () => {
         if (bootstrap.branch.id) {
           setSelectedBranch({ id: bootstrap.branch.id, name: bootstrap.branch.name });
         }
+        setQrBootstrapState('success');
       } else {
-         // Nếu tableId không tồn tại hoặc lỗi, reset thông tin
-         setTableInfo(null);
-         setFeedbackMessage('Không thể xác định bàn từ mã QR. Vui lòng quét lại mã hợp lệ.');
+         throw new Error(`QR bootstrap failed with status ${response.status}.`);
       }
     } catch (err) {
       console.error(err);
-      setFeedbackMessage('Không thể xác định bàn từ mã QR. Vui lòng thử lại.');
+      sessionStorage.removeItem('guestToken');
+      sessionStorage.removeItem('guestQrSession');
+      setQrBootstrapState('error');
+      setTableInfo(null);
+      setSelectedBranch(null);
     }
+  };
+
+  const ensureDirectGuestSession = async (branch: { id: string }) => {
+    if (sessionStorage.getItem('guestDirectSession') === 'true' &&
+      sessionStorage.getItem('guestDirectBranchId') === branch.id &&
+      sessionStorage.getItem('guestToken')) {
+      return;
+    }
+
+    const response = await fetchWithDiagnostics('/api/guest/direct-session', `${API_URL}/api/guest/direct-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branchId: branch.id })
+    }, 'direct-guest-session');
+
+    const payload = await parseJsonWithDiagnostics(response, '/api/guest/direct-session', 'direct-guest-session');
+    if (!response.ok || !payload?.token || !payload?.branch?.id) {
+      throw new Error(payload?.message || 'Không thể xác định chi nhánh phục vụ.');
+    }
+
+    sessionStorage.removeItem('guestQrSession');
+    sessionStorage.setItem('guestToken', payload.token);
+    sessionStorage.setItem('guestDirectSession', 'true');
+    sessionStorage.setItem('guestDirectBranchId', payload.branch.id);
   };
 
   const addToCart = (product: Product) => {
@@ -267,6 +494,26 @@ const DigitalMenu = () => {
     setCurrentCustomizingProduct(null);
   };
 
+  const handleToggleTopping = (topping: ProductOption) => {
+    if (selectedToppings.some(item => item.name === topping.name)) {
+      setSelectedToppings(selectedToppings.filter(item => item.name !== topping.name));
+    } else {
+      setSelectedToppings([...selectedToppings, topping]);
+    }
+  };
+
+  const handleDecreaseCustomizingQuantity = () => {
+    setCustomizingQuantity(Math.max(1, customizingQuantity - 1));
+  };
+
+  const handleIncreaseCustomizingQuantity = () => {
+    setCustomizingQuantity(customizingQuantity + 1);
+  };
+
+  const parseProductOptions = (optionsJson?: string): ProductOption[] => {
+    return optionsJson ? JSON.parse(optionsJson) : [];
+  };
+
   const updateQuantityByItem = (item: CartItem, delta: number) => {
     setCart(prev => prev.map(cartItem => {
       // So sánh chính xác dựa trên ID và các tùy chọn (Size, Toppings)
@@ -280,6 +527,11 @@ const DigitalMenu = () => {
       }
       return cartItem;
     }).filter(cartItem => cartItem.quantity > 0));
+  };
+
+  const handleDecreaseProduct = (product: Product) => {
+    const item = cart.find(cartItem => cartItem.id === product.id);
+    if (item) updateQuantityByItem(item, -1);
   };
 
   const totalAmount = cart.reduce((sum, item) => sum + (item.totalItemPrice * item.quantity), 0);
@@ -322,8 +574,23 @@ const DigitalMenu = () => {
   const confirmOrder = async (branch: any) => {
     if (isSubmittingOrder || !branch?.id || cart.length === 0) return;
 
+    const hasQrSession = Boolean(qrToken) &&
+      qrBootstrapState === 'success' &&
+      Boolean(tableInfo?.branchId) &&
+      sessionStorage.getItem('guestQrSession') === 'true' &&
+      Boolean(sessionStorage.getItem('guestToken'));
+    if (qrToken && !hasQrSession) {
+      setFeedbackMessage('Phiên QR chưa sẵn sàng. Vui lòng quét lại mã QR và thử lại.');
+      return;
+    }
+
     try {
       setIsSubmittingOrder(true);
+      const hasRegisteredCustomer = Boolean(localStorage.getItem('customerToken'));
+      if (!qrToken && !hasRegisteredCustomer) {
+        await ensureDirectGuestSession(branch);
+      }
+
       let customerInfo: any = {};
       try {
         customerInfo = JSON.parse(localStorage.getItem('customerInfo') || '{}');
@@ -331,6 +598,10 @@ const DigitalMenu = () => {
         customerInfo = {};
       }
       const order = {
+        // Normal-link customers submit the selected public branch as context.
+        // QR orders deliberately omit it; the API overwrites context from the
+        // authenticated guest table session instead of trusting this client.
+        ...(!qrToken ? { branchId: branch.id, branchName: branch.name } : {}),
         totalAmount: totalAmount,
         paidAmount: 0,
         status: 'Đang xử lý',
@@ -428,9 +699,9 @@ const DigitalMenu = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-24">
+    <div className="customer-surface min-h-screen font-sans pb-24">
       {/* Header Image */}
-      <div className="hero-sheen h-56 bg-blue-600 relative overflow-hidden">
+      <div className="hero-sheen relative h-64 overflow-hidden bg-[#3e8069] sm:h-72">
         <div className="hero-orb hero-orb-one"></div><div className="hero-orb hero-orb-two"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
         <img
@@ -439,13 +710,13 @@ const DigitalMenu = () => {
           alt="Restaurant"
         />
         <div className="absolute bottom-6 left-6 text-white">
-          <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/30 mb-2 inline-block italic">DOAN RESTAURANT</span>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter drop-shadow-lg">
+          <span className="mb-3 inline-block rounded-full border border-white/30 bg-white/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest backdrop-blur-md">DOAN RESTAURANT</span>
+          <h1 className="max-w-[18rem] text-3xl font-black tracking-tight drop-shadow-lg sm:text-4xl">
              {tableInfo ? `Bàn: ${tableInfo.name}` : 'Thực đơn điện tử'}
           </h1>
           {tableInfo?.branchName && <p className="mt-1 text-[10px] font-bold uppercase tracking-widest opacity-80">{tableInfo.branchName}</p>}
-          <p className="text-xs opacity-90 flex items-center mt-1">
-             <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span> Đang mở cửa • Đặt món nhanh
+          <p className="mt-2 flex items-center text-xs font-medium opacity-90">
+             <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-[#f7c76b]"></span> Món ngon mỗi ngày • Phục vụ tận tâm
           </p>
         </div>
         {promotions.length > 0 && (
@@ -460,128 +731,55 @@ const DigitalMenu = () => {
         )}
       </div>
 
+      {debugMenu && (
+        <DebugMenuPanel
+          qrPresent={Boolean(qrToken)}
+          bootstrapState={!qrToken ? 'idle' : qrBootstrapState === 'loading' ? 'pending' : qrBootstrapState}
+          productState={productFetchState}
+          toppingState={toppingFetchState}
+          productCountBeforeFilter={productCountBeforeFilter}
+          productCountAfterFilter={productCountAfterFilter}
+        />
+      )}
+
       {feedbackMessage && (
         <div className="mx-4 mt-4" role="status">
           <Feedback tone={feedbackTone} onDismiss={() => setFeedbackMessage('')}>{feedbackMessage}</Feedback>
         </div>
       )}
 
-      {/* Categories */}
-      <div className="flex space-x-3 p-4 overflow-x-auto no-scrollbar sticky top-0 bg-white/80 backdrop-blur-lg z-20 border-b shadow-sm">
-        {categories.map((cat) => (
-          <button
-            type="button"
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`min-h-11 touch-manipulation whitespace-nowrap px-6 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-              activeCategory === cat ? 'category-active bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:-translate-y-0.5'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
-
-      {/* Product List */}
-      <div className="p-4 space-y-6">
-        <div className="flex justify-between items-center">
-           <h2 className="text-xl font-black italic uppercase tracking-tighter text-gray-800">
-             {activeCategory === 'Tất cả' ? 'Gợi ý cho bạn' : activeCategory}
-           </h2>
-           <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded uppercase tracking-widest">{filteredProducts.length} món</span>
+      {qrToken && qrBootstrapState === 'loading' && (
+        <div className="mx-4 mt-4">
+          <Feedback tone="info">Đang xác định bàn và chi nhánh từ mã QR...</Feedback>
         </div>
+      )}
+      {qrToken && qrBootstrapState === 'success' && tableInfo && (
+        <div className="mx-4 mt-4">
+          <Feedback tone="success">Đã xác định {tableInfo.name} tại {tableInfo.branchName || 'chi nhánh phục vụ'}.</Feedback>
+        </div>
+      )}
+      {qrToken && qrBootstrapState === 'error' && (
+        <div className="mx-4 mt-4">
+          <Feedback tone="error">Không thể xác định bàn từ mã QR. Vui lòng thử lại bằng mã QR hợp lệ.</Feedback>
+        </div>
+      )}
 
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center text-gray-400">
-             <Loader2 className="animate-spin mb-2 text-blue-600" />
-             <p className="text-xs font-bold uppercase tracking-widest">Đang tải thực đơn...</p>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="rounded-3xl border-2 border-dashed border-gray-200 bg-white px-6 py-16 text-center">
-             <ShoppingBag size={42} className="mx-auto mb-3 text-gray-200" />
-             <p className="font-bold text-gray-500">Không có món trong danh mục này</p>
-             <p className="mt-1 text-xs text-gray-400">Hãy thử chọn danh mục khác.</p>
-          </div>
-        ) : filteredProducts.map((p) => (
-          <div key={p.id} style={{ animationDelay: `${Math.min(filteredProducts.indexOf(p), 8) * 55}ms` }} className="product-card bg-white p-4 rounded-3xl shadow-xl shadow-blue-500/5 flex gap-3 sm:space-x-4 border border-gray-100 group transition-all active:scale-[0.98] hover:-translate-y-1 hover:shadow-2xl">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-50 rounded-2xl flex-shrink-0 relative overflow-hidden border border-gray-100">
-               {p.imageUrl ? (
-                 <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center text-blue-200">
-                    <Star size={32} />
-                 </div>
-               )}
-            </div>
-            <div className="min-w-0 flex-1 flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-black text-gray-800 text-sm leading-tight group-hover:text-blue-600 transition-colors">{p.name}</h3>
-                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">{p.group}</p>
-                  </div>
-                  <span className="text-blue-600 font-black text-sm tracking-tighter">{p.price.toLocaleString()}đ</span>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1 line-clamp-2 leading-relaxed font-medium italic">
-                  {p.description || 'Hương vị thơm ngon tinh tế, chế biến từ nguyên liệu tươi sạch trong ngày.'}
-                </p>
+      <CustomerCategoryTabs
+        categories={categories}
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+      />
 
-                {/* Indicators for options */}
-                <div className="flex gap-1 mt-2">
-                   {(p.sizesJson && p.sizesJson !== '[]') && (
-                     <span className="text-[8px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-black uppercase border border-blue-100">Kích cỡ</span>
-                   )}
-                   {(p.toppingsJson && p.toppingsJson !== '[]') && (
-                     <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-black uppercase border border-orange-100">Topping</span>
-                   )}
-                </div>
-              </div>
-
-              <div className="flex justify-end mt-2 items-center space-x-2">
-                 {cart.find(item => item.id === p.id) ? (
-                    <>
-                       <button
-                         type="button"
-                         onClick={() => removeFromCart(p.id)}
-                         aria-label={`Xóa ${p.name} khỏi giỏ hàng`}
-                         className="min-h-10 min-w-10 touch-manipulation p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-                         title="Hủy món"
-                       >
-                          <X size={18} />
-                       </button>
-                       <div className="flex items-center bg-blue-50 rounded-xl p-1 border border-blue-100">
-                          <button
-                            type="button"
-                            onClick={() => {
-                               const item = cart.find(i => i.id === p.id);
-                               if (item) updateQuantityByItem(item, -1);
-                            }}
-                            aria-label={`Giảm số lượng ${p.name}`}
-                            className="min-h-10 min-w-10 touch-manipulation flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                          >
-                             <Minus size={14}/>
-                          </button>
-                          <span className="px-3 text-xs font-black text-blue-700">
-                             {cart.filter(item => item.id === p.id).reduce((sum, i) => sum + i.quantity, 0)}
-                          </span>
-                          <button type="button" onClick={() => addToCart(p)} aria-label={`Tăng số lượng ${p.name}`} className="min-h-10 min-w-10 touch-manipulation flex items-center justify-center text-blue-600 hover:bg-blue-100 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><Plus size={14}/></button>
-                       </div>
-                    </>
-                 ) : (
-                    <button
-                      type="button"
-                      onClick={() => addToCart(p)}
-                      aria-label={`Thêm ${p.name} vào giỏ hàng`}
-                      className="add-button min-h-11 min-w-11 touch-manipulation bg-blue-600 text-white w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20 active:scale-90 transition-all hover:rotate-6 hover:bg-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                    >
-                      <Plus size={20} />
-                    </button>
-                 )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <CustomerProductList
+        products={filteredProducts}
+        cart={cart}
+        activeCategory={activeCategory}
+        loading={loading}
+        onRefresh={() => void fetchProducts()}
+        onAddProduct={addToCart}
+        onRemoveProduct={removeFromCart}
+        onDecreaseProduct={handleDecreaseProduct}
+      />
 
       {/* Floating Order Success Toast */}
       {isOrderSuccess && (
@@ -596,11 +794,11 @@ const DigitalMenu = () => {
 
       {/* Floating Cart Button */}
       {cart.length > 0 && (
-        <div className={`fixed bottom-20 left-3 right-3 sm:left-6 sm:right-6 bg-blue-600 text-white p-3 sm:p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center gap-3 z-50 animate-in slide-in-from-bottom-10 border-b-4 border-blue-800 safe-bottom ${cartPulse ? 'cart-pulse' : ''}`}>
+        <div className={`fixed bottom-[5.2rem] left-3 right-3 z-50 flex items-center justify-between gap-3 rounded-[1.6rem] border-b-4 border-orange-800 bg-orange-600 p-3 text-white shadow-2xl sm:left-6 sm:right-6 sm:p-5 safe-bottom ${cartPulse ? 'cart-pulse' : ''}`}>
           <div className="min-w-0 flex items-center">
             <div className="bg-white/20 p-2 sm:p-3 rounded-2xl mr-3 sm:mr-4 relative shrink-0">
               <ShoppingBag size={24} />
-              <span className="absolute -top-1 -right-1 bg-white text-blue-600 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-blue-600">{totalItems}</span>
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-orange-600 bg-white text-[10px] font-black text-orange-600">{totalItems}</span>
             </div>
             <div className="text-left">
               <div className="flex flex-col mb-0.5">
@@ -627,7 +825,7 @@ const DigitalMenu = () => {
             type="button"
             onClick={handleOrder}
             aria-label="Mở giỏ hàng và đặt món"
-            className="shrink-0 min-h-11 touch-manipulation bg-white text-blue-600 px-4 sm:px-8 py-3.5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600"
+            className="flex min-h-11 shrink-0 items-center rounded-2xl bg-white px-4 py-3.5 text-xs font-black uppercase tracking-widest text-orange-600 shadow-lg transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-600 sm:px-8"
           >
             ĐẶT MÓN NGAY
             <ChevronRight size={16} className="ml-1" />
@@ -704,288 +902,41 @@ const DigitalMenu = () => {
         </div>
       )}
 
-      {/* BRANCH SELECTION MODAL */}
       {isBranchModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-[200] flex items-end justify-center animate-in fade-in duration-300 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-lg max-h-[100dvh] overflow-y-auto rounded-t-[3rem] p-4 sm:p-8 pb-12 shadow-2xl animate-in slide-in-from-bottom-20 duration-500">
-              <div className="flex justify-between items-start mb-6">
-                 <div>
-                    <h3 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">Xác nhận đơn hàng</h3>
-                    <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mt-1">Kiểm tra lại món & chọn cơ sở</p>
-                 </div>
-                 <button type="button" onClick={() => setIsBranchModalOpen(false)} aria-label="Đóng xác nhận đơn hàng" className="min-h-11 min-w-11 touch-manipulation bg-gray-100 p-3 rounded-full hover:bg-gray-200 transition-all text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X size={24}/></button>
-              </div>
-
-              <div className="mb-6">
-                 <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Danh sách món đã chọn</h4>
-                    <span className="text-[9px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-black">{totalItems} món</span>
-                 </div>
-                 <div className="space-y-3 max-h-[25vh] overflow-y-auto pr-2 no-scrollbar">
-                    {cart.map((item, idx) => (
-                       <div key={idx} className="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100 group">
-                          <div className="flex items-center space-x-3">
-                             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600 font-black text-xs border border-gray-100 shadow-sm">
-                                {item.quantity}x
-                             </div>
-                             <div>
-                                <p className="text-xs font-black text-gray-800 leading-tight">{item.name}</p>
-                                <div className="flex flex-wrap gap-1 mt-0.5">
-                                   {item.selectedSize && (
-                                      <span className="text-[8px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded font-black uppercase border border-blue-100">Size: {item.selectedSize.name}</span>
-                                   )}
-                                   {item.selectedToppings && item.selectedToppings.length > 0 && (
-                                      <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold italic border border-orange-100">
-                                         + {item.selectedToppings.map(t => t.name).join(', ')}
-                                      </span>
-                                   )}
-                                </div>
-                                <input
-                                  type="text"
-                                  placeholder="Ghi chú (VD: Bỏ vào trà sữa...)"
-                                  className="w-full mt-2 bg-white border border-dashed border-gray-200 rounded-lg px-2 py-1 text-[10px] italic font-medium text-orange-600 outline-none focus:border-orange-300"
-                                  value={item.note || ''}
-                                  onChange={(e) => updateNote(item, e.target.value)}
-                                />
-                             </div>
-                          </div>
-                          <div className="text-right flex flex-col items-end">
-                             <p className="text-[10px] text-gray-400 font-bold">{item.totalItemPrice.toLocaleString()}đ</p>
-                             <p className="text-xs font-black text-gray-700 tracking-tighter">{(item.totalItemPrice * item.quantity).toLocaleString()}đ</p>
-                             <button
-                                type="button"
-                                onClick={() => removeFromCart(item)}
-                                className="text-[9px] font-bold text-red-400 hover:text-red-600 mt-1 uppercase"
-                             >
-                                Xóa
-                             </button>
-                          </div>
-                       </div>
-                    ))}
-                 </div>
-              </div>
-
-              <div className="mb-4">
-                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
-                    {tableInfo ? 'Chi nhánh phục vụ (Cố định theo bàn)' : 'Chọn chi nhánh phục vụ'}
-                 </h4>
-                 <div className="space-y-3 max-h-[25vh] overflow-y-auto pr-2 no-scrollbar">
-                    {branches.filter(b => !tableInfo || b.id === tableInfo.branchId).map((b) => (
-                       <button
-                         type="button"
-                         key={b.id}
-                         disabled={!!tableInfo}
-                         onClick={() => setSelectedBranch(b)}
-                         className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all ${
-                            selectedBranch?.id === b.id
-                            ? 'border-blue-600 bg-blue-50 shadow-md ring-4 ring-blue-100'
-                            : 'border-gray-50 bg-gray-50/50 hover:border-blue-200'
-                         } ${tableInfo ? 'cursor-default' : 'cursor-pointer'}`}
-                       >
-                          <div className="flex items-center">
-                             <div className={`w-12 h-12 rounded-xl mr-3 overflow-hidden border ${selectedBranch?.id === b.id ? 'border-blue-200 shadow-sm' : 'border-white'} flex items-center justify-center bg-white`}>
-                                {b.imageUrl ? (
-                                   <img src={b.imageUrl} className="w-full h-full object-cover" alt=""/>
-                                ) : (
-                                   <MapPin size={18} className={selectedBranch?.id === b.id ? 'text-blue-600' : 'text-gray-400'}/>
-                                )}
-                             </div>
-                             <div className="text-left">
-                                <p className={`text-xs font-black uppercase tracking-tight ${selectedBranch?.id === b.id ? 'text-blue-700' : 'text-gray-700'}`}>{b.name}</p>
-                                <p className="text-[9px] text-gray-400 font-bold mt-0.5 line-clamp-1">{b.address || 'Địa chỉ đang cập nhật...'}</p>
-                             </div>
-                          </div>
-                          {selectedBranch?.id === b.id && <CheckCircle2 size={18} className="text-blue-600" />}
-                       </button>
-                    ))}
-                 </div>
-              </div>
-
-              <div className="mt-8 space-y-4">
-                 <div className="bg-gray-50 p-4 rounded-2xl border border-dashed border-gray-200">
-                    <div className="flex justify-between text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                       <span>Đơn tại: {tableInfo?.name || 'Mang về'}</span>
-                       <span>{totalItems} món</span>
-                    </div>
-                    <div className="flex justify-between items-center mt-2">
-                       <span className="text-sm font-black text-gray-800 italic uppercase">Tổng thanh toán:</span>
-                       <div className="text-right">
-                          <span className="text-xl font-black text-blue-700">{totalAmount.toLocaleString()}đ</span>
-                          <div className="flex flex-col items-end mt-1 space-y-1">
-                             {totalAmount >= 10000 && (
-                                <p className="text-[9px] font-black text-orange-500 uppercase flex items-center justify-end">
-                                   <Star size={10} className="fill-orange-500 mr-1" />
-                                   Tích lũy: +{Math.floor(totalAmount / 10000)} điểm
-                                </p>
-                             )}
-                             {customerInfo && !customerInfo.isGuest && (
-                                <p className="text-[9px] font-black text-blue-600 uppercase flex items-center justify-end bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                                   <Star size={10} className="fill-blue-600 mr-1" />
-                                   Hiện có: {currentLoyaltyPoints.toLocaleString()} điểm
-                                </p>
-                             )}
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 <button
-                   type="button"
-                   disabled={!selectedBranch || isSubmittingOrder}
-                   onClick={() => confirmOrder(selectedBranch)}
-                   aria-label="Gửi yêu cầu gọi món"
-                   className="w-full min-h-12 touch-manipulation py-5 bg-blue-600 text-white rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-30 disabled:grayscale flex items-center justify-center"
-                 >
-                   {isSubmittingOrder ? 'ĐANG GỬI YÊU CẦU...' : 'GỬI YÊU CẦU GỌI MÓN'}
-                   {isSubmittingOrder ? <Loader2 size={20} className="ml-2 animate-spin" /> : <ChevronRight size={20} className="ml-2" />}
-                 </button>
-              </div>
-           </div>
-        </div>
+        <CustomerOrderConfirmationModal
+          cart={cart}
+          totalItems={totalItems}
+          totalAmount={totalAmount}
+          branches={branches}
+          selectedBranch={selectedBranch}
+          tableInfo={tableInfo}
+          customerInfo={customerInfo}
+          currentLoyaltyPoints={currentLoyaltyPoints}
+          isSubmittingOrder={isSubmittingOrder}
+          onClose={() => setIsBranchModalOpen(false)}
+          onBranchSelect={setSelectedBranch}
+          onNoteChange={updateNote}
+          onRemoveItem={removeFromCart}
+          onConfirm={confirmOrder}
+        />
       )}
 
-      {/* OPTIONS MODAL (SIZE & TOPPING) */}
       {isOptionsModalOpen && currentCustomizingProduct && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex items-end justify-center animate-in fade-in duration-300 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-lg rounded-t-[3rem] shadow-2xl animate-in slide-in-from-bottom-20 duration-500 max-h-[100dvh] flex flex-col">
-              {/* Sticky Header */}
-              <div className="relative h-48 flex-shrink-0">
-                 <img
-                    src={currentCustomizingProduct.imageUrl || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800'}
-                    className="w-full h-full object-cover rounded-t-[3rem]"
-                    alt=""
-                 />
-                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                 <button
-                    type="button"
-                    aria-label="Đóng cấu hình món"
-                    onClick={() => setIsOptionsModalOpen(false)}
-                    className="absolute top-6 right-6 min-h-11 min-w-11 touch-manipulation bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                 >
-                    <X size={20}/>
-                 </button>
-                 <div className="absolute bottom-6 left-8 text-white">
-                    <h3 className="text-2xl font-black uppercase italic tracking-tighter">{currentCustomizingProduct.name}</h3>
-                    <p className="text-xs opacity-80 font-bold uppercase tracking-widest">{currentCustomizingProduct.category}</p>
-                 </div>
-              </div>
-
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-6 no-scrollbar space-y-10">
-                 {/* Size Selection */}
-                 {currentCustomizingProduct.sizesJson && JSON.parse(currentCustomizingProduct.sizesJson).length > 0 && (
-                    <div className="space-y-4">
-                       <div className="flex justify-between items-end">
-                          <label className="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em]">Chọn kích cỡ</label>
-                          <span className="text-[9px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded font-black uppercase">Bắt buộc</span>
-                       </div>
-                       <div className="grid grid-cols-1 gap-3">
-                          {JSON.parse(currentCustomizingProduct.sizesJson).map((s: any, i: number) => (
-                             <button
-                                type="button"
-                                key={i}
-                                onClick={() => setSelectedSize(s)}
-                                className={`p-4 rounded-[1.5rem] border-2 transition-all flex items-center justify-between group ${
-                                   selectedSize?.name === s.name
-                                   ? 'border-blue-600 bg-blue-50 ring-4 ring-blue-100'
-                                   : 'border-gray-50 bg-gray-50/50 hover:border-blue-200'
-                                }`}
-                             >
-                                <div className="flex items-center">
-                                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-4 transition-colors ${selectedSize?.name === s.name ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 shadow-sm'}`}>
-                                      <span className="font-black text-sm uppercase">{s.name.charAt(0)}</span>
-                                   </div>
-                                   <div className="text-left">
-                                      <p className={`text-sm font-black uppercase tracking-tight ${selectedSize?.name === s.name ? 'text-blue-700' : 'text-gray-700'}`}>{s.name}</p>
-                                      <p className="text-[10px] text-gray-400 font-bold uppercase">Kích thước chuẩn</p>
-                                   </div>
-                                </div>
-                                <div className="text-right">
-                                   <p className={`text-sm font-black ${selectedSize?.name === s.name ? 'text-blue-700' : 'text-gray-400'}`}>+{s.price.toLocaleString()}đ</p>
-                                </div>
-                             </button>
-                          ))}
-                       </div>
-                    </div>
-                 )}
-
-                 {/* Topping Selection */}
-                 {currentCustomizingProduct.toppingsJson && JSON.parse(currentCustomizingProduct.toppingsJson).length > 0 && (
-                    <div className="space-y-4 pb-4">
-                       <div className="flex justify-between items-end">
-                          <label className="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em]">Thêm Topping</label>
-                          <span className="text-[9px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded font-black uppercase">Tùy chọn</span>
-                       </div>
-                       <div className="grid grid-cols-2 gap-3">
-                          {JSON.parse(currentCustomizingProduct.toppingsJson).map((t: any, i: number) => {
-                             const isSelected = selectedToppings.find(x => x.name === t.name);
-                             return (
-                                <button
-                                   type="button"
-                                   key={i}
-                                   onClick={() => {
-                                      if (isSelected) {
-                                         setSelectedToppings(selectedToppings.filter(x => x.name !== t.name));
-                                      } else {
-                                         setSelectedToppings([...selectedToppings, t]);
-                                      }
-                                   }}
-                                   className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center text-center ${
-                                      isSelected
-                                      ? 'border-orange-500 bg-orange-50 ring-4 ring-orange-100'
-                                      : 'border-gray-50 bg-gray-50/50 hover:border-orange-200'
-                                   }`}
-                                >
-                                   <p className={`text-[11px] font-black uppercase tracking-tight mb-1 ${isSelected ? 'text-orange-700' : 'text-gray-700'}`}>{t.name}</p>
-                                   <p className={`text-[10px] font-bold ${isSelected ? 'text-orange-600' : 'text-gray-400'}`}>+{t.price.toLocaleString()}đ</p>
-                                   {isSelected && <div className="mt-2 bg-orange-500 rounded-full p-0.5"><CheckCircle2 size={12} className="text-white" /></div>}
-                                </button>
-                             );
-                          })}
-                       </div>
-                    </div>
-                 )}
-              </div>
-
-              {/* Sticky Footer */}
-              <div className="p-4 sm:p-8 pt-6 border-t border-gray-100 bg-white/80 backdrop-blur-md rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
-                 <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center bg-gray-100 rounded-2xl p-1.5 border border-gray-200">
-                       <button
-                        type="button"
-                        aria-label="Giảm số lượng món đang cấu hình"
-                        onClick={() => setCustomizingQuantity(Math.max(1, customizingQuantity - 1))}
-                        className="min-h-11 min-w-11 touch-manipulation w-10 h-10 flex items-center justify-center text-gray-400 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                       >
-                          <Minus size={18}/>
-                       </button>
-                       <span className="px-5 font-black text-lg text-gray-800">{customizingQuantity.toString().padStart(2, '0')}</span>
-                       <button
-                        type="button"
-                        aria-label="Tăng số lượng món đang cấu hình"
-                        onClick={() => setCustomizingQuantity(customizingQuantity + 1)}
-                        className="min-h-11 min-w-11 touch-manipulation w-10 h-10 flex items-center justify-center text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                       >
-                          <Plus size={18}/>
-                       </button>
-                    </div>
-                    <div className="text-right">
-                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Thành tiền</p>
-                       <p className="text-3xl font-black text-blue-700 tracking-tighter">
-                          {(currentCustomizingProduct.price + (selectedSize?.price || 0) + selectedToppings.reduce((s, t) => s + t.price, 0)).toLocaleString()}đ
-                       </p>
-                    </div>
-                 </div>
-                 <button
-                    type="button"
-                    onClick={handleConfirmOptions}
-                    className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-blue-500/40 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
-                 >
-                    XÁC NHẬN THÊM VÀO GIỎ <ChevronRight size={20} className="ml-2" />
-                 </button>
-              </div>
-           </div>
-        </div>
+        <CustomerProductOptionsModal
+          product={currentCustomizingProduct}
+          selectedSize={selectedSize}
+          selectedToppings={selectedToppings}
+          customizingQuantity={customizingQuantity}
+          totalAmount={currentCustomizingProduct.price + (selectedSize?.price || 0) + selectedToppings.reduce((sum, topping) => sum + topping.price, 0)}
+          sizes={parseProductOptions(currentCustomizingProduct.sizesJson)}
+          toppings={parseProductOptions(currentCustomizingProduct.toppingsJson)}
+          onClose={() => setIsOptionsModalOpen(false)}
+          onSizeChange={setSelectedSize}
+          onToggleTopping={handleToggleTopping}
+          onDecreaseQuantity={handleDecreaseCustomizingQuantity}
+          onIncreaseQuantity={handleIncreaseCustomizingQuantity}
+          onConfirm={handleConfirmOptions}
+        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
+using RestaurantPOS.Application.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -15,7 +16,12 @@ namespace RestaurantPOS.WebAPI.Controllers
     public class ToppingController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        public ToppingController(ApplicationDbContext context) => _context = context;
+        private readonly IDashboardService? _dashboardService;
+        public ToppingController(ApplicationDbContext context, IDashboardService? dashboardService = null)
+        {
+            _context = context;
+            _dashboardService = dashboardService;
+        }
 
         /// <summary>Lấy danh sách topping.</summary>
         [HttpGet]
@@ -23,7 +29,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try
             {
-                return await _context.Toppings.ToListAsync();
+                return await _context.Toppings.AsNoTracking().ToListAsync();
             }
             catch (Exception ex)
             {
@@ -64,6 +70,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 topping.CreatedAt = DateTime.SpecifyKind(topping.CreatedAt, DateTimeKind.Utc);
                 _context.Entry(topping).State = EntityState.Modified;
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return NoContent();
             }
             catch (Exception ex)
@@ -84,6 +91,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (topping == null) return NotFound();
                 _context.Toppings.Remove(topping);
                 await _context.SaveChangesAsync();
+                _dashboardService?.InvalidateSummaryCache();
                 return NoContent();
             }
             catch (Exception ex)

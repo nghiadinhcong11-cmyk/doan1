@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Infrastructure.Persistence;
 using RestaurantPOS.Infrastructure.Services;
+using RestaurantPOS.Infrastructure.Configuration;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Application.Common.Interfaces;
+using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.AI.Services;
+using RestaurantPOS.AI.Diagnostics;
 using RestaurantPOS.AI.Tools;
 using RestaurantPOS.AI.Tools.Admin;
 using RestaurantPOS.AI.Tools.Employee;
@@ -11,6 +14,8 @@ using RestaurantPOS.AI.Tools.Customer;
 using RestaurantPOS.AI.Security;
 using RestaurantPOS.AI.Prompts;
 using RestaurantPOS.WebAPI.Hubs;
+using RestaurantPOS.WebAPI.Middleware;
+using RestaurantPOS.WebAPI.Configuration;
 
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
@@ -25,8 +30,29 @@ using RestaurantPOS.Domain.Entities;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+Console.WriteLine("BACKEND_STARTUP_PHASE=CONFIGURATION_LOADING");
 var builder = WebApplication.CreateBuilder(args);
 
+if (builder.Environment.IsDevelopment() &&
+    builder.Configuration.GetValue<bool>("StartupDiagnostics:ValidateDependencyInjection"))
+{
+    builder.Host.UseDefaultServiceProvider((_, options) =>
+    {
+        options.ValidateOnBuild = true;
+        options.ValidateScopes = true;
+    });
+    Console.WriteLine("BACKEND_STARTUP_DI_VALIDATION=ENABLED");
+}
+
+// Development-only, allow-listed AI diagnostics. The provider writes selected
+// fields only; it is never registered in Production and never captures raw logs.
+var safeAiDiagnosticPath = builder.Configuration["AI:Diagnostics:SafeFilePath"];
+if (builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(safeAiDiagnosticPath))
+{
+    builder.Logging.AddProvider(new SafeAiDiagnosticFileLoggerProvider(safeAiDiagnosticPath));
+}
+
+Console.WriteLine("BACKEND_STARTUP_PHASE=SERVICE_REGISTRATION");
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
@@ -121,8 +147,13 @@ builder.Services.AddAuthentication(options =>
             var role = principal?.FindFirst(ClaimTypes.Role)?.Value?.ToLowerInvariant();
             var userIdValue = principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            var employeeRoles = new[] { "admin", "manager", "employee", "cashier", "kitchen" };
-            if (role != null && employeeRoles.Contains(role))
+            if (!RoleNames.IsKnownRole(role))
+            {
+                context.Fail("The role claim is not recognized.");
+                return;
+            }
+
+            if (RoleNames.IsStaffRole(role))
             {
                 if (!Guid.TryParse(userIdValue, out var employeeId))
                 {
@@ -131,18 +162,39 @@ builder.Services.AddAuthentication(options =>
                 }
 
                 var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
-                var isActive = await db.Employees.AsNoTracking()
-                    .AnyAsync(e => e.Id == employeeId && e.IsActive);
-                if (!isActive)
+                var employee = await db.Employees.AsNoTracking()
+                    .FirstOrDefaultAsync(e => e.Id == employeeId, context.HttpContext.RequestAborted);
+                if (employee == null)
+                {
                     context.Fail("The employee account is inactive or no longer exists.");
+                    return;
+                }
+
+                if (!RoleNames.IsValidStaffTokenState(
+                        role,
+                        employee.Role,
+                        employee.IsActive,
+                        employee.BranchId,
+                        principal?.FindFirst("branchId")?.Value))
+                {
+                    context.Fail("The employee authentication state does not match the current server state.");
+                }
                 return;
             }
 
-            if (role == "customer")
+            if (string.Equals(role, RoleNames.Customer, StringComparison.OrdinalIgnoreCase))
             {
                 var sessionType = principal?.FindFirst("customerSessionType")?.Value;
-                if (string.Equals(sessionType, "guest", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(sessionType, "guest", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(sessionType, "directGuest", StringComparison.OrdinalIgnoreCase))
                     return;
+
+                if (!string.Equals(sessionType, "registered", StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(principal?.FindFirst("customerAuthMethod")?.Value, "password", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Fail("The registered customer session is not password-authenticated.");
+                    return;
+                }
 
                 if (!Guid.TryParse(userIdValue, out var customerId))
                 {
@@ -152,7 +204,7 @@ builder.Services.AddAuthentication(options =>
 
                 var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
                 var customer = await db.Customers.AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.Id == customerId);
+                    .FirstOrDefaultAsync(c => c.Id == customerId, context.HttpContext.RequestAborted);
                 if (customer != null && !customer.IsActive)
                     context.Fail("The customer account is inactive.");
                 else if (customer == null && string.Equals(sessionType, "registered", StringComparison.OrdinalIgnoreCase))
@@ -230,10 +282,11 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IKitchenService, KitchenService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IDashboardCacheInvalidator>(sp => sp.GetRequiredService<IDashboardService>());
 builder.Services.AddScoped<IFinancialAnalysisService, FinancialAnalysisService>();
 builder.Services.AddScoped<IProactiveInsightService, ProactiveInsightService>();
 builder.Services.AddScoped<IInsightExplanationService, InsightExplanationService>();
-builder.Services.AddHostedService<InsightBackgroundService>();
+builder.Services.AddConfiguredBackgroundJobs(builder.Configuration);
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IKitchenNotifier, KitchenNotifier>();
 builder.Services.AddScoped<IJwtService, JwtService>();
@@ -246,15 +299,29 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IPasswordHasher<Employee>, PasswordHasher<Employee>>();
 builder.Services.AddScoped<IPasswordHasher<Customer>, PasswordHasher<Customer>>();
 
-// 1. Cấu hình HttpClient cho Gemini Service
-builder.Services.AddHttpClient<IGeminiService, GeminiService>();
+// 1. AI runs through the deterministic local Mock implementation. No external
+// provider client or outbound AI HTTP client is registered.
+builder.Services.AddScoped<IAiProvider, MockAiProvider>();
 
 // 2. Đăng ký các AI Core Services
 builder.Services.AddScoped<AiContextService>();
 builder.Services.AddScoped<AiPermissionService>();
-builder.Services.AddScoped<IAiOrchestrator, AiOrchestrator>();
+builder.Services.AddSingleton<IAiToolExecutionAuditSink, AiToolExecutionAuditSink>();
+builder.Services.AddSingleton<AiLiveReadOnlyPolicy>();
+// Register the single Mock AI implementation explicitly so startup cannot
+// silently select or fall back to an external provider.
+builder.Services.AddScoped<IAiOrchestrator>(serviceProvider =>
+    new AiOrchestrator(
+        serviceProvider.GetRequiredService<IAiProvider>(),
+        serviceProvider.GetRequiredService<AiContextService>(),
+        serviceProvider.GetRequiredService<AiToolRegistry>(),
+        serviceProvider.GetRequiredService<AiPermissionService>(),
+        serviceProvider.GetRequiredService<PromptBuilder>(),
+        serviceProvider.GetRequiredService<ILogger<AiOrchestrator>>(),
+        serviceProvider.GetRequiredService<IAiToolExecutionAuditSink>()));
 builder.Services.AddScoped<PromptBuilder>();
 builder.Services.AddScoped<AiAuthorization>();
+builder.Services.AddSingleton<IProductPriceConfirmationStore, ProductPriceConfirmationStore>();
 
 // 3. Đăng ký AI Tool Registry
 builder.Services.AddScoped<AiToolRegistry>();
@@ -280,6 +347,7 @@ builder.Services.AddScoped<IAiTool, GetMenuTool>();
 builder.Services.AddScoped<IAiTool, GetMyOrderTool>();
 builder.Services.AddScoped<IAiTool, CreateBookingTool>();
 
+Console.WriteLine("BACKEND_STARTUP_PHASE=PERSISTENCE_CONFIGURATION");
 // Cấu hình kết nối PostgreSQL (Supabase). Never fall back to localhost or a
 // bundled database; the connection string must come from secure configuration.
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -293,6 +361,9 @@ if (string.IsNullOrWhiteSpace(connectionString))
 // Supabase exposes both URI and keyword/value formats. Npgsql expects the
 // latter here, so normalize a URI without exposing or persisting credentials.
 connectionString = NormalizePostgresConnectionString(connectionString);
+var parsedConnectionString = new NpgsqlConnectionStringBuilder(connectionString);
+SupabaseProjectTargetGuard.Validate(parsedConnectionString, builder.Configuration, builder.Environment.IsDevelopment());
+connectionString = PostgresConnectionPoolPolicy.Apply(connectionString, builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
@@ -305,7 +376,18 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     }));
 
 // Cấu hình CORS để Frontend có thể gọi API an toàn qua HTTPS
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+var allowedOrigins = (builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>()).ToList();
+if (builder.Environment.IsDevelopment())
+{
+    var configuredLanHost = builder.Configuration["DOAN_DEV_LAN_HOST"]?.Trim();
+    if (!string.IsNullOrWhiteSpace(configuredLanHost) &&
+        System.Text.RegularExpressions.Regex.IsMatch(configuredLanHost, "^[A-Za-z0-9.-]+$"))
+    {
+        allowedOrigins.Add($"https://{configuredLanHost}:5173");
+        allowedOrigins.Add($"https://{configuredLanHost}:5174");
+    }
+}
+allowedOrigins = allowedOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
 builder.Services.AddCors(options =>
 {
@@ -314,25 +396,18 @@ builder.Services.AddCors(options =>
         {
             if (builder.Environment.IsDevelopment())
             {
-                policy.WithOrigins(allowedOrigins)
+                policy.WithOrigins(allowedOrigins.ToArray())
                       .SetIsOriginAllowed(origin =>
                       {
-                          if (string.IsNullOrWhiteSpace(origin)) return false;
-
-                          // Local Vite runs on HTTP; LAN access remains HTTPS-only.
-                          if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
-                          {
-                              var isLocalhost = uri.Host is "localhost" or "127.0.0.1";
-                              if (isLocalhost && uri.Scheme == "http" && (uri.Port == 5173 || uri.Port == 5174))
-                                  return true;
-                              return uri.Scheme == "https" && (uri.Port == 5173 || uri.Port == 5174);
-                          }
-                          return false;
+                          // Development LAN origins must be explicitly listed in configuration.
+                          // This keeps the policy restrictive while supporting the configured Vite hosts.
+                          return !string.IsNullOrWhiteSpace(origin)
+                              && allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
                       });
             }
             else
             {
-                policy.WithOrigins(allowedOrigins);
+                policy.WithOrigins(allowedOrigins.ToArray());
             }
 
             policy.AllowAnyMethod()
@@ -341,6 +416,10 @@ builder.Services.AddCors(options =>
         });
 });
 
+Console.WriteLine("BACKEND_STARTUP_PHASE=HTTPS_CONFIGURATION");
+var configuredPemCertificatePath = builder.Configuration["HTTPS_PEM_CERT_PATH"];
+var configuredPemKeyPath = builder.Configuration["HTTPS_PEM_KEY_PATH"];
+System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCertificate = null;
 var configuredHttpsCertificatePath = builder.Configuration["HTTPS_CERT_PATH"];
 var defaultHttpsCertificatePath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".https", "pos-cert.pfx"));
 var httpsCertificatePath = string.IsNullOrWhiteSpace(configuredHttpsCertificatePath)
@@ -351,16 +430,111 @@ var httpsCertificatePassword = File.Exists(passwordFile) ? File.ReadAllText(pass
 var httpsCertificateExists = File.Exists(httpsCertificatePath);
 Console.WriteLine($"HTTPS environment: {builder.Environment.EnvironmentName}");
 Console.WriteLine($"ASPNETCORE_URLS configured: {!string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"])}");
-Console.WriteLine($"HTTPS certificate path: {httpsCertificatePath}");
-Console.WriteLine($"HTTPS certificate exists: {httpsCertificateExists}");
-if (!httpsCertificateExists)
-    throw new InvalidOperationException("HTTPS certificate not found. Run .\\scripts\\setup-https.ps1 in this PowerShell session before starting the API.");
+if (builder.Environment.IsDevelopment() &&
+    !string.IsNullOrWhiteSpace(configuredPemCertificatePath) &&
+    !string.IsNullOrWhiteSpace(configuredPemKeyPath))
+{
+    Console.WriteLine($"HTTPS certificate path: {configuredPemCertificatePath}");
+    var pemCertificateExists = File.Exists(configuredPemCertificatePath);
+    var pemKeyExists = File.Exists(configuredPemKeyPath);
+    Console.WriteLine($"HTTPS certificate exists: {pemCertificateExists}");
+    if (!pemCertificateExists || !pemKeyExists)
+    {
+        Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+        throw new InvalidOperationException("Development PEM HTTPS certificate or private key is missing.");
+    }
+
+    try
+    {
+        httpsCertificate = DevelopmentHttpsCertificateLoader.LoadPersistedPkcs12FromPem(
+            configuredPemCertificatePath,
+            configuredPemKeyPath);
+    }
+    catch (Exception exception)
+    {
+        Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=HTTPS_CONFIGURATION BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)} BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+        throw;
+    }
+}
+else
+{
+    Console.WriteLine($"HTTPS certificate path: {httpsCertificatePath}");
+    Console.WriteLine($"HTTPS certificate exists: {httpsCertificateExists}");
+    if (!httpsCertificateExists)
+    {
+        Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+        throw new InvalidOperationException("HTTPS certificate not found. Run .\\scripts\\setup-https.ps1 in this PowerShell session before starting the API.");
+    }
+
+    try
+    {
+        using var certificate = new System.Security.Cryptography.X509Certificates.X509Certificate2(
+            httpsCertificatePath,
+            httpsCertificatePassword,
+            System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.EphemeralKeySet);
+
+        if (!certificate.HasPrivateKey)
+            throw new InvalidOperationException("The HTTPS certificate does not contain a private key.");
+
+        Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=YES");
+    }
+    catch (Exception exception)
+    {
+        Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=HTTPS_CONFIGURATION BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)} BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+        throw;
+    }
+}
+
+if (httpsCertificate is not null && !httpsCertificate.HasPrivateKey)
+    throw new InvalidOperationException("The Development PEM certificate does not contain a private key.");
+
+Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=YES");
 
 builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(5000, listenOptions =>
-        listenOptions.UseHttps(httpsCertificatePath, httpsCertificatePassword)));
+    {
+        if (httpsCertificate is not null)
+            listenOptions.UseHttps(httpsCertificate);
+        else
+            listenOptions.UseHttps(httpsCertificatePath, httpsCertificatePassword);
+    }));
 
-var app = builder.Build();
+Console.WriteLine("BACKEND_STARTUP_PHASE=DI_BUILD");
+WebApplication app;
+try
+{
+    app = builder.Build();
+}
+catch (Exception exception)
+{
+    WriteSafeDependencyFailureDiagnostics(exception);
+    Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=DI_BUILD BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)}");
+    throw;
+}
+
+if (builder.Configuration.GetValue<bool>("AdminE2E:RuntimeAttestation:Enabled"))
+{
+    // This is a separate Development TEST path for read-only browser acceptance.
+    // SupabaseProjectTargetGuard.Validate above has already validated the exact
+    // effective connection target before any READY evidence can be written.
+    var attestationWritten = RuntimeAttestationWriter.TryWriteTestAdminE2E(
+        builder.Configuration,
+        app.Environment,
+        builder.Configuration["AdminE2E:RuntimeAttestation:AttestationPath"],
+        builder.Configuration["AdminE2E:RuntimeAttestation:LaunchCorrelationId"],
+        SupabaseProjectTargetGuard.TestProjectRef,
+        out var attestationFailureCode);
+    Console.WriteLine($"BACKEND_TEST_RUNTIME_ATTESTATION={(attestationWritten ? "READY" : "BLOCKED")} BACKEND_TEST_RUNTIME_ATTESTATION_FAILURE={attestationFailureCode}");
+    if (!attestationWritten)
+        throw new InvalidOperationException("TEST runtime safety attestation failed.");
+}
+else if (builder.Configuration.GetValue<bool>("AI:LiveReadOnlyE2E:Enabled"))
+{
+    // The previous live-read-only E2E path was coupled to the retired legacy
+    // Supabase project. Do not let an old environment override select it.
+    throw new InvalidOperationException(
+        "The legacy live-read-only AI startup path is retired; use the explicit TEST Admin E2E launcher.");
+}
 
 // Database schema/data mutation is an explicit Development-only opt-in.
 // This prevents a normal startup, especially a production/main-DB startup,
@@ -391,6 +565,10 @@ else
 }
 
 // Hiển thị lỗi chi tiết khi chạy Local để dễ Debug
+// Keep intermittent Auth/me failures observable without exposing claims or
+// changing the response/authorization pipeline.
+app.UseMiddleware<SafeAuthMeDiagnosticsMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -400,6 +578,9 @@ if (app.Environment.IsDevelopment())
         c.RoutePrefix = "swagger";
     });
 }
+
+// Keep GET /api/Order failures observable without exposing exception details.
+app.UseMiddleware<SafeOrderRequestDiagnosticsMiddleware>();
 
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
 
@@ -412,7 +593,100 @@ app.MapControllers();
 app.MapHub<KitchenHub>("/kitchenHub");
 
 // Kestrel owns the only API endpoint: HTTPS on port 5000.
-app.Run();
+Console.WriteLine("BACKEND_STARTUP_PHASE=APPLICATION_STARTUP");
+try
+{
+    app.Run();
+}
+catch (Exception exception)
+{
+    Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=APPLICATION_STARTUP BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)}");
+    throw;
+}
+
+static string GetSafeStartupExceptionType(Exception exception)
+{
+    for (var current = exception; current is not null; current = current.InnerException)
+    {
+        var typeName = current.GetType().Name;
+        if (typeName is "AuthenticationException"
+            or "CryptographicException"
+            or "FileNotFoundException"
+            or "InvalidOperationException"
+            or "IOException"
+            or "SocketException"
+            or "TypeInitializationException")
+        {
+            return typeName;
+        }
+    }
+
+    return "UnknownException";
+}
+
+static void WriteSafeDependencyFailureDiagnostics(Exception exception)
+{
+    foreach (var current in EnumerateExceptionChain(exception))
+    {
+        var message = current.Message ?? string.Empty;
+        var serviceType = MatchSafeTypeName(
+            message,
+            @"ServiceType:\s*(?<value>[^,]+),\s*Lifetime:");
+        var implementationType = MatchSafeTypeName(
+            message,
+            @"ImplementationType:\s*(?<value>[^']+)");
+        var dependencyType = MatchSafeTypeName(
+            message,
+            @"(?:Unable to resolve service for type|Cannot consume scoped service)\s*'(?<value>[^']+)'");
+        var ownerType = MatchSafeTypeName(
+            message,
+            @"(?:while attempting to activate|from singleton)\s*'(?<value>[^']+)'");
+
+        if (serviceType is not null || implementationType is not null || dependencyType is not null)
+        {
+            var category = dependencyType is not null && ownerType is not null
+                ? "INVALID_LIFETIME_OR_DEPENDENCY"
+                : "SERVICE_CONSTRUCTION_FAILURE";
+
+            Console.WriteLine(
+                $"BACKEND_DI_FAILURE_CATEGORY={category} " +
+                $"BACKEND_DI_SERVICE_TYPE={serviceType ?? "UNKNOWN"} " +
+                $"BACKEND_DI_IMPLEMENTATION_TYPE={implementationType ?? "UNKNOWN"} " +
+                $"BACKEND_DI_DEPENDENCY_TYPE={dependencyType ?? "UNKNOWN"} " +
+                $"BACKEND_DI_OWNER_TYPE={ownerType ?? "UNKNOWN"}");
+            return;
+        }
+    }
+
+    Console.WriteLine("BACKEND_DI_FAILURE_CATEGORY=UNCLASSIFIED BACKEND_DI_SERVICE_TYPE=UNKNOWN BACKEND_DI_IMPLEMENTATION_TYPE=UNKNOWN BACKEND_DI_DEPENDENCY_TYPE=UNKNOWN BACKEND_DI_OWNER_TYPE=UNKNOWN");
+}
+
+static IEnumerable<Exception> EnumerateExceptionChain(Exception exception)
+{
+    for (var current = exception; current is not null; current = current.InnerException)
+        yield return current;
+}
+
+static string? MatchSafeTypeName(string message, string pattern)
+{
+    var match = System.Text.RegularExpressions.Regex.Match(
+        message,
+        pattern,
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    if (!match.Success)
+        return null;
+
+    var value = match.Groups["value"].Value.Trim();
+    if (value.Length == 0 || value.Length > 256)
+        return null;
+
+    var safeValue = new string(value
+        .Where(character => char.IsLetterOrDigit(character) || "._,+<>[]` ".Contains(character))
+        .ToArray())
+        .Trim();
+
+    return safeValue.Length == 0 ? null : safeValue;
+}
 
 static string NormalizePostgresConnectionString(string rawConnectionString)
 {

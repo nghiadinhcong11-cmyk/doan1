@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Utensils, User, LogOut, ChevronDown, Store, Clock, ChevronRight, Camera, Calendar, LayoutGrid } from 'lucide-react';
+import NotificationBell from '../features/notifications/NotificationBell';
+import { useNotificationCenter } from '../features/notifications/useNotificationCenter';
 
 interface KitchenNavbarProps {
   onLogout: () => void;
@@ -10,6 +12,7 @@ interface KitchenNavbarProps {
 const KitchenNavbar: React.FC<KitchenNavbarProps> = ({ onLogout, userName }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const notificationCenter = useNotificationCenter('kitchen');
   const branchName = localStorage.getItem('selectedBranchName') || 'Toàn hệ thống';
 
   const navItems = [
@@ -24,6 +27,7 @@ const KitchenNavbar: React.FC<KitchenNavbarProps> = ({ onLogout, userName }) => 
 
   return (
     <nav className="bg-[#1e293b] text-white h-12 flex items-center justify-between px-4 shadow-md z-[200] relative border-b border-slate-700">
+       <div className="absolute right-16 top-1/2 -translate-y-1/2"><NotificationBell {...notificationCenter} historyPath="/kitchen/notifications" /></div>
        {/* Brand Logo */}
        <Link to="/kitchen" className="flex items-center font-bold text-lg italic tracking-tighter cursor-pointer">
           <div className="bg-orange-500 text-white rounded-full w-6 h-6 flex items-center justify-center mr-2 not-italic text-sm font-black">K</div>

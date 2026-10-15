@@ -15,6 +15,7 @@ namespace RestaurantPOS.Infrastructure.Persistence
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderDetail> OrderDetails { get; set; }
         public DbSet<Expense> Expenses { get; set; }
+        public DbSet<ManualExpenseIdempotencyRecord> ManualExpenseIdempotencyRecords { get; set; }
         public DbSet<Employee> Employees { get; set; }
         public DbSet<RestaurantTable> Tables { get; set; }
         public DbSet<Area> Areas { get; set; }
@@ -29,6 +30,7 @@ namespace RestaurantPOS.Infrastructure.Persistence
         public DbSet<OrderRequest> OrderRequests { get; set; }
         public DbSet<OrderRequestItem> OrderRequestItems { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<NotificationRead> NotificationReads { get; set; }
         public DbSet<ReceiptSettings> ReceiptSettings { get; set; }
         public DbSet<SystemSetting> SystemSettings { get; set; }
         public DbSet<LoyaltyTransaction> LoyaltyTransactions { get; set; }
@@ -54,6 +56,23 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .HasIndex(i => i.CreatedAt);
             modelBuilder.Entity<BusinessInsight>()
                 .HasIndex(i => i.Status);
+            modelBuilder.Entity<BusinessInsight>()
+                .HasOne(i => i.Branch)
+                .WithMany()
+                .HasForeignKey(i => i.BranchId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            // Phase 1 domain relationship refinement. Nullable FKs preserve legacy
+            // rows until the deterministic backfill has been verified.
+            modelBuilder.Entity<Area>()
+                .HasOne(a => a.Branch)
+                .WithMany()
+                .HasForeignKey(a => a.BranchId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.NoAction);
+            modelBuilder.Entity<Area>()
+                .HasIndex(a => a.BranchId);
 
             // 1. Hóa đơn và Chi tiết hóa đơn
             modelBuilder.Entity<Order>()
@@ -61,6 +80,12 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .WithOne()
                 .HasForeignKey("OrderId")
                 .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Order>()
+                .HasOne(o => o.Branch)
+                .WithMany()
+                .HasForeignKey(o => o.BranchId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.NoAction);
 
             // 1.1 Order và OrderRequest
             modelBuilder.Entity<OrderRequest>()
@@ -96,9 +121,19 @@ namespace RestaurantPOS.Infrastructure.Persistence
 
             // 4. Bàn liên kết với Chi nhánh
             modelBuilder.Entity<RestaurantTable>()
-                .HasOne<Branch>()
+                .HasOne(t => t.Branch)
                 .WithMany()
-                .HasForeignKey(t => t.BranchId);
+                .HasForeignKey(t => t.BranchId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.NoAction);
+            modelBuilder.Entity<RestaurantTable>()
+                .HasOne(t => t.Area)
+                .WithMany()
+                .HasForeignKey(t => t.AreaId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.NoAction);
+            modelBuilder.Entity<RestaurantTable>()
+                .HasIndex(t => t.AreaId);
             modelBuilder.Entity<RestaurantTable>()
                 .Property(t => t.QrToken)
                 .IsRequired()
@@ -127,6 +162,30 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .WithMany()
                 .HasForeignKey(s => s.BranchId);
 
+            modelBuilder.Entity<Shift>()
+                .HasOne(s => s.Employee)
+                .WithMany()
+                .HasForeignKey(s => s.EmployeeId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+            modelBuilder.Entity<Shift>()
+                .HasOne(s => s.Branch)
+                .WithMany()
+                .HasForeignKey(s => s.BranchId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            modelBuilder.Entity<Reservation>()
+                .HasOne(r => r.Branch)
+                .WithMany()
+                .HasForeignKey(r => r.BranchId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.NoAction);
+            modelBuilder.Entity<Reservation>()
+                .HasOne(r => r.Table)
+                .WithMany()
+                .HasForeignKey(r => r.TableId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
             modelBuilder.Entity<Expense>()
                 .HasOne<Branch>()
                 .WithMany()
@@ -137,10 +196,23 @@ namespace RestaurantPOS.Infrastructure.Persistence
 
             modelBuilder.Entity<Notification>()
                 .HasIndex(n => new { n.TargetRole, n.TargetUserId, n.CreatedAt });
+            modelBuilder.Entity<NotificationRead>()
+                .HasKey(read => new { read.NotificationId, read.UserId });
+            modelBuilder.Entity<NotificationRead>()
+                .HasIndex(read => read.UserId);
+            modelBuilder.Entity<NotificationRead>()
+                .HasOne(read => read.Notification)
+                .WithMany()
+                .HasForeignKey(read => read.NotificationId)
+                .OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<ReceiptSettings>()
-                .HasIndex(s => s.BranchId).IsUnique();
+                .HasIndex(s => s.BranchId)
+                .IsUnique()
+                .HasFilter("\"BranchId\" IS NOT NULL");
             modelBuilder.Entity<SystemSetting>()
-                .HasIndex(s => new { s.BranchId, s.Key }).IsUnique();
+                .HasIndex(s => new { s.BranchId, s.Key })
+                .IsUnique()
+                .HasFilter("\"BranchId\" IS NOT NULL");
 
             // 7. Khách hàng và Tích điểm
             modelBuilder.Entity<Customer>()
@@ -303,6 +375,18 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 entity.HasIndex(expense => expense.StockReceiptId)
                     .IsUnique()
                     .HasFilter("\"StockReceiptId\" IS NOT NULL");
+            });
+
+            modelBuilder.Entity<ManualExpenseIdempotencyRecord>(entity =>
+            {
+                entity.ToTable("ManualExpenseIdempotencyRecords");
+                entity.HasKey(record => record.Id);
+                entity.Property(record => record.IdempotencyKey).HasMaxLength(128).IsRequired();
+                entity.Property(record => record.PayloadHash).HasMaxLength(64).IsRequired();
+                entity.Property(record => record.ResponseJson).IsRequired();
+                entity.HasIndex(record => new { record.BranchId, record.UserId, record.IdempotencyKey }).IsUnique();
+                entity.HasIndex(record => record.CreatedAtUtc);
+                entity.HasOne<Branch>().WithMany().HasForeignKey(record => record.BranchId).OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

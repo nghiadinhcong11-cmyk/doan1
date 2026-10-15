@@ -102,6 +102,11 @@ namespace RestaurantPOS.WebAPI.Controllers
             public string PhoneNumber { get; set; } = string.Empty;
 
             /// <summary>
+            /// Mật khẩu đã đăng ký của khách hàng
+            /// </summary>
+            public string Password { get; set; } = string.Empty;
+
+            /// <summary>
             /// Họ tên khách hàng
             /// </summary>
             public string? FullName { get; set; }
@@ -270,29 +275,45 @@ namespace RestaurantPOS.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Cấp JWT Bearer Token cho khách hàng dựa vào số điện thoại
+        /// Cấp JWT Bearer Token cho khách hàng dựa vào số điện thoại và mật khẩu
         /// </summary>
         [HttpPost("customer-token")]
         public async Task<IActionResult> GetCustomerToken([FromBody] CustomerTokenRequest request)
         {
+            const string invalidCredentialsMessage = "Số điện thoại hoặc mật khẩu không chính xác.";
+
             // A guest table session must originate from POST /api/guest/bootstrap,
             // where the server resolves an opaque QR token to its table and branch.
-            if (string.IsNullOrWhiteSpace(request.PhoneNumber))
-                return BadRequest(new { message = "Số điện thoại là bắt buộc cho phiên khách hàng." });
+            // This endpoint never issues a token without a verified credential.
+            if (request is null || string.IsNullOrWhiteSpace(request.PhoneNumber) || string.IsNullOrWhiteSpace(request.Password))
+                return Unauthorized(new { message = invalidCredentialsMessage });
 
             var customer = await _context.Customers.FirstOrDefaultAsync(c => c.PhoneNumber == request.PhoneNumber);
-            if (customer != null && !customer.IsActive)
-                return Unauthorized(new { message = "Tài khoản khách hàng đã bị vô hiệu hóa" });
+            if (customer == null || !customer.IsActive || string.IsNullOrWhiteSpace(customer.Password))
+                return Unauthorized(new { message = invalidCredentialsMessage });
 
-            if (customer == null)
-                return NotFound(new { message = "Không tìm thấy khách hàng." });
+            var verification = LegacyPasswordVerifier.Verify(
+                _customerHasher,
+                customer,
+                customer.Password,
+                request.Password);
+
+            if (!verification.IsValid)
+                return Unauthorized(new { message = invalidCredentialsMessage });
+
+            if (verification.NeedsRehash)
+            {
+                customer.Password = _customerHasher.HashPassword(customer, request.Password);
+                await _context.SaveChangesAsync();
+            }
 
             var token = _jwtService.GenerateToken(
                 customer.Id,
-                customer.PhoneNumber,
-                customer.FullName,
+                customer.PhoneNumber!,
+                customer.FullName ?? customer.PhoneNumber!,
                 "customer",
-                customerSessionType: "registered"
+                customerSessionType: "registered",
+                customerAuthMethod: "password"
             );
             return Ok(new { token, role = "customer", fullName = customer.FullName, customerId = customer.Id });
         }
@@ -393,8 +414,8 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                 await _context.SaveChangesAsync();
                 return Ok(new { message = "Đổi mật khẩu thành công!" });
-            } catch (Exception ex) {
-                return BadRequest(new { message = ex.Message });
+            } catch (Exception) {
+                return StatusCode(500, new { message = "Không thể đổi mật khẩu lúc này." });
             }
         }
     }

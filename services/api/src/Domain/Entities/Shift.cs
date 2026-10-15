@@ -9,8 +9,10 @@ namespace RestaurantPOS.Domain.Entities
         [Key]
         public Guid Id { get; set; }
         public Guid EmployeeId { get; set; }
+        public Employee? Employee { get; set; }
         public string EmployeeName { get; set; }
         public Guid BranchId { get; set; }
+        public Branch? Branch { get; set; }
         public string? BranchName { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime? EndTime { get; set; }

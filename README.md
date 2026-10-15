@@ -3,8 +3,8 @@
 Hệ thống quản lý bán hàng nhà hàng tập trung vào tính đơn giản và chính xác trong doanh thu - chi phí.
 
 ## Phạm vi dự án
-- **Tập trung**: Quản lý bán hàng đa chi nhánh, quản lý doanh thu, nhân sự, và theo dõi chi tiêu của chủ quán (Expenses). Payroll không thuộc phạm vi hệ thống hiện tại.
-- **Tính năng nổi bật**: Tích hợp Kitchen Display System (KDS) qua SignalR và Trợ lý ảo AI (Gemini) hỗ trợ điều hành.
+- **Tập trung**: Quản lý bán hàng đa chi nhánh, quản lý doanh thu, nhân sự, và theo dõi chi tiêu của chủ quán (Expenses). Nhân sự hiện tập trung vào hồ sơ, ca, lịch và chấm công.
+- **Tính năng nổi bật**: Tích hợp Kitchen Display System (KDS) qua SignalR và Trợ lý ảo Mock AI hỗ trợ điều hành trong môi trường local.
 
 ## Cấu trúc thư mục backend phân lớp
 - `apps/`: Chứa các ứng dụng frontend (React)
@@ -18,11 +18,12 @@ Hệ thống quản lý bán hàng nhà hàng tập trung vào tính đơn giả
     - `WebAPI`: Controllers, Middleware, Auth config.
     - `AI`: Trợ lý ảo AI, Tool Registry và Permission Service.
 - `services/api/src/Infrastructure/Persistence/Migrations/`: EF Core migrations và model snapshot.
-- `baocaodoan/`: Bộ tài liệu chi tiết phục vụ báo cáo đồ án.
+- `bao-cao/`: Kho tài liệu báo cáo, kỹ thuật, hình ảnh và minh chứng; xem [`bao-cao/README.md`](bao-cao/README.md).
+- `scripts/`: Công cụ HTTPS, OpenAPI và diagnostics có phạm vi rõ ràng; xem [`scripts/README.md`](scripts/README.md).
 
 ## Tài liệu chuẩn
 
-`docs/system-audit/` là source of truth được kiểm tra theo source code hiện tại. Bắt đầu tại [`docs/system-audit/00-README.md`](docs/system-audit/00-README.md). Bộ `baocaodoan/` là tài liệu bổ trợ cho báo cáo/khóa luận và có thể chứa nội dung lịch sử; khi có mâu thuẫn, bộ system audit và source code được ưu tiên.
+`bao-cao/tai-lieu-ky-thuat/system-audit/` là source of truth được kiểm tra theo source code hiện tại. Bắt đầu tại [`bao-cao/tai-lieu-ky-thuat/system-audit/00-README.md`](bao-cao/tai-lieu-ky-thuat/system-audit/00-README.md). Bộ `bao-cao/do-an/` là tài liệu bổ trợ cho báo cáo/khóa luận và có thể chứa nội dung lịch sử; khi có mâu thuẫn, bộ system audit và source code được ưu tiên.
 
 ## Phân quyền & Bảo mật (RBAC)
 
@@ -41,3 +42,92 @@ Hệ thống triển khai mô hình phân quyền dựa trên vai trò (Role-Bas
 - **Role** là nguồn định danh duy nhất cho việc phân quyền (Authorization).
 - **Position** (Chức danh) chỉ dùng để hiển thị và mô tả nghiệp vụ.
 - Dữ liệu chi nhánh được cách ly tại Server thông qua JWT `branchId`.
+
+## Chạy local HTTP/HTTPS
+
+- Chuẩn bị chứng chỉ bằng `.\scripts\setup-https.ps1` trong PowerShell; script dùng chứng chỉ local trong `.https`.
+- Chạy API tại `https://localhost:5000`, Admin Web tại `https://localhost:5173` và Customer Web tại `https://localhost:5174`. API và SignalR đều dùng cùng base URL API; SignalR chạy tại `/kitchenHub`.
+- LAN là chế độ opt-in: đặt `DOAN_DEV_LAN_HOST` đúng hostname/IP có trong SAN của `certs/doan-pos-lan.pem`, chạy lại script setup rồi khởi động các app trong cùng session. Không dùng IP cũ hardcode trong cấu hình.
+- Production không dùng chứng chỉ tự ký này; TLS phải do hosting hoặc reverse proxy production cung cấp. `VITE_HTTPS=false` chỉ là override local có chủ đích và không thay đổi API HTTPS.
+
+## Kiểm thử hiện hành
+
+Repository dùng build/typecheck và OpenAPI codegen để kiểm tra tính hợp lệ của source/config. Bộ test tự động xUnit, Node source-contract và Playwright đã được gỡ theo quyết định chuyển sang kiểm thử thủ công; checklist hiện hành nằm tại [`ba-test-frontend/README.md`](ba-test-frontend/README.md). Không chạy `dotnet test`, Playwright hoặc Node test runner sau khi đợt dọn này hoàn tất.
+## Quy trinh HTTPS/LAN development
+
+Dung launcher thong nhat de giu chung certificate va environment cho API, Admin va Customer:
+
+```powershell
+# May tinh, khong can LAN
+powershell -File .\scripts\start-dev.ps1 -Mode Localhost
+
+# LAN: chon ro IP/hostname; khong tu chon adapter dau tien
+powershell -File .\scripts\start-dev.ps1 -Mode Lan -LanHost 192.168.x.x
+
+# Dung lai cac process do launcher da tao
+powershell -File .\scripts\start-dev.ps1 -Stop
+```
+
+`setup-https.ps1` duoc launcher dot-source trong cung PowerShell process. Script su dung CA mkcert hien tai, kiem tra SAN, expiry, issuer, chain va certificate/key match; neu leaf hien tai khong phu host moi thi tao leaf tam, kiem tra xong moi thay file dich. Script khong cai mkcert, khong chay `mkcert -install` va khong thay trust store.
+
+Sau khi doi Wi-Fi/IP: chay lai launcher voi host moi, trust public root CA tren dien thoai neu thiet bi chua trust, roi tao/in lai QR vi QR cu van chua host cu. Khong bao gio chuyen private key server hoac CA private key sang dien thoai. Dung cung CA thi cap leaf moi khong tu dong doi yeu cau trust CA; neu CA doi/het han hoac chinh sach mobile doi thi phai trust lai theo chinh sach thiet bi.
+
+Firewall, client isolation, VPN va routing la dieu kien mang rieng; cung Wi-Fi khong dam bao dien thoai truy cap duoc may tinh. API/Admin/Customer van giu ba cong 5000/5173/5174 va khong dung CORS wildcard.
+
+`StartManualTestBackend.ps1` van la launcher test doc lap co runtime attestation va target database test; khong dung no thay cho `start-dev.ps1` khi can khoi dong ca ba process.
+
+Neu `VITE_API_URL` hoac `VITE_CUSTOMER_WEB_URL` trong shell dang tro toi host cu, setup se dung lai se bao `ENV_OVERRIDE_CONFLICT`; xoa bien stale trong session roi chay lai. Khong de override cu am tham ghi de host moi.
+
+### Chay ba terminal PowerShell rieng cung LAN
+
+`setup-https.ps1` la setup-only: no chi kiem tra/chuan bi certificate va export environment, khong khoi dong ung dung. Trong PowerShell, dung dot-sourcing (`. .\scripts\setup-https.ps1`) de bien moi truong duoc giu trong chinh terminal; goi bang `&` se khong truyen bien nguoc ve parent shell.
+
+Thay `192.168.11.172` bang IP LAN hien tai. Chay block 1 truoc mot lan de tao/tai cap leaf neu can; chi sau khi block 1 thanh cong moi chay block 2 va 3. Hai block sau dung `-ValidateOnly`, khong ghi lai certificate.
+
+**Terminal 1 — setup va API**
+
+```powershell
+Set-Location D:\Dev\doan
+$lanHost = '192.168.11.172' # thay bang IP LAN hien tai
+try {
+    . .\scripts\setup-https.ps1 -LanHost $lanHost
+} catch {
+    Write-Error $_
+    exit 1
+}
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:DatabaseSafety__AllowAutomaticMigration = 'false'
+dotnet run --project .\services\api\RestaurantPOS.api.csproj --no-launch-profile
+```
+
+**Terminal 2 — validate va Admin Web**
+
+```powershell
+Set-Location D:\Dev\doan
+$lanHost = '192.168.11.172' # phai trung IP o Terminal 1
+try {
+    . .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
+} catch {
+    Write-Error $_
+    exit 1
+}
+npm run dev --prefix .\apps\admin-web
+```
+
+**Terminal 3 — validate va Customer Web**
+
+```powershell
+Set-Location D:\Dev\doan
+$lanHost = '192.168.11.172' # phai trung IP o Terminal 1
+try {
+    . .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
+} catch {
+    Write-Error $_
+    exit 1
+}
+npm run dev --prefix .\apps\customer-web
+```
+
+URL LAN: API `https://192.168.11.172:5000`, Admin `https://192.168.11.172:5173`, Customer `https://192.168.11.172:5174`. Nhan Ctrl+C trong tung terminal de dung process cua terminal do. Backend van can `ConnectionStrings__DefaultConnection`/User Secrets va `Jwt__Secret` hop le; setup HTTPS khong tao hoac in cac secret nay.
+
+Khi doi Wi-Fi/IP, dung Ctrl+C ca ba process, chay lai block 1 voi IP moi, sau do chay lai block 2 va 3 voi cung IP. QR da in voi IP cu khong tu cap nhat. Neu IP moi chua co trong SAN, block 1 se cap leaf bang CA mkcert hien tai; hai block `-ValidateOnly` phai chay sau do. Neu CA mkcert doi hoac thiet bi chua trust CA, xu ly trust public root CA theo chinh sach thiet bi; khong chuyen private key sang dien thoai.

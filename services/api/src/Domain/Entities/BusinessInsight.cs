@@ -6,6 +6,7 @@ public class BusinessInsight
 {
     public Guid Id { get; set; }
     public Guid? BranchId { get; set; }
+    public Branch? Branch { get; set; }
     public string Type { get; set; } = string.Empty; // e.g., RevenueSignificantDrop
     public string Severity { get; set; } = string.Empty; // Info, Warning, Critical
     public string Title { get; set; } = string.Empty;

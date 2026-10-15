@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using RestaurantPOS.Application.Common.Security;
 
 namespace RestaurantPOS.AI.Services
 {
@@ -19,6 +20,16 @@ namespace RestaurantPOS.AI.Services
 
         public async Task<string> GetContextAsync(AiUserContext userContext)
         {
+            if (!RoleNames.IsKnownRole(userContext.Role))
+            {
+                return "Không có ngữ cảnh dữ liệu cho role không hợp lệ.";
+            }
+
+            if (userContext.IsGuest)
+            {
+                return "- Khách vãng lai chưa đăng nhập. Chỉ được trả lời thông tin nhà hàng công khai và thực đơn; không có dữ liệu cá nhân hoặc nghiệp vụ nội bộ.";
+            }
+
             var vnZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             var nowVn = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnZone);
 
@@ -41,9 +52,7 @@ namespace RestaurantPOS.AI.Services
             var query = _context.Orders
                 .Where(o => o.CreatedAt >= todayStart && o.Status == "Hoàn thành");
 
-            decimal revenue = _context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true
-                ? (await query.Select(o => o.PaidAmount).ToListAsync()).Sum()
-                : await query.SumAsync(o => (decimal?)o.PaidAmount) ?? 0m;
+            decimal revenue = await query.SumAsync(o => (decimal?)o.PaidAmount) ?? 0m;
 
             var activeTables = await _context.Tables.CountAsync(t => t.Status == "Có khách");
             var branchCount = await _context.Branches.CountAsync();

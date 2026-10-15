@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using RestaurantPOS.Application.Common.Security;
+using RestaurantPOS.Application.DTOs;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
 
@@ -20,7 +21,7 @@ namespace RestaurantPOS.Application.Services
 
         public async Task<List<RestaurantTable>> GetTablesAsync(Guid? branchId, string? search = null, string? area = null, bool? isActive = null)
         {
-            var query = _context.Tables.AsNoTracking().Where(t => t.Name != "Mang về");
+            var query = _context.Tables.AsNoTracking().Include(t => t.Area).Where(t => t.Name != "Mang về");
 
             if (branchId.HasValue)
             {
@@ -31,7 +32,7 @@ namespace RestaurantPOS.Application.Services
                 query = query.Where(t => t.Name.Contains(search) || (t.Description != null && t.Description.Contains(search)));
 
             if (!string.IsNullOrEmpty(area))
-                query = query.Where(t => t.AreaName == area);
+                query = query.Where(t => t.Area != null && t.Area.Name == area);
 
             if (isActive.HasValue)
                 query = query.Where(t => t.IsActive == isActive.Value);
@@ -41,7 +42,7 @@ namespace RestaurantPOS.Application.Services
 
         public async Task<RestaurantTable?> GetByIdAsync(Guid id, Guid? authorizedBranchId)
         {
-            var table = await _context.Tables.FindAsync(id);
+            var table = await _context.Tables.Include(t => t.Area).FirstOrDefaultAsync(t => t.Id == id);
             if (table == null) return null;
 
             if (authorizedBranchId.HasValue && table.BranchId != authorizedBranchId.Value)
@@ -50,53 +51,70 @@ namespace RestaurantPOS.Application.Services
             return table;
         }
 
-        public async Task<RestaurantTable> CreateTableAsync(RestaurantTable table, Guid? authorizedBranchId)
+        public async Task<RestaurantTable> CreateTableAsync(TableRequestDto request, Guid? authorizedBranchId)
         {
-            if (authorizedBranchId.HasValue)
-            {
-                table.BranchId = authorizedBranchId.Value;
-                var branch = await _context.Branches.FindAsync(authorizedBranchId.Value);
-                if (branch != null) table.BranchName = branch.Name;
-            }
+            var branchId = authorizedBranchId ?? request.BranchId;
+            if (branchId == Guid.Empty)
+                throw new InvalidOperationException("Bàn mới phải thuộc một chi nhánh.");
 
-            table.Id = Guid.NewGuid();
-            table.CreatedAt = DateTime.UtcNow;
-            if (await _context.Tables.AnyAsync(candidate => candidate.BranchId == table.BranchId && candidate.Name == table.Name))
+            var branch = await _context.Branches.FirstOrDefaultAsync(candidate => candidate.Id == branchId)
+                ?? throw new InvalidOperationException("Chi nhánh không tồn tại.");
+            var area = await GetAreaForBranchAsync(request.AreaId, branchId);
+
+            if (await _context.Tables.AnyAsync(candidate => candidate.BranchId == branchId && candidate.Name == request.Name))
                 throw new InvalidOperationException("A table with this name already exists in the branch.");
-            // The client model binds the entity today; overwrite any supplied value with server entropy.
-            table.QrToken = QrTokenGenerator.Generate();
-            if (string.IsNullOrEmpty(table.Status)) table.Status = "Trống";
+
+            var table = new RestaurantTable
+            {
+                Id = Guid.NewGuid(),
+                Name = request.Name,
+                AreaId = area.Id,
+                Area = area,
+                SeatCount = request.SeatCount,
+                Description = request.Description,
+                IsActive = request.IsActive,
+                Status = string.IsNullOrEmpty(request.Status) ? "Trống" : request.Status,
+                QrCodeUrl = request.QrCodeUrl,
+                QrToken = QrTokenGenerator.Generate(),
+                BranchId = branchId,
+                BranchName = branch.Name,
+                CreatedAt = DateTime.UtcNow
+            };
 
             _context.Tables.Add(table);
             await _context.SaveChangesAsync();
             return table;
         }
 
-        public async Task<RestaurantTable?> UpdateTableAsync(Guid id, RestaurantTable tableUpdate, Guid? authorizedBranchId)
+        public async Task<RestaurantTable?> UpdateTableAsync(Guid id, TableRequestDto request, Guid? authorizedBranchId)
         {
-            var table = await _context.Tables.FindAsync(id);
+            var table = await _context.Tables.Include(t => t.Area).FirstOrDefaultAsync(t => t.Id == id);
             if (table == null) return null;
 
             if (authorizedBranchId.HasValue && table.BranchId != authorizedBranchId.Value)
                 return null;
 
-            var targetBranchId = authorizedBranchId ?? tableUpdate.BranchId;
-            if (await _context.Tables.AnyAsync(candidate => candidate.Id != id && candidate.BranchId == targetBranchId && candidate.Name == tableUpdate.Name))
+            var targetBranchId = authorizedBranchId ?? request.BranchId;
+            if (targetBranchId == Guid.Empty)
+                throw new InvalidOperationException("Bàn phải thuộc một chi nhánh.");
+
+            var branch = await _context.Branches.FirstOrDefaultAsync(candidate => candidate.Id == targetBranchId)
+                ?? throw new InvalidOperationException("Chi nhánh không tồn tại.");
+            var area = await GetAreaForBranchAsync(request.AreaId, targetBranchId);
+
+            if (await _context.Tables.AnyAsync(candidate => candidate.Id != id && candidate.BranchId == targetBranchId && candidate.Name == request.Name))
                 throw new InvalidOperationException("A table with this name already exists in the branch.");
 
-            table.Name = tableUpdate.Name;
-            table.AreaName = tableUpdate.AreaName;
-            table.SeatCount = tableUpdate.SeatCount;
-            table.IsActive = tableUpdate.IsActive;
-            table.Description = tableUpdate.Description;
-            table.Status = tableUpdate.Status;
-
-            // Branch change is only for admins
-            if (!authorizedBranchId.HasValue)
-            {
-                table.BranchId = tableUpdate.BranchId;
-                table.BranchName = tableUpdate.BranchName;
-            }
+            table.Name = request.Name;
+            table.AreaId = area.Id;
+            table.Area = area;
+            table.SeatCount = request.SeatCount;
+            table.IsActive = request.IsActive;
+            table.Description = request.Description;
+            table.Status = request.Status ?? table.Status;
+            table.QrCodeUrl = request.QrCodeUrl;
+            table.BranchId = targetBranchId;
+            table.BranchName = branch.Name;
 
             await _context.SaveChangesAsync();
             return table;
@@ -126,6 +144,19 @@ namespace RestaurantPOS.Application.Services
             _context.Tables.Remove(table);
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        private async Task<Area> GetAreaForBranchAsync(Guid areaId, Guid branchId)
+        {
+            if (areaId == Guid.Empty)
+                throw new InvalidOperationException("Bàn mới phải thuộc một khu vực.");
+
+            var area = await _context.Areas.FirstOrDefaultAsync(a => a.Id == areaId);
+            if (area == null)
+                throw new InvalidOperationException("Khu vực không tồn tại.");
+            if (area.BranchId != branchId)
+                throw new InvalidOperationException("Khu vực không thuộc chi nhánh của bàn.");
+            return area;
         }
 
         public async Task<object> GetTableSummaryAsync(Guid? branchId)

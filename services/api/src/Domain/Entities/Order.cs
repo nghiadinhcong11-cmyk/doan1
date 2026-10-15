@@ -29,7 +29,8 @@ namespace RestaurantPOS.Domain.Entities
         public string? Note { get; set; }
         public string? TableName { get; set; } // Tên bàn
         public string? CreatedBy { get; set; } // Người tạo hóa đơn
-        public Guid? BranchId { get; set; }    // ID chi nhánh
+        public Guid BranchId { get; set; }    // ID chi nhánh
+        public Branch? Branch { get; set; }
         public string? BranchName { get; set; } // Tên chi nhánh
 
         // Danh sách chi tiết món trong hóa đơn

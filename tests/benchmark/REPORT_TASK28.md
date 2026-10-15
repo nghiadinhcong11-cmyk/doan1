@@ -1,12 +1,12 @@
-# TASK 28 — AI TOOL SELECTION BENCHMARK
+# TASK 28 â€” AI TOOL SELECTION BENCHMARK
 
 ## 1. Dataset Design
 A comprehensive dataset of 450 test cases was designed across 14 tools and 12 categories:
-- **Direct Queries**: (Easy) "Xem menu", "Doanh thu hôm nay".
-- **Natural/Colloquial**: (Medium) "Ê quán mình có gì ngon không?", "Tiền hôm nay kiếm được bao nhiêu rồi?"
+- **Direct Queries**: (Easy) "Xem menu", "Doanh thu hĂ´m nay".
+- **Natural/Colloquial**: (Medium) "Ă quĂ¡n mĂ¬nh cĂ³ gĂ¬ ngon khĂ´ng?", "Tiá»n hĂ´m nay kiáº¿m Ä‘Æ°á»£c bao nhiĂªu rá»“i?"
 - **No Accents/Typos**: (Hard) "quan co mon gi", "doan thu thnag nay".
-- **Contextual**: (Hard) "Còn hôm qua?", "Tháng trước thì sao?".
-- **Negative**: (Easy) "Chào bạn", "Cảm ơn nhé".
+- **Contextual**: (Hard) "CĂ²n hĂ´m qua?", "ThĂ¡ng trÆ°á»›c thĂ¬ sao?".
+- **Negative**: (Easy) "ChĂ o báº¡n", "Cáº£m Æ¡n nhĂ©".
 
 ## 2. Tool Boundaries
 Defined in `TOOL_BOUNDARIES.md`. Key friction points identified between:
@@ -15,7 +15,7 @@ Defined in `TOOL_BOUNDARIES.md`. Key friction points identified between:
 - `get_business_summary` vs `get_financial_analysis`.
 
 ## 3. Baseline Results (Simulated Evaluation)
-Current model: `gemini-3.7-flash` (from `GeminiService.cs`).
+Current model: `MockAiProvider` (from `MockAiProvider.cs`).
 
 | Metric | Baseline Score | Note |
 |--------|----------------|------|
@@ -27,16 +27,16 @@ Current model: `gemini-3.7-flash` (from `GeminiService.cs`).
 
 ## 4. Confusion Matrix (Top 3)
 1. **Expected:** `get_revenue_comparison` -> **Actual:** `get_revenue` (4 cases).
-   - *Reason:* Query like "Doanh thu hôm nay có tăng không?" lacks explicit "compare" keyword.
+   - *Reason:* Query like "Doanh thu hĂ´m nay cĂ³ tÄƒng khĂ´ng?" lacks explicit "compare" keyword.
 2. **Expected:** `get_best_sellers` -> **Actual:** `customer_get_menu` (3 cases).
-   - *Reason:* "Món nào hay được gọi?" sometimes interpreted as menu search.
+   - *Reason:* "MĂ³n nĂ o hay Ä‘Æ°á»£c gá»i?" sometimes interpreted as menu search.
 3. **Expected:** `get_financial_analysis` -> **Actual:** `get_business_summary` (3 cases).
-   - *Reason:* Overlap in "Tình hình kinh doanh" intent.
+   - *Reason:* Overlap in "TĂ¬nh hĂ¬nh kinh doanh" intent.
 
 ## 5. Main Failure Patterns
 - **ArgumentHallucination**: Model provides `period="this_week"` for `get_revenue` which only supports `today`, `month`, `year`.
 - **ScopeCreep**: Model tries to call `get_order_list` when a user asks about their own orders (should be `get_my_orders`).
-- **ImplicitComparison**: "Hôm nay làm ăn thế nào?" usually implies a comparison to yesterday, but model might only call `get_business_summary` once.
+- **ImplicitComparison**: "HĂ´m nay lĂ m Äƒn tháº¿ nĂ o?" usually implies a comparison to yesterday, but model might only call `get_business_summary` once.
 
 ## 6. Optimization Recommendations
 1. **Tool Description Updates**:
@@ -52,3 +52,5 @@ Current model: `gemini-3.7-flash` (from `GeminiService.cs`).
 
 ## 8. Final Recommendation: **EXCELLENT**
 The current selection logic is robust due to well-named tools and concise descriptions. Minor tweaks to parameter enums will reach near 100% accuracy.
+
+

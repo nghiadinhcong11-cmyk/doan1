@@ -3066,7 +3066,7 @@
     },
     {
       "name": "Ai",
-      "description": "API Trợ lý ảo AI Assistant (Google Gemini + AI Tools)"
+      "description": "API Trợ lý ảo AI Assistant (Mock AI + AI Tools)"
     }
   ]
 }

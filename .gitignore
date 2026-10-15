@@ -28,6 +28,7 @@ secrets.json
 .https/
 
 # Certificates and private keys
+certs/
 *.pfx
 *.p12
 *.pem
@@ -56,6 +57,9 @@ logs
 output.txt
 output_utf8.txt
 
+# Sanitized runtime attestation evidence is local-only and must not be committed.
+evidence/ai-diagnostics/runtime-attestations/
+
 # Hardening task artifacts
 .*-build/
 .*-output/
@@ -65,6 +69,20 @@ TlsTest.cs
 
 # Temporary diagnostic test builds
 .*-testbuild/
+.tmp-*/
+.phase4b-*/
+test-results/
+
+# Root-local API intermediate scratch outputs
+/.api-obj/
+/.api-obj2/
 
 # IDE-local artifacts
 .vs/
+
+# Local downloaded tools, certificates, and E2E database state
+/.tools/postgresql-17.11/
+/.tools/pgdata-e2e/
+/.tools/e2e-cert/
+/.tools/pg-e2e-password.txt
+/doan-rootCA.crt

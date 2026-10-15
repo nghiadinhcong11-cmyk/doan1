@@ -47,7 +47,7 @@ Chi tiáº¿t tá»«ng route/page thá»±c táº¿, component, chá»©c nÄƒ
 | Network NET | 5 |
 | Technical TECH | 5 |
 | Há»“ sÆ¡ EmployeeType/BasicSalary | 6 |
-| Tá»•ng toĂ n bá»™ | 183 |
+| Tá»•ng toĂ n bá»™ | 188 |
 
 CĂ¡c case há»“ sÆ¡ dĂ¹ng chung ID giá»¯a chá»§ quĂ¡n vĂ  quáº£n lĂ½ nĂªn chá»‰ tĂ­nh má»™t láº§n. KhĂ´ng cĂ³ ID legacy nĂ o bá»‹ Ä‘á»•i; file legacy chá»‰ lĂ  tra cá»©u.
 ## Bá»• sung checklist theo khoáº£ng trá»‘ng route
@@ -86,3 +86,15 @@ CĂ¡c case há»“ sÆ¡ dĂ¹ng chung ID giá»¯a chá»§ quĂ¡n vĂ  qu�
 
 Case IDs are counted once globally. These additions are not a claim that all routes/functions are covered or passed.
 
+## Owner “Nhân viên” navigation audit addendum
+
+| Phạm vi | Case mới | File bước test | Liên kết |
+|---|---|---|---|
+| Chủ quán `/employees` | ADM-EMP-01..02, ADM-EMP-04..05 | `chu-quan/employees.md` | `OWNER-EMPLOYEE-NAV-REVIEW.md`, HR-001..HR-003 |
+| Chủ quán `/attendance` | ADM-ATT-01..03 | `chu-quan/attendance.md` | `OWNER-EMPLOYEE-NAV-REVIEW.md`, HR-002 |
+| Chủ quán `/schedule` | ADM-SCH-01..04 | `chu-quan/schedule.md` | `OWNER-EMPLOYEE-NAV-REVIEW.md`, HR-002, HR-006 |
+| Chủ quán `/shifts` | ADM-SHF-01..03 | `chu-quan/shifts.md` | `OWNER-EMPLOYEE-NAV-REVIEW.md`, HR-002 |
+
+Các case mới đều giữ trạng thái `Chưa test`. `ADM-11` và `ADM-17` tiếp tục được tái sử dụng cho direct URL và navigation chính; không tạo case trùng cho hai nội dung đó.
+
+- HR fix coverage update: employee direct PUT and branch matrix are `ADM-EMP-06..08`; attendance, schedule and shifts are tracked in separate page files. All remain `Chưa test`.

@@ -5,6 +5,8 @@ Reference branch: `main`
 Reference commit: `4abeb1bf2e646df837745713a495b164eed60488`
 Tree state: clean at the start of the current static review; `main` was ahead of `origin/main` by one commit. The review's documentation changes are uncommitted.
 
+Current session snapshot: HEAD `1ef623e94cea83f150006c9a22a10126611a171c` (`1ef623e9`) on `main`; working tree was clean before the owner employee navigation review and now contains only the documentation/checklist changes listed in that review. No application runtime or database operation was performed.
+
 This self-contained summary is generated from the other files in `chatgpt-context/`, the current source and the audit preparation documents. Update it together with those files when shared assumptions materially change. It is a compact orientation document, not a replacement for source or `AGENTS.md`.
 
 ## System
@@ -120,3 +122,14 @@ Important residual findings:
 
 New manual/runtime cases: AUTH-06, BRANCH-08 and SIG-04, all Chưa test. MockAiProvider, EmployeeType and BasicSalary remain in scope unchanged.
 
+## Owner employee navigation static review — 2026-10-15
+
+The owner/management “Nhân viên” navigation was statically audited at HEAD `1ef623e9`. Its actual management scope is `/employees`, `/attendance`, `/schedule` and `/shifts`; staff-specific HR routes are separate. The report is `bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/OWNER-EMPLOYEE-NAV-REVIEW.md`.
+
+New open findings are `HR-001` (no admin self-toggle/self-delete protection), `HR-002` (HR page API errors are not consistently exposed or response-checked) and `HR-003` (admin employee branch assignment lacks explicit active-branch validation). Manual cases `ADM-EMP-01..05` were added to `ba-test-frontend/chu-quan/employees.md`; existing navigation/direct-URL and shared HR cases were reused. All cases remain `Chưa test`. No application code, migration, snapshot, runtime or database operation was performed. `EmployeeType`, `BasicSalary` and `MockAiProvider` remain unchanged.
+- Owner navigation HR source-fix update (2026-10-15): HR-001 self-disable/self-delete is blocked server-side from authenticated identity and disabled in the owner UI; HR-002 status/error/loading/retry handling is fixed across `/employees`, `/attendance`, `/schedule`, `/shifts`; HR-003 validates active branch on create and actual branch transfer while allowing profile edits on an existing inactive branch. Findings remain runtime-pending and manual cases remain `Chưa test`. Admin build passed; backend isolated-output build passed. No runtime/API/browser/database/migration/seed was run.
+
+Static review of that HR diff found residual source gaps HR-004 (self-disable via entity-shaped PUT), HR-005 (omitted versus null BranchId cannot be distinguished), and HR-006 (handler-level duplicate-submit and mutation/refetch outcome distinction). Page-specific cases `ADM-ATT-01..03`, `ADM-SCH-01..04`, `ADM-SHF-01..03` and employee cases `ADM-EMP-06..07` were added; all remain `Chưa test`. HR handoff is not closed.
+- HR residual-fix update: `EmployeeUpdateRequest` preserves omitted BranchId, distinguishes explicit null/ID, validates active transfers before mutation, and prevents self active→inactive PUT. Ref-backed in-flight guards and explicit refetch-failure feedback cover owner HR pages. HR-004/005/006 are merged into HR-001/003/002 respectively; all remain runtime-pending. New page-specific cases remain `Chưa test`.
+
+HR handoff clarification (2026-10-15): actor and target roles are separate in branch validation. Manager actors remain constrained to the authenticated JWT branch; admin actors may currently assign a branchless normalized staff target, including `manager`, because the source has no existing admin target-role branch-required rule. Omitted BranchId preserves, same ID preserves even when inactive, different non-null ID requires an active existing branch, and explicit null removes the branch under current admin behavior. No historical attendance, schedule, shift or order links are changed. Owner `/attendance` and `/shifts` are read/refresh-only; attendance check-in/out and shift open/close writes are separate staff/POS endpoints outside this page scope. HR-001..003 remain source-fixed/runtime-pending; all manual cases remain `Chưa test`.

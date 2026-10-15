@@ -5,12 +5,14 @@ using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
 using RestaurantPOS.Application.Services;
 using RestaurantPOS.Application.Common.Security;
+using RestaurantPOS.Application.DTOs;
 using Microsoft.AspNetCore.Identity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -137,6 +139,9 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (IsManagementRole(employee.Role)) employee.Role = "employee";
             }
 
+            if (employee.BranchId.HasValue && !await IsActiveBranchAsync(employee.BranchId.Value))
+                return BadRequest(new { message = "Chi nhánh không tồn tại hoặc đã ngừng hoạt động." });
+
             try
             {
                 employee.Id = Guid.NewGuid();
@@ -178,17 +183,27 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// <summary>Cập nhật thông tin nhân viên.</summary>
         [HttpPut("{id}")]
         [Authorize(Roles = "admin,manager")]
-        public async Task<IActionResult> UpdateEmployee(Guid id, [FromBody] Employee employee)
+        public async Task<IActionResult> UpdateEmployee(Guid id, [FromBody] EmployeeUpdateRequest request)
         {
             if (!IsAdmin() && !IsManager()) return Forbid();
-            if (id != employee.Id) return BadRequest(new { message = "ID không khớp" });
-
-            if (!RoleNames.TryNormalizeStaffRole(employee.Role, out var normalizedRole))
-                return BadRequest(new { message = "Role nhân viên không hợp lệ." });
-            employee.Role = normalizedRole;
+            if (request.Id.HasValue && id != request.Id.Value) return BadRequest(new { message = "ID không khớp" });
 
             var existing = await _context.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id);
             if (existing == null) return NotFound();
+
+            if (!TryReadBranchId(request.BranchId, out var branchSpecified, out var requestedBranchId))
+                return BadRequest(new { message = "BranchId không hợp lệ." });
+
+            var targetRole = request.Role ?? existing.Role;
+            if (!RoleNames.TryNormalizeStaffRole(targetRole, out var normalizedRole))
+                return BadRequest(new { message = "Role nhân viên không hợp lệ." });
+            targetRole = normalizedRole;
+
+            var targetIsActive = request.IsActive ?? existing.IsActive;
+            if (CurrentUserId() == id && !targetIsActive)
+                return Conflict(new { message = "Bạn không thể tự vô hiệu hóa tài khoản đang đăng nhập." });
+
+            var targetBranchId = branchSpecified ? requestedBranchId : existing.BranchId;
 
             if (!IsAdmin())
             {
@@ -198,15 +213,44 @@ namespace RestaurantPOS.WebAPI.Controllers
                     if (!ownBranch.HasValue || existing.BranchId != ownBranch.Value) return Forbid();
                     if (IsManagementRole(existing.Role)) return Forbid();
                     // Manager cannot change branch or elevate a staff member to management.
-                    employee.BranchId = existing.BranchId;
-                    if (IsManagementRole(employee.Role)) employee.Role = existing.Role;
+                    targetBranchId = existing.BranchId;
+                    if (IsManagementRole(targetRole)) targetRole = existing.Role;
                 }
                 else return Forbid();
             }
 
-            if (!RoleNames.TryNormalizeStaffRole(employee.Role, out var finalNormalizedRole))
-                return BadRequest(new { message = "Role nhân viên không hợp lệ." });
-            employee.Role = finalNormalizedRole;
+            // Chỉ kiểm tra chi nhánh khi có thao tác gán/chuyển; sửa hồ sơ ở chi nhánh cũ vẫn được phép.
+            Branch? targetBranch = null;
+            if (targetBranchId.HasValue && targetBranchId != existing.BranchId)
+            {
+                targetBranch = await GetActiveBranchAsync(targetBranchId.Value);
+                if (targetBranch == null)
+                    return BadRequest(new { message = "Chi nhánh không tồn tại hoặc đã ngừng hoạt động." });
+            }
+
+            var employee = new Employee
+            {
+                Id = id,
+                EmployeeCode = request.EmployeeCode ?? existing.EmployeeCode,
+                EmployeeType = request.EmployeeType ?? existing.EmployeeType,
+                FullName = request.FullName ?? existing.FullName,
+                PhoneNumber = request.PhoneNumber,
+                Position = request.Position,
+                Department = request.Department,
+                BasicSalary = request.BasicSalary ?? existing.BasicSalary,
+                BranchId = targetBranchId,
+                BranchName = targetBranch?.Name ?? (targetBranchId == existing.BranchId ? existing.BranchName : null),
+                CitizenId = request.CitizenId,
+                BirthDate = request.BirthDate,
+                Gender = request.Gender,
+                Address = request.Address,
+                StartDate = request.StartDate ?? existing.StartDate,
+                IsActive = targetIsActive,
+                Role = targetRole,
+                Note = request.Note,
+                Username = request.Username,
+                CreatedAt = existing.CreatedAt
+            };
 
             // Ép kiểu sang UTC cho PostgreSQL
             employee.StartDate = DateTime.SpecifyKind(employee.StartDate, DateTimeKind.Utc);
@@ -216,11 +260,11 @@ namespace RestaurantPOS.WebAPI.Controllers
             }
             employee.CreatedAt = DateTime.SpecifyKind(employee.CreatedAt, DateTimeKind.Utc);
 
-            if (!string.IsNullOrEmpty(employee.Password))
+            if (!string.IsNullOrEmpty(request.Password))
             {
-                var passwordError = PasswordPolicy.Validate(employee.Password);
+                var passwordError = PasswordPolicy.Validate(request.Password);
                 if (passwordError != null) return BadRequest(new { message = passwordError });
-                employee.Password = _passwordHasher.HashPassword(employee, employee.Password);
+                employee.Password = _passwordHasher.HashPassword(employee, request.Password);
             }
             else
             {
@@ -253,6 +297,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             var emp = await _context.Employees.FindAsync(id);
             if (emp == null) return NotFound();
 
+            if (CurrentUserId() == id)
+                return Conflict(new { message = "Bạn không thể tự vô hiệu hóa tài khoản đang đăng nhập." });
+
             if (IsManager())
             {
                 var ownBranch = CurrentUserBranchId();
@@ -274,6 +321,9 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             var emp = await _context.Employees.FindAsync(id);
             if (emp == null) return NotFound();
+
+            if (CurrentUserId() == id)
+                return Conflict(new { message = "Bạn không thể tự xóa tài khoản đang đăng nhập." });
 
             if (IsManager())
             {
@@ -305,5 +355,19 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         private Guid? CurrentUserId() => Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;
         private Guid? CurrentUserBranchId() => Guid.TryParse(User.FindFirst("branchId")?.Value, out var id) ? id : null;
+        private Task<bool> IsActiveBranchAsync(Guid branchId) => _context.Branches.AsNoTracking().AnyAsync(b => b.Id == branchId && b.IsActive);
+        private Task<Branch?> GetActiveBranchAsync(Guid branchId) => _context.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == branchId && b.IsActive);
+
+        private static bool TryReadBranchId(JsonElement branchValue, out bool specified, out Guid? branchId)
+        {
+            specified = branchValue.ValueKind != JsonValueKind.Undefined;
+            branchId = null;
+            if (!specified || branchValue.ValueKind == JsonValueKind.Null) return true;
+            if (branchValue.ValueKind != JsonValueKind.String || !Guid.TryParse(branchValue.GetString(), out var parsed))
+                return false;
+
+            branchId = parsed;
+            return true;
+        }
     }
 }

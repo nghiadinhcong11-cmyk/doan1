@@ -140,3 +140,34 @@ Next session: decide the missing-row default and inactive-branch order recovery 
 - Kitchen request status suppresses invalid-branch broadcast but mutates OrderRequest before validating the joined order branch. SEC-004 remains open until ordering is corrected.
 - Migration source was reviewed only; explicit `DbContext`/`Migration` metadata was added to the uncommitted migration, but no generated `BuildTargetModel` designer or database/schema application was performed.
 - Added AUTH-06, BRANCH-08 and SIG-04. All remain Chưa test. Guest reservation policy remains open.
+## Owner employee navigation static review — 2026-10-15
+
+- Audited the actual admin/management “Nhân viên” navigation scope: `/employees`, `/attendance`, `/schedule`, `/shifts`.
+- Static report: `bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/OWNER-EMPLOYEE-NAV-REVIEW.md`.
+- Added findings `HR-001..HR-003` to the single findings register. They remain open; no runtime, API, database or migration test was run.
+- Added owner manual cases `ADM-EMP-01..05` in `ba-test-frontend/chu-quan/employees.md`; reused existing `ADM-11`, `ADM-17` and shared `HR-SUB-03..05`. All remain `Chưa test`.
+- `EmployeeType` and `BasicSalary` remain profile-only fields. No payroll behavior was added or inferred.
+- No application code, migration, snapshot, `AGENTS.md` or `AI_RULES.md` was changed.
+- Owner navigation HR source-fix update (2026-10-15): HR-001 now blocks self-disable/self-delete from authenticated identity in `EmployeeController` and disables only those UI actions; self-edit remains available.
+- HR-002 now checks response status and exposes safe error/loading feedback across `/employees`, `/attendance`, `/schedule`, `/shifts`, with pending guards for writes/refreshes.
+- HR-003 now validates active branch on create and actual non-null branch transfer while allowing profile edits on an existing inactive branch.
+- HR-001..003 are `Đã sửa source, chờ kiểm chứng runtime`; `ADM-EMP-01..05` remain `Chưa test`. Admin build passed; isolated backend build passed; no API/browser/database/migration/seed operation ran.
+
+## Owner navigation HR static fix review — 2026-10-15
+
+- Reviewed the actual HR application diff separately from pre-existing documentation changes.
+- Confirmed JWT source mapping: `AuthController` passes `employee.Id` to `JwtService`, which writes `ClaimTypes.NameIdentifier`; backend self checks compare the employee key, while localStorage is UX-only.
+- Residual findings: HR-004 self-disable through entity-shaped `PUT`; HR-005 omitted/null `BranchId` ambiguity; HR-006 handler-level duplicate-submit and mutation-success/refetch-failure distinction.
+- Added page-specific owner cases: `ADM-ATT-01..03`, `ADM-SCH-01..04`, `ADM-SHF-01..03`; all remain `Chưa test`. `ADM-EMP-06..07` cover the HR-004/005 paths.
+- HR handoff is not closed. No source, API, browser, runtime, database, migration or build operation was performed in this review.
+- HR residuals fixed in source: `UpdateEmployee` now uses allow-listed `EmployeeUpdateRequest`, blocks self active→inactive PUT, distinguishes omitted/null/ID `BranchId`, preserves manager branch rules and checks active transfer before mutation. Employee/schedule mutations and attendance/shifts refreshes now have ref-backed in-flight guards; successful mutations report refetch failure separately.
+- HR-004 is merged into HR-001, HR-005 into HR-003, HR-006 into HR-002. All three parent findings are `Đã sửa source, chờ kiểm chứng runtime`; no runtime/API/browser/database/migration/seed was run.
+- Added `ADM-EMP-06..08`, `ADM-ATT-01..03`, `ADM-SCH-01..04`, `ADM-SHF-01..03`; all remain `Chưa test`. HR handoff is pending runtime verification.
+
+## HR handoff clarification and closeout preparation - 2026-10-15
+
+- Actor and target roles are separate in branch validation. Manager actors remain constrained to the authenticated JWT branch; admin actors may currently assign a branchless normalized staff target, including `manager`, because no existing admin target-role branch-required rule is present. This is preserved policy, not a new source defect.
+- BranchId semantics are explicit: omitted preserves, same ID preserves including an inactive current branch, different non-null ID requires an active existing branch, and explicit null removes the branch under current admin behavior. Role and final branch are checked before mutation; historical links are untouched.
+- Owner `/attendance` and `/shifts` are read/refresh-only. Attendance check-in/out and shift open/close endpoints exist in staff/POS controllers outside this owner-nav scope and were not runtime-tested as owner-page mutations.
+- Owner writes reviewed are employee create/update/status-toggle/delete and schedule create/delete. Their source handlers include response checks, ref-backed in-flight protection and distinct mutation-success/refetch-failure feedback. Manual cases remain `Chưa test`.
+- HR-001..003 are `Đã sửa source, chờ kiểm chứng runtime`; HR-004/005/006 are merged into those parent findings. Admin frontend and isolated backend builds passed; no API, browser, database, migration, seed or runtime operation was run. This is not runtime PASS or finding closure.

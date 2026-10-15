@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Calendar, Clock, LogIn, LogOut, Loader2, User, CheckCircle2, AlertCircle, Filter, Download, QrCode, X, Printer, MapPin, Building2, Save, ChevronRight } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { Feedback } from '../../../components/ui';
 
 interface AttendanceRecord {
   id: string;
@@ -24,6 +25,8 @@ const AttendanceManagement = () => {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
+  const attendanceRequestInFlight = React.useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBranch, setFilterBranch] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all'); // all, Đúng giờ, Muộn
@@ -33,17 +36,21 @@ const AttendanceManagement = () => {
   const [showInlineQr, setShowInlineQr] = useState(false);
 
   const fetchAttendances = async () => {
+    if (attendanceRequestInFlight.current) return;
+    attendanceRequestInFlight.current = true;
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/Attendance`);
+      if (!response.ok) throw new Error('attendance request failed');
       const data = await response.json();
 
       // Giả sử API chưa trả về homeBranchName, ta có thể bổ sung logic map nếu cần
       // Hoặc cập nhật API sau. Ở đây ta chuẩn bị sẵn interface.
       setRecords(data);
     } catch (err) {
-      console.error("Lỗi lấy dữ liệu chấm công:", err);
+      setPageError('Không thể tải dữ liệu chấm công. Vui lòng thử lại.');
     } finally {
+      attendanceRequestInFlight.current = false;
       setLoading(false);
     }
   };
@@ -51,6 +58,7 @@ const AttendanceManagement = () => {
   const fetchBranches = async () => {
     try {
       const response = await fetch(`${API_URL}/api/Branch`);
+      if (!response.ok) throw new Error('branch request failed');
       const data = await response.json();
       setBranches(data);
 
@@ -63,7 +71,7 @@ const AttendanceManagement = () => {
         setSelectedBranchForQr(data[0]);
       }
     } catch (err) {
-      console.error(err);
+      setPageError('Không thể tải danh sách chi nhánh. Vui lòng thử lại.');
     }
   };
 
@@ -215,7 +223,7 @@ const AttendanceManagement = () => {
             />
           </div>
           <div className="flex space-x-3">
-            <button onClick={fetchAttendances} className="bg-white border-2 border-gray-100 text-gray-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95">
+            <button disabled={loading} onClick={fetchAttendances} className="bg-white border-2 border-gray-100 text-gray-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95 disabled:cursor-wait disabled:opacity-50">
               LÀM MỚI
             </button>
             <button className="bg-white border-2 border-gray-100 text-gray-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95 flex items-center">
@@ -223,6 +231,8 @@ const AttendanceManagement = () => {
             </button>
           </div>
         </div>
+
+        {pageError && <div className="px-8 pt-4"><Feedback tone="error" onDismiss={() => setPageError('')}>{pageError}</Feedback></div>}
 
         <div className="flex-1 overflow-auto p-8 bg-[#f8f9fa]">
            <div className="bg-white rounded-[1rem] shadow-2xl shadow-blue-500/5 border border-gray-200 overflow-hidden">

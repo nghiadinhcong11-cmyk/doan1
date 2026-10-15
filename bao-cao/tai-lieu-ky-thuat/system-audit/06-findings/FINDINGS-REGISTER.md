@@ -255,8 +255,84 @@ No current AI branch-scope bypass was demonstrated. AiToolValidator lacking call
 | Severity | Medium |
 | Priority | P1 |
 | Confidence | Static behavior confirmed; runtime request test not run |
-| Processing status | Mở |
+| Processing status | Đã sửa source, chờ kiểm chứng runtime |
 | Remediation | Introduce/use a registration DTO containing only approved public fields and set CustomerGroup/internal fields server-side. Preserve the separate walk-in DTO. |
 | Retest condition | Submit redacted registration requests containing internal fields in an isolated environment; verify ignored fields and normal customer token/profile behavior. |
 | Retest result | Chưa kiểm tra |
 
+## Owner employee navigation review addendum — 2026-10-15
+
+The static review is recorded in [`OWNER-EMPLOYEE-NAV-REVIEW.md`](../02-static-review/OWNER-EMPLOYEE-NAV-REVIEW.md). The review used HEAD `1ef623e94cea83f150006c9a22a10126611a171c` on `main`; the working tree was clean at review start. No application code, migration, snapshot, API, browser or database operation was performed.
+
+### HR-001 — Admin can self-disable or self-delete through employee management
+
+| Field | Value |
+|---|---|
+| Evidence | `services/api/src/WebAPI/Controllers/EmployeeController.cs`, `ToggleStatus` and `DeleteEmployee`: admin/manager authorization and manager scope checks exist, but no comparison with the authenticated employee ID. `apps/admin-web/src/features/hrm/pages/EmployeeManagement.tsx` exposes both actions for expanded rows. |
+| Impact | The current admin session can lock or remove its own account. Login checks `IsActive`, but the inspected source does not establish revocation/revalidation of an already-issued JWT. Permanent deletion may also affect historical employee-linked data. |
+| Severity | High |
+| Priority | P1 |
+| Confidence | Static missing self-protection confirmed; already-issued JWT and referential effects require runtime/database evidence |
+| Processing status | Đã sửa source, chờ kiểm chứng runtime |
+| Remediation | Decide and enforce a minimal self-protection rule: reject self-disable/delete or require another authorized admin/confirmation workflow. Preserve historical records unless a separate approved policy says otherwise. |
+| Retest condition | In an isolated environment, use a disposable admin identity to attempt self-toggle and self-delete; observe HTTP result, subsequent login/session behavior and linked attendance/schedule/shift/history outcomes. |
+| Retest result | Chưa kiểm tra |
+
+### HR-002 — HR pages do not consistently expose API errors or non-success responses
+
+| Field | Value |
+|---|---|
+| Evidence | `EmployeeManagement.fetchEmployees`, `AttendanceManagement.fetchAttendances`, `WorkSchedulePage.fetchSchedules` and `ShiftManagement.fetchData` log errors or fall back to empty data without a visible error state. `EmployeeManagement.fetchEmployees` does not check `response.ok`; mutation handlers do not consistently surface non-success bodies. |
+| Impact | Empty data, API failure, expired session and invalid response can look the same. Users may repeat a mutation without knowing whether it was accepted. |
+| Severity | Medium |
+| Priority | P1 |
+| Confidence | Static behavior confirmed |
+| Processing status | Đã sửa source, chờ kiểm chứng runtime |
+| Remediation | Scope any future fix to the affected page patterns: check response status, preserve loading/error/empty distinction, show safe retry feedback and prevent ambiguous repeated mutations. |
+| Retest condition | Force/observe 401, 403, non-2xx and network failure for each page; verify visible error, retry behavior and no duplicate mutation. |
+| Retest result | Chưa kiểm tra |
+
+### HR-003 — Admin employee branch assignment lacks explicit active-branch validation
+
+| Field | Value |
+|---|---|
+| Evidence | `EmployeeController.CreateEmployee` and `UpdateEmployee` accept admin-supplied `BranchId` without an explicit active-branch lookup. `EmployeeManagement` loads choices from `GET /api/Branch`, while `BranchController.GetBranches` returns active branches only; direct payloads are not constrained by that UI list. |
+| Impact | An employee may be assigned to an inactive or invalid branch, or an unknown branch may produce a database/provider error instead of a deterministic validation response. This can diverge from branch and authentication assumptions. |
+| Severity | Medium |
+| Priority | P1 |
+| Confidence | Static validation gap confirmed; intended inactive-branch policy and actual FK behavior require runtime/database evidence |
+| Processing status | Đã sửa source, chờ kiểm chứng runtime |
+| Remediation | Explicitly decide whether inactive branches may hold employee records. If not, validate branch existence and active state server-side on create/update; retain manager JWT branch enforcement. |
+| Retest condition | In an isolated environment, submit valid, unknown and inactive branch IDs for admin create/update; record redacted status/body and resulting record state. |
+| Retest result | Chưa kiểm tra |
+
+## Owner employee navigation method tracking
+
+| Finding | Method | Status | Evidence |
+|---|---|---|---|
+| HR-001 | Static UI/controller/entity/persistence review | Đã kiểm tra tĩnh | `OWNER-EMPLOYEE-NAV-REVIEW.md` |
+| HR-001 | Self-toggle/self-delete and linked-history runtime test | Chưa kiểm tra | Owner manual cases / isolated API test required |
+| HR-002 | Static UI fetch/error review | Đã kiểm tra tĩnh | `OWNER-EMPLOYEE-NAV-REVIEW.md` |
+| HR-002 | API failure/retry/repeated-action runtime test | Chưa kiểm tra | Owner manual cases |
+| HR-003 | Static UI/controller/branch relationship review | Đã kiểm tra tĩnh | `OWNER-EMPLOYEE-NAV-REVIEW.md` |
+| HR-003 | Valid/unknown/inactive branch payload test | Chưa kiểm tra | Owner manual cases / isolated API test required |
+
+### HR implementation follow-up — source fixed, runtime pending — 2026-10-15
+
+| Finding | Source change | Processing status |
+|---|---|---|
+| HR-001 | `EmployeeController.ToggleStatus` and `DeleteEmployee` reject a target matching authenticated `ClaimTypes.NameIdentifier`; `EmployeeManagement` disables those two actions for the current employee while keeping `Sửa hồ sơ` available. | Đã sửa source, chờ kiểm chứng runtime |
+| HR-002 | The four pages now check non-2xx responses, show safe page/form feedback, preserve failed forms, finish loading/submitting in `finally`, and prevent repeated writes/refreshes while pending. | Đã sửa source, chờ kiểm chứng runtime |
+| HR-003 | `CreateEmployee` validates a supplied branch as existing and active; `UpdateEmployee` validates only an actual non-null branch transfer, so profile edits on an existing inactive branch remain possible. | Đã sửa source, chờ kiểm chứng runtime |
+
+No last-admin policy, JWT revocation policy, history migration, payroll behavior, EmployeeType or BasicSalary rule was added or changed.
+
+### HR static fix-review residuals — 2026-10-15
+
+| Finding | Evidence | Severity | Processing status |
+|---|---|---|---|
+| HR-004 | Former residual: self `PUT` could set `IsActive=false`; now covered by HR-001 after `UpdateEmployee` self-transition protection. | High | Gộp vào HR-001 — Đã sửa source, chờ kiểm chứng runtime |
+| HR-005 | Former residual: omitted/null `BranchId`; now covered by HR-003 through `EmployeeUpdateRequest` presence-aware contract and pre-mutation validation. | Medium | Gộp vào HR-003 — Đã sửa source, chờ kiểm chứng runtime |
+| HR-006 | Former residual: handler in-flight/refetch result gap; now covered by HR-002 through ref guards and explicit mutation-success/refetch-failure feedback. | Medium | Gộp vào HR-002 — Đã sửa source, chờ kiểm chứng runtime |
+
+The HR source-fix review confirmed JWT generation maps `employee.Id` to `ClaimTypes.NameIdentifier`, so the new backend self comparison uses the same employee primary key in the inspected auth path. No runtime, API, browser, database or migration evidence was added.

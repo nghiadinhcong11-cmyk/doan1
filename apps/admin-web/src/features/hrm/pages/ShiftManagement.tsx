@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Search, Calendar, User, MapPin, Banknote, RotateCcw, CreditCard, ArrowRight, Download, Filter, Loader2, CheckCircle2, Clock, AlertCircle, Store } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { Feedback } from '../../../components/ui';
 
 interface Shift {
   id: string;
@@ -21,6 +22,8 @@ interface Shift {
 const ShiftManagement = () => {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
+  const dataRequestInFlight = React.useRef(false);
   const [filterBranch, setFilterBranch] = useState('all'); // Store Branch ID here
   const [branches, setBranches] = useState<any[]>([]);
   const isAdmin = localStorage.getItem('userRole') === 'admin';
@@ -30,6 +33,8 @@ const ShiftManagement = () => {
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
 
   const fetchData = async () => {
+    if (dataRequestInFlight.current) return;
+    dataRequestInFlight.current = true;
     try {
       setLoading(true);
       const url = `${API_URL}/api/Shift?fromDate=${fromDate}&toDate=${toDate}`;
@@ -37,15 +42,18 @@ const ShiftManagement = () => {
         fetch(url),
         isAdmin ? fetch(`${API_URL}/api/Branch`) : Promise.resolve(null)
       ]);
+      if (!resShifts.ok) throw new Error('shift request failed');
       const dataShifts = await resShifts.json();
       setShifts(Array.isArray(dataShifts) ? dataShifts : []);
       if (resBranches) {
+        if (!resBranches.ok) throw new Error('branch request failed');
         const dataBranches = await resBranches.json();
         setBranches(Array.isArray(dataBranches) ? dataBranches : []);
       }
     } catch (err) {
-      console.error(err);
+      setPageError('Không thể tải dữ liệu chốt ca. Vui lòng thử lại.');
     } finally {
+      dataRequestInFlight.current = false;
       setLoading(false);
     }
   };
@@ -64,6 +72,7 @@ const ShiftManagement = () => {
 
   return (
     <div className="p-6 bg-[#f0f2f5] min-h-screen font-sans">
+      {pageError && <div className="mb-4"><Feedback tone="error" onDismiss={() => setPageError('')}>{pageError}</Feedback></div>}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-800 uppercase tracking-tighter italic">Báo cáo chốt ca chi tiết</h1>
@@ -105,7 +114,7 @@ const ShiftManagement = () => {
                 >{b.name}</button>
               ))}
            </div>
-           <button onClick={fetchData} className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 text-gray-400 transition-all">
+           <button disabled={loading} onClick={fetchData} className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 text-gray-400 transition-all disabled:cursor-wait disabled:opacity-50">
               <RotateCcw size={18} />
            </button>
         </div>

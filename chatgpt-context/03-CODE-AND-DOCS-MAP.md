@@ -76,3 +76,10 @@ Read diagnostic scripts before running them. `--apply`, `--execute`, migration a
 
 - Source-fix follow-up: `CustomerRegistrationDto`, `KitchenService.UpdateRequestStatusAsync`, branch-aware `ProductController`/`ProductService`, and `KitchenPage` availability consumer. Migration metadata is in `20261015051548_AddProductBranchAvailability.cs`; it is not applied.
 
+## Owner employee navigation review — 2026-10-15
+
+- The actual `Navbar` “Nhân viên” group contains `/employees`, `/attendance`, `/schedule` and `/shifts` for the management shell. `ManagementRoutes.tsx` registers these routes for both `admin` and `manager`; staff-specific HR routes are separate and were not included in the owner-nav audit.
+- Static report: `bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/OWNER-EMPLOYEE-NAV-REVIEW.md`.
+- New findings: `HR-001` (admin self-toggle/self-delete has no self-protection), `HR-002` (HR page API errors are not consistently visible/response-checked), and `HR-003` (admin employee branch assignment has no explicit active-branch validation). All remain open and untested.
+- Owner follow-up cases are `ADM-EMP-01..05` in `ba-test-frontend/chu-quan/employees.md`; existing `ADM-11`, `ADM-17` and shared `HR-SUB-03..05` are reused. No application source was changed.
+

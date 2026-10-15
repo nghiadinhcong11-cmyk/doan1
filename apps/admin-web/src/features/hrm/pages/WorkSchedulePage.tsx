@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Users, Calendar as CalendarIcon, Clock, Filter, Loader2, X, Search, Trash2, MapPin, Store } from 'lucide-react';
 import { API_URL } from '../../../config';
-import { notifyFeedback } from '../../../components/ui';
+import { Feedback, notifyFeedback } from '../../../components/ui';
 
 interface Schedule {
   id: string;
@@ -25,6 +25,11 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
   const [employees, setEmployees] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const saveInFlight = React.useRef(false);
+  const deleteInFlight = React.useRef(new Set<string>());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [branches, setBranches] = useState<any[]>([]);
@@ -57,21 +62,24 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
 
   const weekDays = getWeekDays();
 
-  const fetchSchedules = async () => {
+  const fetchSchedules = async (): Promise<boolean> => {
     try {
       setLoading(true);
       const endOfWeekDate = new Date(startOfWeek);
       endOfWeekDate.setDate(startOfWeek.getDate() + 6);
 
       const res = await fetch(`${API_URL}/api/WorkSchedule?startDate=${startOfWeek.toISOString()}&endDate=${endOfWeekDate.toISOString()}`);
+      if (!res.ok) throw new Error('schedule request failed');
       const data = await res.json();
       setSchedules(data);
 
       const resEmp = await fetch(`${API_URL}/api/Employee`);
+      if (!resEmp.ok) throw new Error('employee request failed');
       const dataEmp = await resEmp.json();
       setEmployees(dataEmp);
 
       const resBranch = await fetch(`${API_URL}/api/Branch`);
+      if (!resBranch.ok) throw new Error('branch request failed');
       const dataBranch = await resBranch.json();
       setBranches(userRole === 'manager'
         ? dataBranch.filter((branch: any) => branch.id === assignedBranchId)
@@ -81,8 +89,10 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
       if (savedBranchId && filterBranchId === 'all') {
         setFilterBranchId(savedBranchId);
       }
+      return true;
     } catch (err) {
-      console.error(err);
+      setPageError('Không thể tải dữ liệu lịch làm. Vui lòng thử lại.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -94,8 +104,11 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveInFlight.current) return;
     const emp = employees.find(e => e.id === newSchedule.employeeId);
 
+    saveInFlight.current = true;
+    setIsSaving(true);
     try {
       const res = await fetch(`${API_URL}/api/WorkSchedule`, {
         method: 'POST',
@@ -107,21 +120,42 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
           branchName: emp?.branchName
         })
       });
-      if (res.ok) {
-        setIsModalOpen(false);
-        fetchSchedules();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể lưu lịch làm.');
+        return;
       }
+      setIsModalOpen(false);
+      const refreshed = await fetchSchedules();
+      if (!refreshed) notifyFeedback('Đã lưu lịch làm, nhưng không thể tải lại dữ liệu.');
     } catch (err) {
       notifyFeedback("Lỗi lưu lịch làm");
+    } finally {
+      saveInFlight.current = false;
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (deleteInFlight.current.has(id)) return;
     if (!window.confirm("Xóa lịch làm này?")) return;
+    deleteInFlight.current.add(id);
+    setDeletingIds(new Set(deleteInFlight.current));
     try {
-      await fetch(`${API_URL}/api/WorkSchedule/${id}`, { method: 'DELETE' });
-      fetchSchedules();
-    } catch (err) { console.error(err); }
+      const response = await fetch(`${API_URL}/api/WorkSchedule/${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể xóa lịch làm.');
+        return;
+      }
+      const refreshed = await fetchSchedules();
+      if (!refreshed) notifyFeedback('Đã xóa lịch làm, nhưng không thể tải lại dữ liệu.');
+    } catch (err) {
+      notifyFeedback('Không thể kết nối máy chủ khi xóa lịch làm.');
+    } finally {
+      deleteInFlight.current.delete(id);
+      setDeletingIds(new Set(deleteInFlight.current));
+    }
   };
 
   const changeWeek = (offset: number) => {
@@ -202,6 +236,8 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
          </div>
       </div>
 
+      {pageError && <div className="px-8 pt-4"><Feedback tone="error" onDismiss={() => setPageError('')}>{pageError}</Feedback></div>}
+
       {/* Weekly Grid */}
       <div className="flex-1 overflow-auto p-8 bg-[#f8f9fa]">
          {loading ? (
@@ -260,7 +296,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                                           <div className="flex justify-between items-start mb-1">
                                              <span className="uppercase tracking-widest italic opacity-80">Ca {s.shiftName}</span>
                                              {!readOnly && (
-                                               <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity bg-white p-0.5 rounded-full shadow-sm">
+                                               <button disabled={deletingIds.has(s.id)} onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity bg-white p-0.5 rounded-full shadow-sm disabled:cursor-wait disabled:opacity-40">
                                                   <X size={10}/>
                                                </button>
                                              )}
@@ -343,7 +379,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                        </div>
                     </div>
                  </div>
-                 <button type="submit" className="w-full py-5 bg-[#0070f4] text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 mt-6">XÁC NHẬN LƯU LỊCH BIỂU</button>
+                 <button type="submit" disabled={isSaving} className="w-full py-5 bg-[#0070f4] text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 mt-6 disabled:cursor-wait disabled:opacity-60">{isSaving ? 'ĐANG LƯU...' : 'XÁC NHẬN LƯU LỊCH BIỂU'}</button>
               </div>
            </form>
         </div>

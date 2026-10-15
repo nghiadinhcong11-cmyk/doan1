@@ -18,7 +18,9 @@ Nguồn route: ManagementRoutes.tsx, CashierRoutes.tsx, StaffRoutes.tsx, Kitchen
 | Chủ quán | /expenses | ExpenseManagement.tsx | danh sách, filter, ghi nhận, retry | ADM-07, FLOW-13, FLOW-15 | chu-quan/00-CASES-BY-PAGE.md, lien-vai-tro/order-to-payment.md | Chưa test |
 | Chủ quán | /inventory/* | InventoryPage.tsx | overview, item, receipt, issue, history | ADM-09, FLOW-03 | chu-quan/00-CASES-BY-PAGE.md | Chưa có case riêng từng subpage/action |
 | Chủ quán | /employees | EmployeeManagement.tsx | hồ sơ, EmployeeType, BasicSalary, quyền branch | ADM-08, EMP-PROFILE-01..06 | chu-quan/employees.md, chu-quan/00-CASES-BY-PAGE.md | Chưa test |
-| Chủ quán | /attendance, /schedule, /shifts | HR pages | chấm công, lịch, ca | ADM-08 | chu-quan/00-CASES-BY-PAGE.md | Chưa tách theo trang |
+| Chủ quán | /attendance | AttendanceManagement.tsx | chấm công, filter, QR branch, loading/error/retry | ADM-08, ADM-ATT-01..03 | chu-quan/attendance.md | Chưa test; HR-002 |
+| Chủ quán | /schedule | WorkSchedulePage.tsx | tuần/branch/tìm kiếm, tạo/xóa lịch, mutation error/retry | ADM-08, ADM-SCH-01..04 | chu-quan/schedule.md | Chưa test; HR-002 |
+| Chủ quán | /shifts | ShiftManagement.tsx | ngày/branch/filter, refresh, lịch sử ca, error/retry | ADM-08, ADM-SHF-01..03 | chu-quan/shifts.md | Chưa test; HR-002 |
 | Chủ quán | /customers | CustomerManagement.tsx | danh sách, tìm/lọc, loyalty/scope | — | — | Chưa có case chuyên biệt |
 | Chủ quán | /profile | ProfilePage.tsx | hồ sơ, session | ADM-01, ADM-10, ADM-13 | chu-quan/00-CASES-BY-PAGE.md | Chưa test |
 | Chủ quán | /tables, /reservations | operations pages | bàn/QR, đặt bàn | ADM-05, FLOW-01 | chu-quan/00-CASES-BY-PAGE.md, lien-vai-tro/order-to-payment.md | Chưa test |
@@ -92,4 +94,14 @@ Admin-only settings: /settings; /settings/receipt; /print-templates; /branches. 
 - Settings subpages: SET-SUB-01..08 in chung/inventory-hr-settings.md.
 - Guest direct /reservation and /profile: KQR-01..06 in khach-qr/guest-direct-routes.md; policy remains open under COV-001.
 
+## Owner “Nhân viên” navigation audit addendum
+
+| Vai trò | Route/page thực tế | Component/source | Chức năng | Case ID | File checklist | Khoảng trống |
+|---|---|---|---|---|---|---|
+| Chủ quán | `/employees` | `Navbar.tsx` → `ManagementRoutes.tsx` → `EmployeeManagement.tsx` | list/search/status/branch/department, add/edit/toggle/delete, EmployeeType/BasicSalary | `ADM-08`, `EMP-PROFILE-01..06`, `ADM-EMP-01..02`, `ADM-EMP-04..05` | `chu-quan/employees.md`, `chu-quan/00-CASES-BY-PAGE.md` | Chưa test; findings HR-001..HR-003 |
+| Chủ quán | `/attendance` | `AttendanceManagement.tsx` → `AttendanceController` | attendance list/search/filter, QR branch selection/activation | `ADM-08`, `ADM-ATT-01..03` | `chu-quan/attendance.md` | Chưa test; HR-002 |
+| Chủ quán | `/schedule` | `WorkSchedulePage.tsx` → `WorkScheduleController` | week/branch/name filter, create/delete schedule | `ADM-08`, `ADM-SCH-01..04` | `chu-quan/schedule.md` | Chưa test; HR-002 |
+| Chủ quán | `/shifts` | `ShiftManagement.tsx` → `ShiftController` | date/branch filter, refresh, shift history display | `ADM-08`, `ADM-SHF-01..03` | `chu-quan/shifts.md` | Chưa test; HR-002 |
+
 The route map remains a source-derived index. The linked files contain the actual preparation, steps, expected result, status, actual result and evidence fields.
+- HR fix coverage update: `/employees` now includes `ADM-EMP-06..08`; `/attendance`, `/schedule`, `/shifts` use their page-specific files and cases `ADM-ATT-01..03`, `ADM-SCH-01..04`, `ADM-SHF-01..03`. All remain `Chưa test`.

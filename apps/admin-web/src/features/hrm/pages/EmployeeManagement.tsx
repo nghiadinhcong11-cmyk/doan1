@@ -37,11 +37,15 @@ const EmployeeManagement = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [formError, setFormError] = useState('');
+  const [listError, setListError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const userRole = localStorage.getItem('userRole');
   const ownBranchId = localStorage.getItem('selectedBranchId');
+  const currentEmployeeId = localStorage.getItem('employeeId');
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,6 +55,8 @@ const EmployeeManagement = () => {
   const [filterBranch, setFilterBranch] = useState(userRole === 'manager' && ownBranchId ? ownBranchId : 'all');
   const requestGeneration = useRef(0);
   const abortController = useRef<AbortController | null>(null);
+  const saveInFlight = useRef(false);
+  const actionInFlight = useRef(new Set<string>());
   const employeeQueryRef = useRef({ searchTerm, filterStatus, filterDept, filterPos, filterBranch });
   employeeQueryRef.current = { searchTerm, filterStatus, filterDept, filterPos, filterBranch };
   const searchEffectInitialized = useRef(false);
@@ -95,14 +101,15 @@ const EmployeeManagement = () => {
   const fetchBranches = async () => {
     try {
       const response = await fetch(`${API_URL}/api/Branch`);
+      if (!response.ok) throw new Error('branch request failed');
       const data = await response.json();
       setBranches(data);
     } catch (err) {
-      console.error('Error fetching branches:', err);
+      setListError('Không thể tải danh sách chi nhánh. Vui lòng thử lại.');
     }
   };
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (): Promise<boolean> => {
     const { searchTerm: currentSearch, filterStatus: currentStatus, filterDept: currentDept, filterPos: currentPos, filterBranch: currentBranch } = employeeQueryRef.current;
     const generation = ++requestGeneration.current;
     abortController.current?.abort();
@@ -119,13 +126,16 @@ const EmployeeManagement = () => {
       if (currentPos) params.append('position', currentPos);
 
       const response = await fetch(`${url}${params.toString() ? `?${params.toString()}` : ''}`, { signal: controller.signal });
+      if (!response.ok) throw new Error('employee request failed');
       const data: Employee[] = await response.json();
 
-      if (generation !== requestGeneration.current) return;
+      if (generation !== requestGeneration.current) return false;
       const finalData = currentBranch === 'all' ? data : data.filter(e => e.branchId === currentBranch);
       setEmployees(finalData);
+      return true;
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) console.error('Error fetching employees:', err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) setListError('Không thể tải danh sách nhân viên. Vui lòng thử lại.');
+      return false;
     } finally {
       if (generation === requestGeneration.current) setLoading(false);
       if (abortController.current === controller) abortController.current = null;
@@ -165,11 +175,14 @@ const EmployeeManagement = () => {
 
   const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveInFlight.current) return;
     setFormError('');
     if (newEmployee.password && (newEmployee.password.length < 8 || newEmployee.password.length > 128)) {
       setFormError('Mật khẩu phải dài từ 8 đến 128 ký tự.');
       return;
     }
+    saveInFlight.current = true;
+    setIsSaving(true);
     try {
       const isEditing = !!editingEmployee;
       const url = isEditing
@@ -192,13 +205,17 @@ const EmployeeManagement = () => {
         setIsModalOpen(false);
         setEditingEmployee(null);
         resetForm();
-        fetchEmployees();
+        const refreshed = await fetchEmployees();
+        if (!refreshed) notifyFeedback('Đã lưu hồ sơ, nhưng không thể tải lại danh sách.');
       } else {
-        const errorData = await response.json();
-        setFormError(errorData.message || 'Không thể lưu nhân viên.');
+        const errorData = await response.json().catch(() => ({}));
+        setFormError(typeof errorData.message === 'string' ? errorData.message : 'Không thể lưu nhân viên.');
       }
     } catch (err) {
-      setFormError('Lỗi kết nối đến máy chủ.');
+      setFormError('Không thể kết nối máy chủ. Dữ liệu nhập chưa được thay đổi.');
+    } finally {
+      saveInFlight.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -238,31 +255,55 @@ const EmployeeManagement = () => {
   };
 
   const handleDeleteEmployee = async (id: string) => {
+    const actionKey = `${id}:delete`;
+    if (id === currentEmployeeId || Array.from(actionInFlight.current).some(key => key.startsWith(`${id}:`))) return;
     if (!window.confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) return;
+    actionInFlight.current.add(actionKey);
+    setPendingActions(new Set(actionInFlight.current));
     try {
       const response = await fetch(`${API_URL}/api/Employee/${id}`, {
         method: 'DELETE'
       });
-      if (response.ok) {
-        fetchEmployees();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể xóa nhân viên.');
+        return;
       }
+      const refreshed = await fetchEmployees();
+      if (!refreshed) notifyFeedback('Đã xóa nhân viên, nhưng không thể tải lại danh sách.');
     } catch (err) {
-      notifyFeedback('Lỗi khi xóa nhân viên');
+      notifyFeedback('Không thể kết nối máy chủ khi xóa nhân viên.');
+    } finally {
+      actionInFlight.current.delete(actionKey);
+      setPendingActions(new Set(actionInFlight.current));
     }
   };
 
   const handleToggleStatus = async (id: string) => {
+    const actionKey = `${id}:toggle`;
+    if (id === currentEmployeeId || Array.from(actionInFlight.current).some(key => key.startsWith(`${id}:`))) return;
+    actionInFlight.current.add(actionKey);
+    setPendingActions(new Set(actionInFlight.current));
     try {
       const response = await fetch(`${API_URL}/api/Employee/${id}/toggle-status`, {
         method: 'PATCH'
       });
-      if (response.ok) {
-        fetchEmployees();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể cập nhật trạng thái.');
+        return;
       }
+      const refreshed = await fetchEmployees();
+      if (!refreshed) notifyFeedback('Đã cập nhật trạng thái, nhưng không thể tải lại danh sách.');
     } catch (err) {
-      notifyFeedback('Lỗi khi cập nhật trạng thái');
+      notifyFeedback('Không thể kết nối máy chủ khi cập nhật trạng thái.');
+    } finally {
+      actionInFlight.current.delete(actionKey);
+      setPendingActions(new Set(actionInFlight.current));
     }
   };
+
+  const isEmployeeActionPending = (id?: string) => !!id && Array.from(pendingActions).some(key => key.startsWith(`${id}:`));
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#f8f9fa] text-[13px] font-sans">
@@ -360,6 +401,7 @@ const EmployeeManagement = () => {
 
         {/* Employee List */}
         <div className="flex-1 overflow-auto p-8">
+           {listError && <div className="mb-4"><Feedback tone="error" onDismiss={() => setListError('')}>{listError}</Feedback></div>}
            <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-blue-500/5 border border-white overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50/50 border-b text-gray-400 font-black text-[10px] uppercase tracking-[0.2em]">
@@ -421,10 +463,11 @@ const EmployeeManagement = () => {
                                        </div>
                                        <div className="flex space-x-2">
                                           <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="bg-white text-gray-700 px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest border border-gray-200 shadow-sm hover:bg-gray-50 transition-all">Sửa hồ sơ</button>
-                                          <button onClick={(ev) => { ev.stopPropagation(); handleToggleStatus(e.id!); }} className="bg-white text-orange-600 px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest border border-orange-100 shadow-sm hover:bg-orange-50 transition-all">{e.isActive ? 'Cho nghỉ' : 'Kích hoạt'}</button>
-                                          <button onClick={(ev) => { ev.stopPropagation(); handleDeleteEmployee(e.id!); }} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all">Xóa vĩnh viễn</button>
+                                          <button disabled={e.id === currentEmployeeId || isEmployeeActionPending(e.id)} title={e.id === currentEmployeeId ? 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập' : undefined} onClick={(ev) => { ev.stopPropagation(); handleToggleStatus(e.id!); }} className="bg-white text-orange-600 px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest border border-orange-100 shadow-sm hover:bg-orange-50 transition-all disabled:cursor-not-allowed disabled:opacity-40">{e.isActive ? 'Cho nghỉ' : 'Kích hoạt'}</button>
+                                          <button disabled={e.id === currentEmployeeId || isEmployeeActionPending(e.id)} title={e.id === currentEmployeeId ? 'Không thể tự xóa tài khoản đang đăng nhập' : undefined} onClick={(ev) => { ev.stopPropagation(); handleDeleteEmployee(e.id!); }} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all disabled:cursor-not-allowed disabled:opacity-40">Xóa vĩnh viễn</button>
                                        </div>
                                     </div>
+                                    {e.id === currentEmployeeId && <p className="mb-5 text-[10px] font-bold text-orange-600">Không thể tự vô hiệu hóa hoặc xóa tài khoản đang đăng nhập.</p>}
                                     <div className="grid grid-cols-4 gap-8">
                                        <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Số điện thoại</p><p className="font-bold text-gray-700">{e.phoneNumber || '---'}</p></div>
                                        <div><p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Tài khoản</p><p className="font-bold text-blue-600 italic tracking-tight">{e.username || '---'}</p></div>
@@ -569,7 +612,7 @@ const EmployeeManagement = () => {
 
                     <div className="mt-auto space-y-4 pt-10">
                        <button onClick={() => setIsModalOpen(false)} type="button" className="w-full py-4 bg-white border-2 border-gray-200 rounded-2xl font-black text-gray-400 hover:text-gray-600 hover:bg-white transition-all uppercase text-[10px] tracking-[0.2em] active:scale-95 shadow-sm">BỎ QUA</button>
-                       <button type="submit" className="w-full py-5 bg-[#0070f4] text-white rounded-2xl font-black shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all uppercase text-[10px] tracking-[0.2em] active:scale-95">LƯU HỒ SƠ</button>
+                       <button type="submit" disabled={isSaving} className="w-full py-5 bg-[#0070f4] text-white rounded-2xl font-black shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all uppercase text-[10px] tracking-[0.2em] active:scale-95 disabled:cursor-wait disabled:opacity-60">{isSaving ? 'ĐANG LƯU...' : 'LƯU HỒ SƠ'}</button>
                     </div>
                  </div>
               </form>

@@ -1,0 +1,1 @@
+Checklist cũ đã chuyển sang [khach-dang-nhap/00-LEGACY-CASES.md](khach-dang-nhap/00-LEGACY-CASES.md). Dùng [khach-dang-nhap/README.md](khach-dang-nhap/README.md) và `menu-profile-reservation.md` làm nơi cập nhật.

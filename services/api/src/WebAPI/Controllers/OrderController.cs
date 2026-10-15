@@ -572,7 +572,15 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (requestOrder == null) return NotFound();
             if (!HasBranchAccess(requestOrder.BranchId)) return Forbid();
 
-            var request = await _kitchenService.UpdateRequestStatusAsync(id, status, User.FindFirst("fullName")?.Value ?? User.Identity?.Name);
+            OrderRequest? request;
+            try
+            {
+                request = await _kitchenService.UpdateRequestStatusAsync(id, status, User.FindFirst("fullName")?.Value ?? User.Identity?.Name);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             if (request == null) return NotFound();
             return Ok(request);
         }
@@ -688,12 +696,15 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             if (_hub == null) return;
 
-            var groups = new List<string> { "kitchen-admin" };
-            if (branchId.HasValue)
+            if (!branchId.HasValue || branchId.Value == Guid.Empty)
             {
-                foreach (var role in new[] { "manager", "employee", "cashier" })
-                    groups.Add($"branch:{branchId.Value}:role:{role}");
+                _logger?.LogError("Skipped pending-order realtime notification because the order has no valid branch.");
+                return;
             }
+
+            var groups = new List<string> { "kitchen-admin" };
+            foreach (var role in new[] { "manager", "employee", "cashier" })
+                groups.Add($"branch:{branchId.Value}:role:{role}");
 
             // This event only invalidates the client-side pending-order query. It does
             // not carry a count, so the server remains the source of truth.

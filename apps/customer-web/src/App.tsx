@@ -53,7 +53,14 @@ if (!customerFetchInstalled && typeof window !== 'undefined') {
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isGuest, setIsGuest] = useState(false);
+  const [isGuest, setIsGuest] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('customerGuestMode') === 'true' ||
+      sessionStorage.getItem('guestQrSession') === 'true' ||
+      sessionStorage.getItem('guestDirectSession') === 'true' ||
+      Boolean(sessionStorage.getItem('guestToken'));
+  });
+  const [isLoginRequested, setIsLoginRequested] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<any>(null);
 
   useEffect(() => {
@@ -93,6 +100,7 @@ function App() {
   }, []);
 
   const handleLogin = (customer: any) => {
+    setIsLoginRequested(false);
     sessionStorage.removeItem('customerGuestMode');
     sessionStorage.removeItem('guestToken');
     sessionStorage.removeItem('guestQrSession');
@@ -117,6 +125,7 @@ function App() {
   };
 
   const handleGuestEntry = () => {
+    setIsLoginRequested(false);
     sessionStorage.setItem('customerGuestMode', 'true');
     localStorage.removeItem('customerToken');
     localStorage.removeItem('customerInfo');
@@ -124,6 +133,8 @@ function App() {
     setIsLoggedIn(false);
     setIsGuest(true);
   };
+
+  const handleLoginRequest = () => setIsLoginRequested(true);
 
   return (
     <Router>
@@ -133,6 +144,8 @@ function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         onGuestEntry={handleGuestEntry}
+        onLoginRequest={handleLoginRequest}
+        isLoginRequested={isLoginRequested}
       />
     </Router>
   );
@@ -144,9 +157,11 @@ interface CustomerAppShellProps {
   onLogin: (customer: any) => void;
   onLogout: () => void;
   onGuestEntry: () => void;
+  onLoginRequest: () => void;
+  isLoginRequested: boolean;
 }
 
-const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest, onLogin, onLogout, onGuestEntry }) => {
+const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest, onLogin, onLogout, onGuestEntry, onLoginRequest, isLoginRequested }) => {
   const location = useLocation();
   const isQrBootstrap = new URLSearchParams(window.location.search).has('qr');
 
@@ -161,7 +176,7 @@ const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {!isLoggedIn && !isGuest && !isQrBootstrap ? (
+      {!isLoggedIn && (isLoginRequested || (!isGuest && !isQrBootstrap)) ? (
         <>
           <CustomerLogin onLogin={onLogin} onGuestEntry={onGuestEntry} />
           <ChatBot />
@@ -172,7 +187,7 @@ const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest
           <Routes>
             <Route path="/" element={<DigitalMenu />} />
             <Route path="/reservation" element={<ReservationPage />} />
-            <Route path="/profile" element={<CustomerProfile onLogout={onLogout} />} />
+            <Route path="/profile" element={<CustomerProfile isGuest={isGuest} onLoginRequest={onLoginRequest} onLogout={onLogout} />} />
             <Route path="/scan" element={<QRScan />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

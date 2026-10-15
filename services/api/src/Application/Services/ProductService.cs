@@ -17,14 +17,32 @@ namespace RestaurantPOS.Application.Services
             _context = context;
         }
 
-        public async Task<List<Product>> GetAllProductsAsync(string? category)
+        public async Task<List<Product>> GetAllProductsAsync(string? category, Guid? branchId = null)
         {
             var query = _context.Products.AsNoTracking().Where(p => p.IsActive);
             if (!string.IsNullOrEmpty(category) && category != "Tất cả")
             {
                 query = query.Where(p => p.Category == category || p.Group == category);
             }
-            return await query.OrderBy(p => p.Name).ToListAsync();
+            var products = await query.OrderBy(p => p.Name).ToListAsync();
+            if (branchId.HasValue)
+            {
+                var statuses = await _context.ProductBranchAvailabilities
+                    .AsNoTracking()
+                    .Where(state => state.BranchId == branchId.Value)
+                    .ToDictionaryAsync(state => state.ProductId, state => state.Status);
+                foreach (var product in products)
+                {
+                    // Product.AvailabilityStatus is legacy transition data only.
+                    // A branch-scoped read uses its row, or the existing product
+                    // creation default when the row has not been created yet.
+                    product.AvailabilityStatus = statuses.TryGetValue(product.Id, out var status)
+                        ? status
+                        : "Available";
+                }
+            }
+
+            return products;
         }
 
         public async Task<List<Product>> FindProductsByExactNameAsync(string productName)

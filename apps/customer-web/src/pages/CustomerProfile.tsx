@@ -26,13 +26,14 @@ interface CustomerOrderDetail {
   details?: Array<{ productName?: string; quantity: number; unitPrice: number; options?: string | null }>;
 }
 
-const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
+const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boolean; onLoginRequest: () => void; onLogout: () => void }) => {
   const [customer, setCustomer] = useState<any>(null);
   const [orders, setOrders] = useState<CustomerOrderDetail[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; imageUrl?: string }>>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [loyaltyHistory, setLoyaltyHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isGuest);
+  const [profileError, setProfileError] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<CustomerOrderDetail | null>(null);
   const [orderDetail, setOrderDetail] = useState<CustomerOrderDetail | null>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
@@ -114,6 +115,11 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
   const [updateError, setUpdateError] = useState('');
 
   useEffect(() => {
+    if (isGuest) {
+      setLoading(false);
+      return;
+    }
+
     const savedCustomer = localStorage.getItem('customerInfo');
     if (savedCustomer) {
       try {
@@ -132,9 +138,14 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
         }
       } catch (e) {
         console.error("Lỗi parse customerInfo:", e);
+        setProfileError('Không thể đọc phiên hồ sơ hiện tại. Vui lòng đăng nhập lại.');
+        setLoading(false);
       }
     }
-  }, []);
+    else {
+      setLoading(false);
+    }
+  }, [isGuest]);
 
   const fetchLatestProfile = async (phone: string) => {
     try {
@@ -142,23 +153,28 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
       const response = await fetch(`${API_URL}/api/Customer/${phone}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
-      if (response.ok) {
-        const data = await response.json();
-        setCustomer(data);
-        setEditData({
-          fullName: data.fullName || '',
-          email: data.email || '',
-          address: data.address || '',
-          gender: data.gender || 'Nam',
-          birthday: data.birthday ? new Date(data.birthday).toISOString().split('T')[0] : '',
-          newPassword: ''
-        });
-        localStorage.setItem('customerInfo', JSON.stringify(data));
-        await fetchLoyaltyHistory(data.id);
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Phiên đăng nhập không còn quyền xem hồ sơ. Vui lòng đăng nhập lại.');
+        }
+        throw new Error(`Không thể tải hồ sơ (HTTP ${response.status}).`);
       }
+      const data = await response.json();
+      setCustomer(data);
+      setEditData({
+        fullName: data.fullName || '',
+        email: data.email || '',
+        address: data.address || '',
+        gender: data.gender || 'Nam',
+        birthday: data.birthday ? new Date(data.birthday).toISOString().split('T')[0] : '',
+        newPassword: ''
+      });
+      localStorage.setItem('customerInfo', JSON.stringify(data));
+      await fetchLoyaltyHistory(data.id);
       await fetchOrderHistory(phone);
       await fetchReservationHistory(phone);
     } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Không thể tải hồ sơ.');
       console.error("Lỗi tải hồ sơ:", err);
     } finally {
       setLoading(false);
@@ -267,7 +283,7 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
         <p className="text-gray-500 font-black uppercase text-sm tracking-tighter">Bạn đang dùng quyền khách vãng lai</p>
         <p className="text-xs text-gray-400 mt-2 mb-8">Đăng nhập để xem lịch sử đơn hàng, tích điểm và nhận ưu đãi riêng nhé!</p>
         <button
-          onClick={onLogout}
+          onClick={onLoginRequest}
           className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20"
         >
           ĐĂNG NHẬP NGAY
@@ -278,6 +294,11 @@ const CustomerProfile = ({ onLogout }: { onLogout: () => void }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans relative">
+      {profileError && (
+        <div role="alert" className="mx-6 mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+          {profileError}
+        </div>
+      )}
       {/* Toast Success */}
       {showUpdateSuccess && (
         <div className="fixed top-6 left-6 right-6 z-[300] bg-green-600 text-white p-4 rounded-2xl shadow-2xl flex items-center space-x-3 animate-in slide-in-from-top-10 duration-500">

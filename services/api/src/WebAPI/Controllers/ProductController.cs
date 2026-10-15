@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using RestaurantPOS.WebAPI.Hubs;
 using RestaurantPOS.Application.Services;
+using RestaurantPOS.Application.Common.Security;
+using System.Security.Claims;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -33,8 +35,11 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         /// <summary>Lấy danh sách món theo các bộ lọc.</summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive)
+        public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive, [FromQuery] Guid? branchId)
         {
+            if (!TryResolveReadBranch(branchId, out var effectiveBranchId))
+                return Forbid();
+
             var query = _context.Products.AsNoTracking().AsQueryable();
 
             // Public and customer-facing menu reads must not expose disabled products.
@@ -53,7 +58,25 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (isActive.HasValue)
                 query = query.Where(p => p.IsActive == isActive.Value);
 
-            return Ok(await query.OrderByDescending(p => p.CreatedAt).ToListAsync());
+            var products = await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
+            if (effectiveBranchId.HasValue)
+            {
+                var statuses = await _context.ProductBranchAvailabilities
+                    .AsNoTracking()
+                    .Where(state => state.BranchId == effectiveBranchId.Value)
+                    .ToDictionaryAsync(state => state.ProductId, state => state.Status);
+
+                foreach (var product in products)
+                {
+                    // A branch-aware read must never fall back to the legacy global
+                    // value. Missing rows retain the create-product default instead.
+                    product.AvailabilityStatus = statuses.TryGetValue(product.Id, out var status)
+                        ? status
+                        : "Available";
+                }
+            }
+
+            return Ok(products);
         }
 
         /// <summary>Tạo món mới.</summary>
@@ -171,25 +194,87 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         [HttpPatch("{id}/availability")]
         [Authorize(Roles = "admin,manager,kitchen")]
-        public async Task<IActionResult> UpdateAvailability(Guid id, [FromBody] AvailabilityRequest request)
+        public async Task<IActionResult> UpdateAvailability(Guid id, [FromQuery] Guid? branchId, [FromBody] AvailabilityRequest request)
         {
             var allowed = new[] { "Available", "TemporarilyUnavailable", "OutOfStock" };
+            if (!TryResolveStaffBranch(branchId, out var effectiveBranchId))
+                return Forbid();
+            if (!await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == effectiveBranchId && branch.IsActive))
+                return BadRequest(new { message = "Branch is invalid or inactive." });
             if (request == null || !allowed.Contains(request.Status, StringComparer.OrdinalIgnoreCase))
                 return BadRequest(new { message = "Trạng thái món không hợp lệ." });
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
-            product.AvailabilityStatus = allowed.First(s => s.Equals(request.Status, StringComparison.OrdinalIgnoreCase));
+            var normalizedStatus = allowed.First(s => s.Equals(request.Status, StringComparison.OrdinalIgnoreCase));
+            var branchState = await _context.ProductBranchAvailabilities
+                .SingleOrDefaultAsync(state => state.ProductId == product.Id && state.BranchId == effectiveBranchId);
+            if (branchState == null)
+            {
+                branchState = new ProductBranchAvailability
+                {
+                    ProductId = product.Id,
+                    BranchId = effectiveBranchId,
+                    Status = normalizedStatus
+                };
+                _context.ProductBranchAvailabilities.Add(branchState);
+            }
+            else
+            {
+                branchState.Status = normalizedStatus;
+                branchState.UpdatedAtUtc = DateTime.UtcNow;
+            }
             await _context.SaveChangesAsync();
-            await _hub.Clients.All.SendAsync("ProductAvailabilityChanged", new { product.Id, product.Name, product.AvailabilityStatus });
-            if (product.AvailabilityStatus != "Available")
+            await _hub.Clients.Groups("kitchen-admin", $"branch:{effectiveBranchId}:role:kitchen", $"branch:{effectiveBranchId}:role:manager")
+                .SendAsync("ProductAvailabilityChanged", new { product.Id, product.Name, availabilityStatus = normalizedStatus, branchId = effectiveBranchId });
+            if (normalizedStatus != "Available")
                 await _notifications.CreateAsync(new RestaurantPOS.Domain.Entities.Notification
                 {
                     Type = "OUT_OF_STOCK", Title = "Món tạm hết",
-                    Message = $"Món {product.Name} đã được đánh dấu {product.AvailabilityStatus}.",
+                    Message = $"Món {product.Name} đã được đánh dấu {normalizedStatus}.",
                     EntityType = "Product", EntityId = product.Id, Route = "/products",
-                    TargetRole = "admin", BranchId = null
+                    TargetRole = "admin", BranchId = effectiveBranchId
                 });
-            return Ok(new { product.Id, product.AvailabilityStatus });
+            return Ok(new { product.Id, availabilityStatus = normalizedStatus, branchId = effectiveBranchId });
+        }
+
+        private bool TryResolveReadBranch(Guid? requestedBranchId, out Guid? effectiveBranchId)
+        {
+            effectiveBranchId = requestedBranchId;
+            if (User.IsInRole("admin")) return true;
+
+            if (GuestSessionContext.TryCreate(User, out var guest))
+            {
+                if (requestedBranchId.HasValue && requestedBranchId.Value != guest!.BranchId)
+                    return false;
+                effectiveBranchId = guest.BranchId;
+                return true;
+            }
+
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            if (!string.IsNullOrWhiteSpace(role) && !string.Equals(role, "customer", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryResolveStaffBranch(requestedBranchId, out var staffBranch))
+                    return false;
+                effectiveBranchId = staffBranch;
+                return true;
+            }
+
+            return true;
+        }
+
+        private bool TryResolveStaffBranch(Guid? requestedBranchId, out Guid effectiveBranchId)
+        {
+            effectiveBranchId = Guid.Empty;
+            if (User.IsInRole("admin"))
+                return requestedBranchId.HasValue && requestedBranchId.Value != Guid.Empty && (effectiveBranchId = requestedBranchId.Value) != Guid.Empty;
+
+            if (!Guid.TryParse(User.FindFirst("branchId")?.Value, out var userBranchId) || userBranchId == Guid.Empty)
+                return false;
+            if (requestedBranchId.HasValue && requestedBranchId.Value != userBranchId)
+                return false;
+
+            effectiveBranchId = userBranchId;
+            return true;
         }
 
         public sealed class AvailabilityRequest { public string Status { get; set; } = "Available"; }

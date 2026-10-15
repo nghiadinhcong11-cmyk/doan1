@@ -2,8 +2,8 @@
 
 Updated: `2026-10-15`  
 Reference branch: `main`  
-Reference commit: `0a480965f5a582c6da5c30fb70d9a5a2d1cd3d4e`  
-Tree state: dirty; the latest context update observed 142 modified, 149 deleted and 19,517 untracked entries with `git status --porcelain=v1 -uall`. The audit baseline remains the earlier survey snapshot.
+Reference commit: `4abeb1bf2e646df837745713a495b164eed60488`
+Tree state: clean at the start of the current static review; `main` was ahead of `origin/main` by one commit. The review's documentation changes are uncommitted.
 
 This self-contained summary is generated from the other files in `chatgpt-context/`, the current source and the audit preparation documents. Update it together with those files when shared assumptions materially change. It is a compact orientation document, not a replacement for source or `AGENTS.md`.
 
@@ -30,7 +30,7 @@ Relevant paths are `services/api/Program.cs`, `services/api/src/Infrastructure/S
 
 The core flow is:
 
-`QR/customer or staff → OrderController → OrderService → persisted Order → KitchenService/SignalR → POS/KDS/cashier → payment/invoice`.
+`QR/customer or staff Ă¢â€ â€™ OrderController Ă¢â€ â€™ OrderService Ă¢â€ â€™ persisted Order Ă¢â€ â€™ KitchenService/SignalR Ă¢â€ â€™ POS/KDS/cashier Ă¢â€ â€™ payment/invoice`.
 
 Guest QR uses server-side QR/session context. `OrderService` is the authoritative owner of order financial recalculation. `Order` stores subtotal, VAT/service-fee snapshots, discount, total, payment method and payment timestamp. Payment code compares the submitted amount with persisted order total and handles already-paid/conflict outcomes in source. Loyalty and inventory have separate services and persistence paths.
 
@@ -48,7 +48,7 @@ The configured development endpoints are API `https://localhost:5000`, Admin `ht
 
 ## Scope and guardrails
 
-Read `AGENTS.md` before code changes. Preserve clean architecture, authentication, branch isolation, financial authority, migration history, API contracts and SignalR event names. Search consumers before changing a contract. Do not add dependencies or new architecture for “standardization” without an explicit scoped reason. Optional proposals must state benefit and cost.
+Read `AGENTS.md` before code changes. Preserve clean architecture, authentication, branch isolation, financial authority, migration history, API contracts and SignalR event names. Search consumers before changing a contract. Do not add dependencies or new architecture for Ă¢â‚¬Å“standardizationĂ¢â‚¬Â without an explicit scoped reason. Optional proposals must state benefit and cost.
 
 Do not assume Docker, CI/CD, external AI, production database, automated test coverage, backup validity or deployment readiness. Old documents are historical until reconciled with current source. Static reading, build output and runtime/manual evidence are separate categories. Never record PASS without direct supporting evidence.
 
@@ -58,9 +58,11 @@ The audit preparation lives under `bao-cao/tai-lieu-ky-thuat/system-audit/`. The
 
 The latest preparation completed the audit documentation baseline, Mock-only documentation cleanup and checklist reorganization. Frontend builds passed for both web apps; backend compile target passed, while the full build was blocked at final output copy because `RestaurantPOS.api.exe`/DLL was in use by another process. This work did not start services, call an API, connect to PostgreSQL, run migrations/seeds, test SignalR, execute manual flows or validate backup/restore. No system-wide audit PASS is implied.
 
+The current static security review is documented in `bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/SECURITY-AND-BRANCH-REVIEW.md`. It inventories controller actions, `/kitchenHub` groups/producers and Mock AI tools. Findings `SEC-001..SEC-005` are open and distinguish source-confirmed behavior from policy ambiguity and runtime risk. Customer profile/loyalty scope, Product availability global-vs-branch behavior and missing-order-branch SignalR fallback need an explicit decision or isolated runtime evidence.
+
 ## Verification rule
 
-When context conflicts with source, inspect the affected source and record the difference. Source establishes implementation; runtime evidence establishes observed behavior in a named environment. If evidence is missing, say `chưa xác minh` or `bị chặn`. Do not expose secrets, tokens, passwords, personal data, full connection strings or private certificates.
+When context conflicts with source, inspect the affected source and record the difference. Source establishes implementation; runtime evidence establishes observed behavior in a named environment. If evidence is missing, say `chĂ†Â°a xÄ‚Â¡c minh` or `bĂ¡Â»â€¹ chĂ¡ÂºÂ·n`. Do not expose secrets, tokens, passwords, personal data, full connection strings or private certificates.
 
 For a new session, attach this file alone to ChatGPT when repository access is unavailable. For Codex, open the repository and read `00-START-HERE.md` first, then inspect the current working tree and relevant source before acting. `PAY-001` remains open and does not claim database cleanup.
 ## Employee profile and checklist decision
@@ -74,8 +76,47 @@ PAY-001 tracks only the unresolved historical migration-chain decision and must 
 
 The current EF model snapshot contains EmployeeType and BasicSalary on Employee, but no Payroll entity, payroll table mapping or payroll relationship. Payroll references that remain in historical migration source/designer files are not evidence that the current model or database still has those entities. PAY-001 remains open because migration-chain replay/baseline consequences have not been decided. No migration, snapshot or database was changed.
 
-Detailed route/function coverage is in ba-test-frontend/00-ROUTE-FUNCTION-MAP.md. NET-01..NET-05 and TECH-01..TECH-05 remain separate manual/technical cases, all Chưa test.
-Coverage hiện được đối soát theo route thực tế trong ba-test-frontend/00-ROUTE-FUNCTION-MAP.md. Tổng ID duy nhất là 183: 143 theo vai trò, 17 FLOW, 7 REF, 5 NET, 5 TECH và 6 case EMP-PROFILE. Việc phân loại case cũ không có nghĩa mọi route/chức năng đã có case; route map ghi rõ khoảng trống.
+Detailed route/function coverage is in ba-test-frontend/00-ROUTE-FUNCTION-MAP.md. NET-01..NET-05 and TECH-01..TECH-05 remain separate manual/technical cases, all ChĂ†Â°a test.
+Coverage hiĂ¡Â»â€¡n Ă„â€˜Ă†Â°Ă¡Â»Â£c Ă„â€˜Ă¡Â»â€˜i soÄ‚Â¡t theo route thĂ¡Â»Â±c tĂ¡ÂºÂ¿ trong ba-test-frontend/00-ROUTE-FUNCTION-MAP.md. TĂ¡Â»â€¢ng ID duy nhĂ¡ÂºÂ¥t lÄ‚Â  183: 143 theo vai trÄ‚Â², 17 FLOW, 7 REF, 5 NET, 5 TECH vÄ‚Â  6 case EMP-PROFILE. ViĂ¡Â»â€¡c phÄ‚Â¢n loĂ¡ÂºÂ¡i case cĂ…Â© khÄ‚Â´ng cÄ‚Â³ nghĂ„Â©a mĂ¡Â»Âi route/chĂ¡Â»Â©c nĂ„Æ’ng Ă„â€˜Ä‚Â£ cÄ‚Â³ case; route map ghi rÄ‚Âµ khoĂ¡ÂºÂ£ng trĂ¡Â»â€˜ng.
 Checklist gap completion added explicit cases for /customers, /support, /kitchen/tables, inventory/HR/settings subpages and guest direct /reservation/profile routes. New IDs are ADM-CUS-01..09, ADM-SUP-01..03, KIT-TBL-01..04, INV-SUB-01..08, HR-SUB-01..08, SET-SUB-01..08 and KQR-01..06. The unique-ID total is now 229; shared profile cases are counted once.
 
-COV-001 records that source does not establish whether a QR guest may use reservation/profile routes. The checklist records both unauthenticated and guest-session behavior as questions to verify; it does not choose a product policy. All new cases remain Chưa test.
+COV-001 records that source does not establish whether a QR guest may use reservation/profile routes. The checklist records both unauthenticated and guest-session behavior as questions to verify; it does not choose a product policy. All new cases remain ChĂ†Â°a test.
+## Static security review handoff
+
+The security review is source-only at reference HEAD `4abeb1bf2e646df837745713a495b164eed60488`. It found layered JWT/claims, role, resource and branch checks, but no runtime proof. Open findings are `SEC-001..SEC-005` in the single findings register. They cover customer lookup/privacy scope, customer loyalty/profile branch policy, global Product availability/broadcast, missing-order-branch kitchen notification fallback and non-centralized AI branch validation. Do not call these runtime vulnerabilities or PASS without the requested isolated tests.
+
+Manual/API cases are in `ba-test-frontend/ky-thuat-runtime/README.md`: `AUTH-01..04`, `BRANCH-01..04`, `SIG-01..02`, `AI-01..03`, all `ChĂ†Â°a test`. Guest direct-route cases `KQR-01..06` remain linked to `COV-001`. No API, browser, database, migration, seed, SignalR or business transaction was run.
+
+
+
+## Current implementation and verification update â€” 2026-10-15
+
+Customer records and loyalty are chain-wide by decision. Staff lookup responses are minimized in CustomerController; operational staff are not granted full profile mutation. Product catalog remains shared while availability is per branch through ProductBranchAvailability; a reviewed but unapplied migration seeds legacy availability into each product/branch pair. Order creation, acceptance, payment, status processing and kitchen submission now require an active branch, and invalid-branch realtime business notifications are suppressed. These are source changes awaiting runtime/database evidence.
+
+The guest /profile spinner was caused by CustomerProfile starting with loading=true and never clearing it when a guest had no customerInfo; the guest CTA also used logout behavior. App.tsx and CustomerProfile.tsx now detect guest sessions, finish loading, show login invitation and preserve guest QR/session/cart state. Customer profile API calls are skipped for guest sessions. Direct route and login-return cases remain ChÆ°a test.
+
+New source paths: ProductBranchAvailability.cs, ApplicationDbContext.cs, ProductController.cs, ProductService.cs, OrderService.cs, KitchenService.cs, OrderController.cs, CustomerController.cs, customer App.tsx, CustomerProfile.tsx, POS/Kitchen/DigitalMenu callers, and 20261015051548_AddProductBranchAvailability.cs.
+
+No database, migration apply, runtime/API/browser/SignalR test or transaction was executed. The migration must be applied only in an approved isolated database, then availability transition and two-branch behavior must be verified. SEC-001..SEC-004 are source-updated and awaiting retest; SEC-005 remains open as defense-in-depth; COV-001 is split between fixed profile policy and open reservation policy. MockAiProvider, EmployeeType and BasicSalary remain unchanged in scope.
+
+
+
+
+## Static diff review update — 2026-10-15
+
+The follow-up static review is recorded in bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/GUEST-CUSTOMER-AVAILABILITY-ORDER-DIFF-REVIEW.md. The actual HEAD remains 4abeb1bf2e646df837745713a495b164eed60488 and the working tree is dirty; not every modified file belongs to the feature diff.
+
+Latest source-fix update: public registration now uses `CustomerRegistrationDto` with only full name, phone and password; kitchen request status validates request/order, active branch and legal transition before mutation; branch-aware availability reads use the branch row or explicit `Available` when missing; and KitchenPage filters availability events by selected branch and refetches after reconnect. The migration has explicit EF context/migration metadata but has not been applied. SEC-003, SEC-004 and SEC-006 remain open pending runtime or isolated-migration evidence. Inactive-branch open-order recovery remains a business decision. No database, API, browser, SignalR or transaction was run.
+
+EF handoff: against a rebuilt isolated assembly, `dotnet-ef 8.0.31 migrations list --no-connect` discovered `20261015051548_AddProductBranchAvailability`; `has-pending-model-changes` reported no pending model changes; and offline SQL generation succeeded. The missing conventional `BuildTargetModel` designer did not block discovery/script generation because direct migration metadata and `Up`/`Down` are present, but it remains a tooling-pattern difference for future scaffolding review. POS and DigitalMenu have no availability SignalR consumer; only KitchenPage does, so live coverage is incomplete. The `Available` missing-row fallback remains pending user confirmation.
+
+Important residual findings:
+
+- Customer profile ownership and restricted profile DTO fields are source-protected, but public Customer registration still binds the domain entity and does not reset CustomerGroup. SEC-006 is open; do not claim the registration boundary is safe until a registration DTO/allowlist is implemented.
+- Branch availability uses ProductBranchAvailability with composite key and branch-scoped mutation. Missing rows still expose legacy global Product.AvailabilityStatus, and no frontend ProductAvailabilityChanged consumer was found. SEC-003 remains open for fallback/lifecycle/realtime verification.
+- Order branch checks cover create, accept, status, payment and send-to-kitchen, but KitchenService updates request status before validating the joined order branch. SEC-004 remains open for validation-before-mutation.
+- The migration creates and seeds product/branch rows but has not been applied. It includes inactive branches, does not normalize invalid legacy status strings and has no generated designer file in the current uncommitted source. Schema/data behavior remains unverified.
+- Guest profile static flow is now bounded and avoids profile API calls for guest; direct route, login transition and 401/403/network behavior remain untested. Guest reservation policy remains undecided.
+
+New manual/runtime cases: AUTH-06, BRANCH-08 and SIG-04, all Chưa test. MockAiProvider, EmployeeType and BasicSalary remain in scope unchanged.
+

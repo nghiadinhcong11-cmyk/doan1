@@ -134,6 +134,9 @@ namespace RestaurantPOS.Application.Services
             if (order.BranchId == Guid.Empty)
                 throw new ArgumentException("Đơn hàng phải thuộc một chi nhánh.");
 
+            if (!await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == order.BranchId && branch.IsActive))
+                throw new ArgumentException("Đơn hàng phải thuộc một chi nhánh đang hoạt động.");
+
             if (order.Details != null && order.Details.Any(d => d.Quantity > MAX_QUANTITY))
             {
                 throw new ArgumentException($"Số lượng món không được vượt quá {MAX_QUANTITY}.");
@@ -414,6 +417,9 @@ namespace RestaurantPOS.Application.Services
                 if (current == null)
                     return (WebOrderAcceptResult.NotFound, (Order?)null);
 
+                if (current.BranchId == Guid.Empty || !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == current.BranchId && branch.IsActive))
+                    return (WebOrderAcceptResult.Forbidden, (Order?)null);
+
                 if (allowedBranchId.HasValue && current.BranchId != allowedBranchId.Value)
                     return (WebOrderAcceptResult.Forbidden, (Order?)null);
 
@@ -485,6 +491,9 @@ namespace RestaurantPOS.Application.Services
                     .FirstOrDefaultAsync(o => o.Id == id);
                 if (currentForPayment == null)
                     return (PaymentAttemptResult.NotFound, null);
+
+                if (currentForPayment.BranchId == Guid.Empty || !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == currentForPayment.BranchId && branch.IsActive))
+                    return (PaymentAttemptResult.NotPayable, currentForPayment);
 
                 var normalizedCustomerPhone = NormalizeCustomerPhone(customerPhone);
                 var preserveExistingCustomer = currentForPayment.CustomerId.HasValue;
@@ -579,6 +588,11 @@ namespace RestaurantPOS.Application.Services
 
                 var order = await _context.Orders.Include(o => o.Details).FirstOrDefaultAsync(o => o.Id == id);
                 if (order == null) return null;
+                if (order.BranchId == Guid.Empty || !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == order.BranchId && branch.IsActive))
+                    throw new InvalidOperationException("Order cannot be processed without an active branch.");
+                if (update.BranchId.HasValue &&
+                    !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == update.BranchId.Value && branch.IsActive))
+                    throw new InvalidOperationException("Order target branch must be active.");
 
                 if (!OrderStatusPolicy.CanTransition(
                         order.Status,
@@ -683,6 +697,11 @@ namespace RestaurantPOS.Application.Services
             }
 
             // Kiểm tra quyền theo chi nhánh (trừ Admin)
+            if (order.BranchId == Guid.Empty || !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == order.BranchId && branch.IsActive))
+            {
+                return (false, "Order does not belong to an active branch.");
+            }
+
             if (!role.Equals("admin", StringComparison.OrdinalIgnoreCase) && order.BranchId != userBranchId)
             {
                 return (false, "Bạn không có quyền cập nhật đơn hàng của chi nhánh khác.");

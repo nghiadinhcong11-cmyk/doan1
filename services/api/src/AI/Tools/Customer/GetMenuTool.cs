@@ -46,7 +46,7 @@ namespace RestaurantPOS.AI.Tools.Customer
                 string? category = AiToolValidator.GetString(arguments, "category", required: false);
                 if (string.IsNullOrEmpty(category)) category = null;
 
-                var products = await _productService.GetAllProductsAsync(category);
+                var products = await _productService.GetAllProductsAsync(category, userContext.BranchId);
 
                 if (!products.Any()) return AiToolResult.CreateSuccess("Hiện tại thực đơn chưa có món nào khả dụng.");
 

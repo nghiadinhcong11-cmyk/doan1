@@ -44,6 +44,8 @@ namespace RestaurantPOS.Application.Services
                         .FirstOrDefaultAsync(o => o.Id == orderId);
 
                     if (order == null) throw new InvalidOperationException("Không tìm thấy đơn hàng.");
+                    if (order.BranchId == Guid.Empty || !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == order.BranchId && branch.IsActive))
+                        throw new InvalidOperationException("Không thể gửi đơn không có chi nhánh hợp lệ xuống bếp.");
                     if (order.Status != "Đang xử lý") throw new InvalidOperationException("Đơn hàng đã đóng hoặc đã hủy.");
                     
                     var itemsToSend = order.Details.Where(d => d.Quantity > d.SentQuantity).ToList();
@@ -161,6 +163,26 @@ namespace RestaurantPOS.Application.Services
 
         public async Task<OrderRequest?> UpdateRequestStatusAsync(Guid requestId, string status, string? processedBy)
         {
+            if (!IsValidKitchenStatus(status))
+                throw new InvalidOperationException("Invalid kitchen request status.");
+
+            var validationRow = await (from r in _context.OrderRequests.AsNoTracking()
+                                       join o in _context.Orders.AsNoTracking() on r.OrderId equals o.Id
+                                       where r.Id == requestId
+                                       select new { Request = r, Order = o }).FirstOrDefaultAsync();
+            if (validationRow == null)
+                return null;
+
+            if (validationRow.Order.BranchId == Guid.Empty ||
+                !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == validationRow.Order.BranchId && branch.IsActive))
+            {
+                _logger?.LogError("Rejected kitchen status update because order {RequestId} has no valid active branch.", requestId);
+                return null;
+            }
+
+            if (!CanTransitionKitchenStatus(validationRow.Request.Status, status))
+                throw new InvalidOperationException("Kitchen request status transition is not allowed.");
+
             var isCompleted = string.Equals(status, "Completed", StringComparison.Ordinal);
             var transitionedToCompleted = false;
             OrderRequest? request;
@@ -201,10 +223,29 @@ namespace RestaurantPOS.Application.Services
             var orderBranchId = orderRow?.Order.BranchId;
             try
             {
-                if (orderBranchId.HasValue && orderBranchId.Value != Guid.Empty)
+                if (orderBranchId.HasValue && orderBranchId.Value != Guid.Empty &&
+                    await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == orderBranchId.Value && branch.IsActive))
+                {
                     await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(requestId, status, orderBranchId);
+                }
                 else
-                    await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(requestId, status);
+                {
+                    _logger?.LogError("Skipped kitchen status broadcast because order {RequestId} has no valid active branch.", requestId);
+                    if (_notificationService != null)
+                    {
+                        await _notificationService.CreateAsync(new Notification
+                        {
+                            Type = "ORDER_BRANCH_INVALID",
+                            Title = "Đơn hàng thiếu chi nhánh hợp lệ",
+                            Message = $"Yêu cầu bếp {requestId} đã được cập nhật nhưng không phát realtime do thiếu chi nhánh hợp lệ.",
+                            EntityType = "OrderRequest",
+                            EntityId = requestId,
+                            Route = "/orders",
+                            TargetRole = "admin",
+                            BranchId = null
+                        });
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -248,6 +289,22 @@ namespace RestaurantPOS.Application.Services
             }
 
             return request;
+        }
+
+        private static bool IsValidKitchenStatus(string status) => status is "Pending" or "Preparing" or "Ready" or "Completed" or "Cancelled";
+
+        private static bool CanTransitionKitchenStatus(string current, string target)
+        {
+            if (string.Equals(current, target, StringComparison.Ordinal))
+                return true;
+
+            return current switch
+            {
+                "Pending" => target is "Preparing" or "Cancelled",
+                "Preparing" => target is "Ready" or "Cancelled",
+                "Ready" => target is "Completed" or "Cancelled",
+                _ => false
+            };
         }
 
         public async Task<(IReadOnlyList<object> Items, int Total)> GetHistoryAsync(string? search, string? status, string? tableName, DateTime? fromDate, DateTime? toDate, Guid? branchId, int page, int pageSize)

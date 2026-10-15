@@ -66,7 +66,10 @@ const KitchenPage = () => {
 
   const fetchProducts = useCallback(async (isOwnerActive: () => boolean = () => true) => {
     try {
-      const response = await fetch(`${API_URL}/api/Product?isActive=true`);
+      const branchId = localStorage.getItem('selectedBranchId');
+      const query = new URLSearchParams({ isActive: 'true' });
+      if (branchId) query.set('branchId', branchId);
+      const response = await fetch(`${API_URL}/api/Product?${query.toString()}`);
       if (response.ok) {
         const data = await response.json();
         if (isOwnerActive()) setProducts(data);
@@ -78,7 +81,9 @@ const KitchenPage = () => {
 
   const updateAvailability = async (product: KitchenProduct, status: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/Product/${product.id}/availability`, {
+      const branchId = localStorage.getItem('selectedBranchId');
+      const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+      const response = await fetch(`${API_URL}/api/Product/${product.id}/availability${query}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
       });
       if (!response.ok) throw new Error('Không thể cập nhật trạng thái món.');
@@ -101,9 +106,15 @@ const KitchenPage = () => {
       if (disposed) return;
       setRequests(prev => ACTIVE_STATUSES.includes(status) ? prev.map(item => item.id === id ? { ...item, status } : item) : prev.filter(item => item.id !== id));
     };
-    connection.on('NewOrderRequest', onNew); connection.on('RequestStatusUpdated', onStatus);
+    const onAvailabilityChanged = ({ id, availabilityStatus, branchId }: { id: string; availabilityStatus: string; branchId: string }) => {
+      if (disposed) return;
+      const selectedBranchId = localStorage.getItem('selectedBranchId');
+      if (!selectedBranchId || branchId !== selectedBranchId) return;
+      setProducts(prev => prev.map(product => product.id === id ? { ...product, availabilityStatus } : product));
+    };
+    connection.on('NewOrderRequest', onNew); connection.on('RequestStatusUpdated', onStatus); connection.on('ProductAvailabilityChanged', onAvailabilityChanged);
     connection.onreconnecting(() => { if (!disposed) setConnected(false); });
-    connection.onreconnected(() => { if (!disposed) { setConnected(true); requestActiveRequestsRefresh(true, true, () => !disposed); } });
+    connection.onreconnected(() => { if (!disposed) { setConnected(true); requestActiveRequestsRefresh(true, true, () => !disposed); void fetchProducts(() => !disposed); } });
     connection.onclose(() => { if (!disposed) setConnected(false); });
     void fetchActiveRequests(false, () => !disposed);
     void fetchProducts(() => !disposed);
@@ -133,6 +144,7 @@ const KitchenPage = () => {
       activeRequestsRefreshQueuedRef.current = false;
       connection.off('NewOrderRequest', onNew);
       connection.off('RequestStatusUpdated', onStatus);
+      connection.off('ProductAvailabilityChanged', onAvailabilityChanged);
       void connection.stop().catch(err => console.warn('Kitchen hub cleanup failed.', err));
     };
   }, [fetchActiveRequests, fetchProducts, requestActiveRequestsRefresh]);

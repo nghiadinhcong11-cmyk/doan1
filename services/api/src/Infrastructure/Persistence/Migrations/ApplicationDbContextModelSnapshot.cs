@@ -881,6 +881,29 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("Products");
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.ProductBranchAvailability", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ProductId", "BranchId");
+
+                    b.HasIndex("BranchId", "Status");
+
+                    b.ToTable("ProductBranchAvailabilities");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Promotion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1629,6 +1652,25 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ToppingId");
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.ProductBranchAvailability", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequest", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Order", null)
@@ -1838,3 +1880,4 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
         }
     }
 }
+

@@ -1,6 +1,6 @@
 # System Current State
 
-Status labels in this file mean `Đã xác minh từ source` unless explicitly marked otherwise. No statement here is a runtime PASS.
+Status labels in this file mean `ÄĂ£ xĂ¡c minh tá»« source` unless explicitly marked otherwise. No statement here is a runtime PASS.
 
 ## Purpose and scope
 
@@ -32,7 +32,7 @@ Representative paths: `services/api/src/WebAPI/Controllers/`, `services/api/src/
 
 The intended flow is:
 
-`QR/Customer or staff input → OrderController → OrderService → persisted Order → KitchenService/SignalR → POS/KDS/cashier → payment/invoice`.
+`QR/Customer or staff input â†’ OrderController â†’ OrderService â†’ persisted Order â†’ KitchenService/SignalR â†’ POS/KDS/cashier â†’ payment/invoice`.
 
 For guest QR, `GuestController`, `GuestSessionContext`, QR token handling and `OrderController` derive/validate the server-side session context. Client-provided branch/table/order values must not become authority.
 
@@ -75,4 +75,19 @@ This context update did not build, connect to PostgreSQL, run migrations, start 
 EmployeeType and BasicSalary are intentionally retained as employee profile fields. They are read, bound and persisted by the current employee API and surfaced by the admin employee page. They do not establish salary calculation, salary periods, deductions or payment. Representative sources are `services/api/src/Domain/Entities/Employee.cs`, `services/api/src/WebAPI/Controllers/EmployeeController.cs`, `services/api/src/Infrastructure/Persistence/ApplicationDbContext.cs` and `apps/admin-web/src/features/hrm/pages/EmployeeManagement.tsx`. This is static source confirmation, not runtime verification.
 ## Migration snapshot reconciliation
 
-Static inspection of services/api/src/Infrastructure/Persistence/Migrations/ApplicationDbContextModelSnapshot.cs found Employee.BasicSalary and Employee.EmployeeType. It found no Payroll, PayrollAdjustment or PayrollSettings entity blocks, payroll table mappings, payroll foreign keys or payroll relationships. Current ApplicationDbContext exposes DbSet<Employee> and configures Employee → Branch. Payroll names still occur in historical migration source/designer files; this is historical migration metadata/operations, not proof that the current EF model still contains those entities or that a database is clean.
+Static inspection of services/api/src/Infrastructure/Persistence/Migrations/ApplicationDbContextModelSnapshot.cs found Employee.BasicSalary and Employee.EmployeeType. It found no Payroll, PayrollAdjustment or PayrollSettings entity blocks, payroll table mappings, payroll foreign keys or payroll relationships. Current ApplicationDbContext exposes DbSet<Employee> and configures Employee â†’ Branch. Payroll names still occur in historical migration source/designer files; this is historical migration metadata/operations, not proof that the current EF model still contains those entities or that a database is clean.
+
+
+
+## Current policy implementation update — 2026-10-15
+
+- Customer and loyalty are chain-wide. CustomerController now minimizes operational staff lookup responses; customer self-service and admin/manager paths retain the fuller profile contract. Runtime authorization and response tests remain pending.
+- Product catalog remains shared. Availability is represented by ProductBranchAvailability per product/branch, with controller and frontend branch context. The source migration seeds existing pairs from legacy availability but has not been applied to a database.
+- Order processing paths now require an active branch; invalid-branch realtime notification is suppressed or converted to an admin notification/log path. Runtime and malformed-data verification remain pending.
+- Guest /profile now ends loading and shows login invitation without calling the customer profile API or clearing QR/session/cart context. Guest reservation policy remains open.
+- MockAiProvider is still the only provider path; EmployeeType and BasicSalary remain employee profile fields.
+
+- Latest source fixes: public registration is allowlisted through `CustomerRegistrationDto`; kitchen request status validates request/order, active branch and legal transition before mutation; branch-aware availability reads use the branch row or explicit `Available` when missing; KitchenPage filters availability events by selected branch and refetches after reconnect. These are source/build observations, not runtime or database evidence.
+
+- Availability frontend boundary: POS and DigitalMenu currently refetch through existing load, branch-change or manual-refresh paths; they do not subscribe to `ProductAvailabilityChanged`. The kitchen consumer therefore does not establish live synchronization for all frontend surfaces. The missing-row `Available` value remains a source default pending confirmation.
+

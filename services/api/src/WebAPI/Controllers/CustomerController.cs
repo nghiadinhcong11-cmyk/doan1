@@ -15,7 +15,7 @@ using RestaurantPOS.Application.Common.Security;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
-    /// <summary>Cung cấp các endpoint tra cứu và cập nhật khách hàng.</summary>
+    /// <summary>Cung cáº¥p cĂ¡c endpoint tra cá»©u vĂ  cáº­p nháº­t khĂ¡ch hĂ ng.</summary>
     [ApiController]
     [Route("api/[controller]")]
     public class CustomerController : ControllerBase
@@ -31,7 +31,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             _passwordHasher = passwordHasher;
         }
 
-        /// <summary>Lấy danh sách khách hàng, có thể lọc theo từ khóa.</summary>
+        /// <summary>Láº¥y danh sĂ¡ch khĂ¡ch hĂ ng, cĂ³ thá»ƒ lá»c theo tá»« khĂ³a.</summary>
         [HttpGet]
         [Authorize(Roles = "admin,manager,employee,cashier")]
         public async Task<IActionResult> GetCustomers([FromQuery] string? search)
@@ -45,10 +45,10 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             var customers = await query.OrderByDescending(c => c.TotalSpending).ToListAsync();
 
-            return Ok(customers.Select(MapToDto));
+            return Ok(customers.Select(c => MapForCaller(c)));
         }
 
-        /// <summary>Kiểm tra sự tồn tại của khách hàng (Công khai - Phục vụ chào mừng/đăng nhập).</summary>
+        /// <summary>Kiá»ƒm tra sá»± tá»“n táº¡i cá»§a khĂ¡ch hĂ ng (CĂ´ng khai - Phá»¥c vá»¥ chĂ o má»«ng/Ä‘Äƒng nháº­p).</summary>
         [HttpGet("exists/{phoneNumber}")]
         [AllowAnonymous]
         [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("moderate-limiter")]
@@ -64,7 +64,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             });
         }
 
-        /// <summary>Tra cứu hồ sơ đầy đủ khách hàng theo số điện thoại.</summary>
+        /// <summary>Tra cá»©u há»“ sÆ¡ Ä‘áº§y Ä‘á»§ khĂ¡ch hĂ ng theo sá»‘ Ä‘iá»‡n thoáº¡i.</summary>
         [HttpGet("{phoneNumber}")]
         [Authorize]
         public async Task<IActionResult> GetByPhone(string phoneNumber)
@@ -76,27 +76,29 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             if (IsCustomer())
             {
-                // Khách hàng chỉ được xem profile của chính mình
+                // KhĂ¡ch hĂ ng chá»‰ Ä‘Æ°á»£c xem profile cá»§a chĂ­nh mĂ¬nh
                 if (User.Identity?.Name != phoneNumber) return Forbid();
             }
-            // Staff được phép xem để phục vụ (đã qua [Authorize])
+            // Staff Ä‘Æ°á»£c phĂ©p xem Ä‘á»ƒ phá»¥c vá»¥ (Ä‘Ă£ qua [Authorize])
 
-            return Ok(MapToDto(customer));
+            return Ok(MapForCaller(customer));
         }
 
-        /// <summary>Tạo mới hoặc cập nhật khách hàng.</summary>
+        /// <summary>Táº¡o má»›i hoáº·c cáº­p nháº­t khĂ¡ch hĂ ng.</summary>
         [HttpPost]
         [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("moderate-limiter")]
-        public async Task<IActionResult> CreateOrUpdate(Customer customer)
+        public async Task<IActionResult> CreateOrUpdate([FromBody] CustomerRegistrationDto request)
         {
             if (GuestSessionContext.IsGuest(User))
                 return Forbid();
 
-            var existing = await _context.Customers.FirstOrDefaultAsync(c => c.PhoneNumber == customer.PhoneNumber);
+            if (string.IsNullOrWhiteSpace(request.FullName) || string.IsNullOrWhiteSpace(request.PhoneNumber))
+                return BadRequest(new { message = "Họ tên và số điện thoại là bắt buộc." });
+
+            var existing = await _context.Customers.FirstOrDefaultAsync(c => c.PhoneNumber == request.PhoneNumber);
 
             if (existing != null)
             {
-                // TRƯỜNG HỢP CẬP NHẬT: Phải có quyền
                 if (IsCustomer())
                 {
                     var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -105,51 +107,45 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
                 else if (User?.Identity == null || !User.Identity.IsAuthenticated)
                 {
-                    // Người dùng chưa đăng nhập không được cập nhật khách hàng đã tồn tại
                     return Unauthorized(new { message = "Vui lòng đăng nhập để cập nhật thông tin." });
                 }
 
-                // Cập nhật thông tin cơ bản
-                existing.FullName = customer.FullName;
-                if (!string.IsNullOrEmpty(customer.Email)) existing.Email = customer.Email;
-                if (!string.IsNullOrEmpty(customer.Address)) existing.Address = customer.Address;
-                if (!string.IsNullOrEmpty(customer.Gender)) existing.Gender = customer.Gender;
-                if (customer.Birthday.HasValue) existing.Birthday = DateTime.SpecifyKind(customer.Birthday.Value, DateTimeKind.Utc);
+                if (!IsCustomer() && !IsManagementStaff())
+                    return Forbid();
 
+                existing.FullName = request.FullName;
                 existing.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
                 return Ok(MapToDto(existing));
             }
-            else
+
+            if (User?.Identity?.IsAuthenticated != true && string.IsNullOrWhiteSpace(request.Password))
+                return BadRequest(new { message = "Mật khẩu là bắt buộc khi đăng ký tài khoản khách hàng." });
+
+            var customer = new Customer
             {
-                // TRƯỜNG HỢP ĐĂNG KÝ MỚI: Cho phép công khai
-                // Public registered-customer accounts must establish a password.
-                // Staff-created walk-in records may remain passwordless and cannot
-                // use the registered customer token endpoint until a password exists.
-                if (User?.Identity?.IsAuthenticated != true && string.IsNullOrWhiteSpace(customer.Password))
-                    return BadRequest(new { message = "Mật khẩu là bắt buộc khi đăng ký tài khoản khách hàng." });
+                Id = Guid.NewGuid(),
+                FullName = request.FullName.Trim(),
+                PhoneNumber = request.PhoneNumber.Trim(),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                IsActive = true,
+                LoyaltyPoints = 0,
+                TotalSpending = 0,
+                TotalOrders = 0
+            };
 
-                customer.Id = Guid.NewGuid();
-                customer.CreatedAt = DateTime.UtcNow;
-                customer.UpdatedAt = DateTime.UtcNow;
-                customer.IsActive = true;
-                customer.LoyaltyPoints = 0;
-                customer.TotalSpending = 0;
-                customer.TotalOrders = 0;
-                if (customer.Birthday.HasValue) customer.Birthday = DateTime.SpecifyKind(customer.Birthday.Value, DateTimeKind.Utc);
-
-                if (!string.IsNullOrWhiteSpace(customer.Password))
-                {
-                    var passwordError = PasswordPolicy.Validate(customer.Password);
-                    if (passwordError != null) return BadRequest(new { message = passwordError });
-                    customer.Password = _passwordHasher.HashPassword(customer, customer.Password);
-                }
-
-                _context.Customers.Add(customer);
-                await _context.SaveChangesAsync();
-                return Ok(MapToDto(customer));
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                var passwordError = PasswordPolicy.Validate(request.Password);
+                if (passwordError != null) return BadRequest(new { message = passwordError });
+                customer.Password = _passwordHasher.HashPassword(customer, request.Password);
             }
+
+            _context.Customers.Add(customer);
+            await _context.SaveChangesAsync();
+            return Ok(MapToDto(customer));
         }
 
         /// <summary>
@@ -162,12 +158,12 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             var phoneNumber = NormalizePhone(request?.PhoneNumber);
             if (phoneNumber == null || string.IsNullOrWhiteSpace(request?.FullName))
-                return BadRequest(new { message = "Họ tên và số điện thoại là bắt buộc." });
+                return BadRequest(new { message = "Há» tĂªn vĂ  sá»‘ Ä‘iá»‡n thoáº¡i lĂ  báº¯t buá»™c." });
 
             var existing = await _context.Customers.AsNoTracking()
                 .FirstOrDefaultAsync(c => c.PhoneNumber == phoneNumber);
             if (existing != null)
-                return Conflict(new { message = "Số điện thoại đã có tài khoản thành viên." });
+                return Conflict(new { message = "Sá»‘ Ä‘iá»‡n thoáº¡i Ä‘Ă£ cĂ³ tĂ i khoáº£n thĂ nh viĂªn." });
 
             var customer = new Customer
             {
@@ -192,14 +188,14 @@ namespace RestaurantPOS.WebAPI.Controllers
             catch (DbUpdateException)
             {
                 // The unique phone index is the final race-safe boundary.
-                return Conflict(new { message = "Số điện thoại đã có tài khoản thành viên." });
+                return Conflict(new { message = "Sá»‘ Ä‘iá»‡n thoáº¡i Ä‘Ă£ cĂ³ tĂ i khoáº£n thĂ nh viĂªn." });
             }
             return Ok(MapToDto(customer));
         }
 
-        /// <summary>Lấy lịch sử tích điểm của khách hàng.</summary>
+        /// <summary>Láº¥y lá»‹ch sá»­ tĂ­ch Ä‘iá»ƒm cá»§a khĂ¡ch hĂ ng.</summary>
         [HttpGet("{id:guid}/loyalty-history")]
-        [Authorize(Roles = "admin,manager,cashier,employee,customer")]
+        [Authorize(Roles = "admin,manager,customer")]
         public async Task<IActionResult> GetLoyaltyHistory(Guid id)
         {
             if (IsCustomer())
@@ -213,7 +209,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             return Ok(history);
         }
 
-        /// <summary>Cập nhật hồ sơ khách hàng.</summary>
+        /// <summary>Cáº­p nháº­t há»“ sÆ¡ khĂ¡ch hĂ ng.</summary>
         [HttpPatch("{phoneNumber}/profile")]
         [Authorize(Roles = "admin,manager,customer")]
         public async Task<IActionResult> UpdateProfile(string phoneNumber, [FromBody] CustomerProfileUpdateDto update)
@@ -263,7 +259,23 @@ namespace RestaurantPOS.WebAPI.Controllers
             CustomerGroup = c.CustomerGroup
         };
 
+        private object MapForCaller(Customer customer)
+        {
+            return IsCustomer() || IsManagementStaff()
+                ? MapToDto(customer)
+                : new
+                {
+                    customer.Id,
+                    customer.FullName,
+                    customer.PhoneNumber,
+                    customer.LoyaltyPoints,
+                    customer.CustomerGroup
+                };
+        }
+
         private bool IsCustomer() => User?.FindFirst(ClaimTypes.Role)?.Value?.Equals("customer", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        private bool IsManagementStaff() => User?.IsInRole("admin") == true || User?.IsInRole("manager") == true;
 
         private static string? NormalizePhone(string? phoneNumber)
         {
@@ -273,20 +285,20 @@ namespace RestaurantPOS.WebAPI.Controllers
         }
     }
 
-    /// <summary>Dữ liệu được phép cập nhật trong hồ sơ khách hàng.</summary>
+    /// <summary>Dá»¯ liá»‡u Ä‘Æ°á»£c phĂ©p cáº­p nháº­t trong há»“ sÆ¡ khĂ¡ch hĂ ng.</summary>
     public class CustomerProfileUpdateDto
     {
-        /// <summary>Họ tên hiển thị của khách hàng.</summary>
+        /// <summary>Há» tĂªn hiá»ƒn thá»‹ cá»§a khĂ¡ch hĂ ng.</summary>
         public string? FullName { get; set; }
-        /// <summary>Địa chỉ email của khách hàng.</summary>
+        /// <summary>Äá»‹a chá»‰ email cá»§a khĂ¡ch hĂ ng.</summary>
         public string? Email { get; set; }
-        /// <summary>Địa chỉ liên hệ của khách hàng.</summary>
+        /// <summary>Äá»‹a chá»‰ liĂªn há»‡ cá»§a khĂ¡ch hĂ ng.</summary>
         public string? Address { get; set; }
-        /// <summary>Giới tính của khách hàng.</summary>
+        /// <summary>Giá»›i tĂ­nh cá»§a khĂ¡ch hĂ ng.</summary>
         public string? Gender { get; set; }
-        /// <summary>Ngày sinh của khách hàng.</summary>
+        /// <summary>NgĂ y sinh cá»§a khĂ¡ch hĂ ng.</summary>
         public DateTime? Birthday { get; set; }
-        /// <summary>Mật khẩu mới, nếu khách hàng muốn đổi mật khẩu.</summary>
+        /// <summary>Máº­t kháº©u má»›i, náº¿u khĂ¡ch hĂ ng muá»‘n Ä‘á»•i máº­t kháº©u.</summary>
         public string? NewPassword { get; set; }
     }
 
@@ -296,4 +308,13 @@ namespace RestaurantPOS.WebAPI.Controllers
         public string? PhoneNumber { get; set; }
         public string? Email { get; set; }
     }
+
+    public sealed class CustomerRegistrationDto
+    {
+        public string? FullName { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Password { get; set; }
+    }
 }
+
+

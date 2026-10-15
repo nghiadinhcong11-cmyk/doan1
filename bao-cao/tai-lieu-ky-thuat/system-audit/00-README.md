@@ -21,7 +21,8 @@ Do not record `PASS` merely because code was read or a build succeeded.
 | Order | Group | Scope | Primary output |
 |---|---|---|---|
 | 0 | [`01-baseline`](01-baseline/REPOSITORY-SNAPSHOT.md) | Version, working tree, source of truth and environment limits | Reproducible audit boundary |
-| 1 | `02-static-review` | Architecture, API, frontend contracts, security, branches, database, business rules and AI | Static findings and unknowns; existing documents are linked below until further grouping is needed |
+| 1 | [`02-static-review/SECURITY-AND-BRANCH-REVIEW.md`](02-static-review/SECURITY-AND-BRANCH-REVIEW.md) | Authentication, authorization, branch isolation, guest/customer scope, SignalR groups and AI tool permissions | Static evidence, findings and runtime gaps |
+| 1a | [`02-static-review/GUEST-CUSTOMER-AVAILABILITY-ORDER-DIFF-REVIEW.md`](02-static-review/GUEST-CUSTOMER-AVAILABILITY-ORDER-DIFF-REVIEW.md) | Static diff review of guest profile, customer ownership, branch availability, migration transition and order branch validation | Residual risks, policy questions and pre-runtime actions |
 | 2 | `03-technical-verification` | Build, typecheck, OpenAPI, dependency/configuration review and migration reconciliation | Command results with environment metadata |
 | 3 | `04-runtime-and-manual` | API, database, SignalR, cross-role flows, retry/concurrency and manual UI | Runtime/manual evidence; do not duplicate the checklist |
 | 4 | [`05-operations-and-thesis/EVIDENCE-INDEX.md`](05-operations-and-thesis/EVIDENCE-INDEX.md) | Deployment, logging, backup/restore, performance scope, thesis consistency and evidence catalog | Evidence map and limitations |

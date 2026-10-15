@@ -174,7 +174,10 @@ const DigitalMenu = () => {
   const debugMenu = urlParams.get('debugMenu') === '1';
 
   useEffect(() => {
-    fetchProducts();
+    const savedBranchId = sessionStorage.getItem('guestDirectBranchId') || localStorage.getItem('selectedBranchId') || undefined;
+    if (!qrToken) {
+      void fetchProducts(savedBranchId);
+    }
     fetchBranches();
     fetchPromotions();
     loadCustomerInfo();
@@ -230,7 +233,7 @@ const DigitalMenu = () => {
     }
   }, [cart, isBranchModalOpen]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (branchId?: string) => {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
     try {
@@ -242,8 +245,9 @@ const DigitalMenu = () => {
       const phase = getQrDiagnosticPhase(qrToken);
 
       // Load products independently so a topping endpoint failure does not hide the main menu.
+      const branchQuery = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
       const [productResult, toppingResult] = await Promise.allSettled([
-        fetchWithDiagnostics('/api/Product', `${API_URL}/api/Product`, undefined, phase),
+        fetchWithDiagnostics('/api/Product', `${API_URL}/api/Product${branchQuery}`, undefined, phase),
         fetchWithDiagnostics('/api/Topping', `${API_URL}/api/Topping`, undefined, phase)
       ]);
 
@@ -402,6 +406,7 @@ const DigitalMenu = () => {
         // Cố định chi nhánh theo bàn
         if (bootstrap.branch.id) {
           setSelectedBranch({ id: bootstrap.branch.id, name: bootstrap.branch.name });
+          void fetchProducts(bootstrap.branch.id);
         }
         setQrBootstrapState('success');
       } else {
@@ -439,6 +444,11 @@ const DigitalMenu = () => {
     sessionStorage.setItem('guestToken', payload.token);
     sessionStorage.setItem('guestDirectSession', 'true');
     sessionStorage.setItem('guestDirectBranchId', payload.branch.id);
+  };
+
+  const handleBranchSelect = (branch: any) => {
+    setSelectedBranch(branch);
+    void fetchProducts(branch?.id);
   };
 
   const addToCart = (product: Product) => {
@@ -775,7 +785,7 @@ const DigitalMenu = () => {
         cart={cart}
         activeCategory={activeCategory}
         loading={loading}
-        onRefresh={() => void fetchProducts()}
+        onRefresh={() => void fetchProducts(selectedBranch?.id)}
         onAddProduct={addToCart}
         onRemoveProduct={removeFromCart}
         onDecreaseProduct={handleDecreaseProduct}
@@ -914,7 +924,7 @@ const DigitalMenu = () => {
           currentLoyaltyPoints={currentLoyaltyPoints}
           isSubmittingOrder={isSubmittingOrder}
           onClose={() => setIsBranchModalOpen(false)}
-          onBranchSelect={setSelectedBranch}
+          onBranchSelect={handleBranchSelect}
           onNoteChange={updateNote}
           onRemoveItem={removeFromCart}
           onConfirm={confirmOrder}

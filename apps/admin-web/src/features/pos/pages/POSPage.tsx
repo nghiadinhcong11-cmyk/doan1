@@ -269,8 +269,10 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
   const fetchProducts = async () => {
     try {
+      const branchId = localStorage.getItem('selectedBranchId');
+      const branchQuery = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
       const [prodRes, toppingRes] = await Promise.all([
-        fetch(`${API_URL}/api/Product`),
+        fetch(`${API_URL}/api/Product${branchQuery}`),
         fetch(`${API_URL}/api/Topping`)
       ]);
 

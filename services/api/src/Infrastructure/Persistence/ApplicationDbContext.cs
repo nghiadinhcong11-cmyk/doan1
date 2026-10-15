@@ -12,6 +12,7 @@ namespace RestaurantPOS.Infrastructure.Persistence
         }
 
         public DbSet<Product> Products { get; set; }
+        public DbSet<ProductBranchAvailability> ProductBranchAvailabilities { get; set; }
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderDetail> OrderDetails { get; set; }
         public DbSet<Expense> Expenses { get; set; }
@@ -112,6 +113,23 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .WithMany()
                 .HasForeignKey(d => d.ToppingId)
                 .IsRequired(false);
+
+            modelBuilder.Entity<ProductBranchAvailability>(entity =>
+            {
+                entity.ToTable("ProductBranchAvailabilities");
+                entity.HasKey(state => new { state.ProductId, state.BranchId });
+                entity.Property(state => state.Status).HasMaxLength(32).IsRequired();
+                entity.Property(state => state.UpdatedAtUtc).IsRequired();
+                entity.HasOne(state => state.Product)
+                    .WithMany()
+                    .HasForeignKey(state => state.ProductId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.Branch)
+                    .WithMany()
+                    .HasForeignKey(state => state.BranchId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(state => new { state.BranchId, state.Status });
+            });
 
             // 3. Nhân viên liên kết với Chi nhánh
             modelBuilder.Entity<Employee>()

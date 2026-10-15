@@ -62,4 +62,17 @@ Read diagnostic scripts before running them. `--apply`, `--execute`, migration a
 - Cross-role and refresh cases: ba-test-frontend/lien-vai-tro/order-to-payment.md and ba-test-frontend/chung/refresh-session.md.
 - Coverage matrix: ba-test-frontend/00-COVERAGE-MATRIX.md.
 - Audit findings/evidence: bao-cao/tai-lieu-ky-thuat/system-audit/06-findings/FINDINGS-REGISTER.md and 05-operations-and-thesis/EVIDENCE-INDEX.md.
-- Route/function coverage đối soát trực tiếp: ba-test-frontend/00-ROUTE-FUNCTION-MAP.md; đây là mục lục route và khoảng trống, còn các file page/00-CASES-BY-PAGE.md mới chứa bước test.
+- Route/function coverage Ä‘á»‘i soĂ¡t trá»±c tiáº¿p: ba-test-frontend/00-ROUTE-FUNCTION-MAP.md; Ä‘Ă¢y lĂ  má»¥c lá»¥c route vĂ  khoáº£ng trá»‘ng, cĂ²n cĂ¡c file page/00-CASES-BY-PAGE.md má»›i chá»©a bÆ°á»›c test.
+
+
+
+## Current source map update — 2026-10-15
+
+- Branch availability: services/api/src/Domain/Entities/ProductBranchAvailability.cs, ApplicationDbContext.cs, ProductService.cs, ProductController.cs, POS/Kitchen/DigitalMenu callers, and migration source 20261015051548_AddProductBranchAvailability.cs.
+- Customer scope: services/api/src/WebAPI/Controllers/CustomerController.cs.
+- Order branch invariant: services/api/src/Application/Services/OrderService.cs, KitchenService.cs, WebAPI/Controllers/OrderController.cs.
+- Guest profile fix: apps/customer-web/src/App.tsx and pages/CustomerProfile.tsx.
+- Follow-up evidence: system-audit/02-static-review/SECURITY-AND-BRANCH-REVIEW.md, findings register, and ba-test-frontend/ky-thuat-runtime/README.md.
+
+- Source-fix follow-up: `CustomerRegistrationDto`, `KitchenService.UpdateRequestStatusAsync`, branch-aware `ProductController`/`ProductService`, and `KitchenPage` availability consumer. Migration metadata is in `20261015051548_AddProductBranchAvailability.cs`; it is not applied.
+

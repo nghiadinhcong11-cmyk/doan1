@@ -90,7 +90,7 @@ const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin, onGuestEntry }) 
       const response = await fetch(`${API_URL}/api/Customer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, phoneNumber, password, totalSpending: 0 })
+        body: JSON.stringify({ fullName, phoneNumber, password })
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {

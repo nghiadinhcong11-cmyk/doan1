@@ -15,7 +15,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | ADM-09 | Inventory |
 | ADM-10 | Settings & branches |
 | ADM-11 | Navigation / notifications / runtime |
-| ADM-12 | Other |
 | ADM-13 | Navigation / notifications / runtime |
 | ADM-14 | POS & payment |
 | ADM-15 | POS & payment |
@@ -101,9 +100,9 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | ADM-17 | Navigation chÄ‚Â­nh vÄ‚Â  bÄ‚Â¡nh rĂ„Æ’ng | TÄ‚Â i khoĂ¡ÂºÂ£n `admin` hoĂ¡ÂºÂ¡t Ă„â€˜Ă¡Â»â„¢ng; cÄ‚Â³ dĂ¡Â»Â¯ liĂ¡Â»â€¡u test cho dashboard, POS vÄ‚Â  bĂ¡ÂºÂ¿p | TĂ¡Â»Â« `/dashboard`, `/pos`, `/kitchen`, `/invoices`, `/shifts` Ă„â€˜Ă¡Â»â€˜i chiĂ¡ÂºÂ¿u cÄ‚Â¹ng thĂ¡Â»Â© tĂ¡Â»Â±: TĂ¡Â»â€¢ng quan Ă¢â€ â€™ CĂ¡ÂºÂ£nh bÄ‚Â¡o Ă¢â€ â€™ Chi phÄ‚Â­ Ă¢â€ â€™ Kho hÄ‚Â ng Ă¢â€ â€™ ThĂ¡Â»Â±c Ă„â€˜Ă†Â¡n Ă¢â€ â€™ KhÄ‚Â¡ch hÄ‚Â ng Ă¢â€ â€™ NhÄ‚Â¢n viÄ‚Âªn Ă¢â€ â€™ BÄ‚Â¡n hÄ‚Â ng Ă¢â€ â€™ NhÄ‚Â  bĂ¡ÂºÂ¿p Ă¢â€ â€™ PhÄ‚Â²ng bÄ‚Â n Ă¢â€ â€™ HÄ‚Â³a Ă„â€˜Ă†Â¡n Ă¢â€ â€™ Ă„ÂĂ¡ÂºÂ·t bÄ‚Â n; mĂ¡Â»Å¸ submenu NhÄ‚Â¢n viÄ‚Âªn vÄ‚Â  bÄ‚Â¡nh rĂ„Æ’ng | `/shifts` chĂ¡Â»â€° nĂ¡ÂºÂ±m trong submenu NhÄ‚Â¢n viÄ‚Âªn; tĂ¡ÂºÂ¡i `/shifts`, cĂ¡ÂºÂ£ NhÄ‚Â¢n viÄ‚Âªn vÄ‚Â  Ca lÄ‚Â m active Ă„â€˜Ä‚Âºng trÄ‚Âªn desktop/mobile. MĂ¡ÂºÂ«u in `/print-templates` vÄ‚Â  CĂ¡ÂºÂ¥u hÄ‚Â¬nh in bill `/settings/receipt` chĂ¡Â»â€° Ă¡Â»Å¸ bÄ‚Â¡nh rĂ„Æ’ng; session, branch, Navbar/ChatBot vÄ‚Â  trĂ¡ÂºÂ¡ng thÄ‚Â¡i POS/KDS khÄ‚Â´ng bĂ¡Â»â€¹ reset ngoÄ‚Â i hÄ‚Â nh vi hiĂ¡Â»â€¡n tĂ¡ÂºÂ¡i | ChĂ†Â°a test | |
 | ADM-21 | ChuÄ‚Â´ng vÄ‚Â  lĂ¡Â»â€¹ch sĂ¡Â»Â­ thÄ‚Â´ng bÄ‚Â¡o | Hai user cÄ‚Â¹ng nhĂ¡ÂºÂ­n notification; Branch A/B vÄ‚Â  Ă„â€˜Ă†Â¡n chĂ¡Â»Â xĂ¡Â»Â­ lÄ‚Â½ | Ă„ÂĂ„Æ’ng nhĂ¡ÂºÂ­p tĂ¡Â»Â«ng user, kiĂ¡Â»Æ’m tra chuÄ‚Â´ng unread/pending riÄ‚Âªng, Ă„â€˜Ă¡Â»Âc mĂ¡Â»â„¢t notification, mark-all, mĂ¡Â»Å¸ `/notifications`, lĂ¡Â»Âc loĂ¡ÂºÂ¡i/thĂ¡Â»Âi gian/branch vÄ‚Â  phÄ‚Â¢n trang; thĂ¡Â»Â­ URL trĂ¡Â»Â±c tiĂ¡ÂºÂ¿p/ID khÄ‚Â¡c quyĂ¡Â»Ân, logout/login, target Ă„â€˜Ä‚Â£ xÄ‚Â³a vÄ‚Â  lĂ¡Â»â€”i mutation | Read-state Ă„â€˜Ă¡Â»â„¢c lĂ¡ÂºÂ­p theo user; badge chĂ¡Â»â€° unread, pending khÄ‚Â´ng bĂ¡Â»â€¹ thay Ă„â€˜Ă¡Â»â€¢i; Ă„â€˜Ä‚Â£ Ă„â€˜Ă¡Â»Âc biĂ¡ÂºÂ¿n mĂ¡ÂºÂ¥t khĂ¡Â»Âi dropdown nhĂ†Â°ng cÄ‚Â²n lĂ¡Â»â€¹ch sĂ¡Â»Â­; branch/recipient Ă„â€˜Ä‚Âºng, mark-read idempotent; target khÄ‚Â´ng tĂ¡Â»Â± nhĂ¡ÂºÂ­n/hĂ¡Â»Â§y/thanh toÄ‚Â¡n; dĂ¡Â»Â¯ liĂ¡Â»â€¡u legacy Ă„â€˜Ă†Â°Ă¡Â»Â£c kiĂ¡Â»Æ’m tra sau khi Ä‚Â¡p migration; trĂ¡ÂºÂ¡ng thÄ‚Â¡i vĂ¡ÂºÂ«n `ChĂ†Â°a test` | ChĂ†Â°a test | |
 
-## Other
+## Other (AI checklist centralized)
+
+Owner AI chat cases are maintained in [`../ai-chat/01-chu-quan.md`](../ai-chat/01-chu-quan.md); technical cases are in [`../ky-thuat-runtime/README.md`](../ky-thuat-runtime/README.md).
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| ADM-12 | Mock AI chat | Mock AI local Ă„â€˜ang bĂ¡ÂºÂ­t | MĂ¡Â»Å¸ chatbot, hĂ¡Â»Âi menu/doanh thu/Ă„â€˜Ă†Â¡n trong phĂ¡ÂºÂ¡m vi, thĂ¡Â»Â­ thao tÄ‚Â¡c Ă„â€˜Ă¡Â»â€¢i giÄ‚Â¡ | Chatbot trĂ¡ÂºÂ£ kĂ¡ÂºÂ¿t quĂ¡ÂºÂ£ Mock; tool Ă„â€˜Ă†Â°Ă¡Â»Â£c phÄ‚Â©p theo `admin`; thao tÄ‚Â¡c Ă„â€˜Ă¡Â»â€¢i giÄ‚Â¡ dĂ¡Â»Â«ng Ă¡Â»Å¸ confirmation server, khÄ‚Â´ng tĂ¡Â»Â± xÄ‚Â¡c nhĂ¡ÂºÂ­n | ChĂ†Â°a test | |
-

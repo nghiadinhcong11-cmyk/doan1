@@ -1,0 +1,14 @@
+[
+  {"id":"REF-R01","intent":"REVENUE_QUERY","text":"Hôm nay doanh thu của chi nhánh là bao nhiêu?"},
+  {"id":"REF-R02","intent":"REVENUE_QUERY","text":"Doanh số bán hàng hôm nay đạt bao nhiêu tiền?"},
+  {"id":"REF-R03","intent":"REVENUE_QUERY","text":"Cho tôi biết tổng tiền bán được trong ngày hôm nay."},
+  {"id":"REF-R04","intent":"REVENUE_QUERY","text":"Doanh thu của tháng này hiện là bao nhiêu?"},
+  {"id":"REF-R05","intent":"REVENUE_QUERY","text":"Cửa hàng thu được bao nhiêu trong tháng này?"},
+  {"id":"REF-R06","intent":"REVENUE_QUERY","text":"Báo cáo số tiền bán hàng của hôm nay."},
+  {"id":"REF-S01","intent":"BUSINESS_SUMMARY","text":"Tóm tắt tình hình kinh doanh hôm nay."},
+  {"id":"REF-S02","intent":"BUSINESS_SUMMARY","text":"Cho tôi xem tổng quan hoạt động kinh doanh hôm nay."},
+  {"id":"REF-S03","intent":"BUSINESS_SUMMARY","text":"Hôm nay cửa hàng có những chỉ số kinh doanh nào?"},
+  {"id":"REF-S04","intent":"BUSINESS_SUMMARY","text":"Tổng hợp KPI kinh doanh tháng này."},
+  {"id":"REF-S05","intent":"BUSINESS_SUMMARY","text":"Báo cáo tổng quan kinh doanh trong tuần này."},
+  {"id":"REF-S06","intent":"BUSINESS_SUMMARY","text":"Tóm tắt doanh thu và số đơn của tháng này."}
+]

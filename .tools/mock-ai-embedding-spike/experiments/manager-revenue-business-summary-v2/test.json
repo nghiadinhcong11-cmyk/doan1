@@ -1,0 +1,22 @@
+[
+  {"id":"NEW-R01","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Cửa hàng kiếm được bao nhiêu trong ngày hôm nay?"},
+  {"id":"NEW-R02","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Tổng số tiền bán hàng của tháng hiện tại là bao nhiêu?"},
+  {"id":"NEW-R03","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Hôm qua doanh thu của quán đạt mức nào?"},
+  {"id":"NEW-R04","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Trong tuần này doanh số là bao nhiêu tiền?"},
+  {"id":"NEW-S01","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tôi cần báo cáo tổng quát hoạt động hôm nay."},
+  {"id":"NEW-S02","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tóm tắt KPI kinh doanh của tháng này."},
+  {"id":"NEW-S03","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Cho biết tình hình vận hành trong tuần hiện tại."},
+  {"id":"NEW-S04","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tổng hợp doanh thu và số đơn của ngày hôm qua."},
+  {"id":"NEW-X01","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Món nào đang có trong thực đơn hôm nay?"},
+  {"id":"NEW-X02","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Tôi muốn biết lịch ca làm của mình."},
+  {"id":"NEW-X03","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Hãy cập nhật trạng thái đơn hàng."},
+  {"id":"NEW-X04","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Kho còn bao nhiêu nguyên liệu?"},
+  {"id":"NEW-X05","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Tối nay nhà hàng phục vụ đến mấy giờ?"},
+  {"id":"NEW-X06","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Khách này còn bao nhiêu điểm thành viên?"},
+  {"id":"NEW-A01","intent":"AMBIGUOUS","expectedDecision":"CLARIFY","text":"Hôm nay hoạt động thế nào?"},
+  {"id":"NEW-A02","intent":"NEGATED","expectedDecision":"CLARIFY","text":"Đừng cho tôi xem doanh thu hôm nay."},
+  {"id":"NEW-A03","intent":"MULTI_INTENT","expectedDecision":"CLARIFY","text":"Báo cáo doanh thu và cho biết tổng quan hôm nay."},
+  {"id":"NEW-A04","intent":"AMBIGUOUS","expectedDecision":"CLARIFY","text":"Cho biết tình hình."},
+  {"id":"NEW-U01","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Xếp hạng món bán chạy nhất tuần này."},
+  {"id":"NEW-U02","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Đếm số đơn đang chờ xử lý hôm nay."}
+]

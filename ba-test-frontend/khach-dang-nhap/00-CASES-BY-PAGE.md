@@ -13,7 +13,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | CUS-07 | Session |
 | CUS-08 | Notifications |
 | CUS-09 | Direct URL / authorization |
-| CUS-10 | Branch isolation |
 | CUS-11 | Runtime errors |
 | CUS-12 | Navigation |
 | CUS-13 | Mock AI |
@@ -65,7 +64,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| CUS-10 | Chatbot Mock AI customer | Ă„ÂÄ‚Â£ Ă„â€˜Ă„Æ’ng nhĂ¡ÂºÂ­p vÄ‚Â  Mock bĂ¡ÂºÂ­t | HĂ¡Â»Âi menu, Ă„â€˜Ă†Â¡n cĂ¡Â»Â§a mÄ‚Â¬nh, Ă„â€˜Ă¡ÂºÂ·t bÄ‚Â n; hĂ¡Â»Âi dĂ¡Â»Â¯ liĂ¡Â»â€¡u customer khÄ‚Â¡c hoĂ¡ÂºÂ·c yÄ‚Âªu cĂ¡ÂºÂ§u Ă„â€˜Ă¡Â»â€¢i giÄ‚Â¡ | `/api/Ai/chat` dÄ‚Â¹ng role `customer`; tool customer Ă„â€˜Ä‚Âºng scope; cÄ‚Â¢u hĂ¡Â»Âi trÄ‚Â¡i quyĂ¡Â»Ân bĂ¡Â»â€¹ tĂ¡Â»Â« chĂ¡Â»â€˜i; mutation cĂ¡ÂºÂ§n confirmation | ChĂ†Â°a test | |
 
 ## Runtime errors
 
@@ -79,7 +77,9 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 |---|---|---|---|---|---|---|
 | CUS-12 | Hai tÄ‚Â i khoĂ¡ÂºÂ£n vÄ‚Â  branch isolation | CÄ‚Â³ customer A/B, nĂ¡ÂºÂ¿u dĂ¡Â»Â¯ liĂ¡Â»â€¡u branch khÄ‚Â¡c cÄ‚Â³ | Ă„ÂĂ„Æ’ng nhĂ¡ÂºÂ­p tĂ¡Â»Â«ng tÄ‚Â i khoĂ¡ÂºÂ£n, xem order/profile bĂ¡ÂºÂ±ng URL trĂ¡Â»Â±c tiĂ¡ÂºÂ¿p | KhÄ‚Â´ng Ă„â€˜Ă¡Â»Âc/sĂ¡Â»Â­a order, profile, Ă„â€˜iĂ¡Â»Æ’m hoĂ¡ÂºÂ·c reservation cĂ¡Â»Â§a tÄ‚Â i khoĂ¡ÂºÂ£n khÄ‚Â¡c | ChĂ†Â°a test | |
 
-## Mock AI
+## Security / role boundaries (AI checklist centralized)
+
+AI chat cases are maintained in [`../ai-chat/02-khach-dang-nhap.md`](../ai-chat/02-khach-dang-nhap.md) and API/runtime cases in [`../ky-thuat-runtime/README.md`](../ky-thuat-runtime/README.md). The row below is a direct API IDOR case, not a chat duplicate.
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
@@ -108,4 +108,3 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
 | CUS-17 | Chi tiĂ¡ÂºÂ¿t lĂ¡Â»â€¹ch sĂ¡Â»Â­ Ă„â€˜Ă†Â¡n Ă„â€˜Ă¡Â»â€˜i chiĂ¡ÂºÂ¿u hÄ‚Â³a Ă„â€˜Ă†Â¡n | Customer cÄ‚Â³ Ă„â€˜Ă†Â¡n dine-in/mang vĂ¡Â»Â, Ă„â€˜Ă†Â¡n Ă„â€˜Ä‚Â£/chĂ†Â°a thanh toÄ‚Â¡n/hĂ¡Â»Â§y, cÄ‚Â³ thĂ¡Â»Æ’ cÄ‚Â³ snapshot tÄ‚Â i chÄ‚Â­nh/loyalty thiĂ¡ÂºÂ¿u | MĂ¡Â»Å¸ chi tiĂ¡ÂºÂ¿t tĂ¡Â»Â« danh sÄ‚Â¡ch, chĂ¡Â»Ân nhanh Ă„â€˜Ă†Â¡n A rĂ¡Â»â€œi B, thĂ¡Â»Â­ URL trĂ¡Â»Â±c tiĂ¡ÂºÂ¿p cĂ¡Â»Â§a Ă„â€˜Ă†Â¡n customer khÄ‚Â¡c, xem trÄ‚Âªn mobile vÄ‚Â  khi API lĂ¡Â»â€”i | ChĂ¡Â»â€° thĂ¡ÂºÂ¥y Ă„â€˜Ă†Â¡n cĂ¡Â»Â§a chÄ‚Â­nh mÄ‚Â¬nh; chi tiĂ¡ÂºÂ¿t hiĂ¡Â»Æ’n thĂ¡Â»â€¹ mÄ‚Â£, branch/bÄ‚Â n hoĂ¡ÂºÂ·c mang vĂ¡Â»Â, thĂ¡Â»Âi gian, trĂ¡ÂºÂ¡ng thÄ‚Â¡i Ă„â€˜Ă†Â¡n/thanh toÄ‚Â¡n, mÄ‚Â³n/SL/Ă„â€˜Ă†Â¡n giÄ‚Â¡/options, snapshot subtotal/discount/phÄ‚Â­/VAT/tĂ¡Â»â€¢ng/Ă„â€˜Ä‚Â£ trĂ¡ÂºÂ£ khi backend cÄ‚Â³; thiĂ¡ÂºÂ¿u snapshot khÄ‚Â´ng bĂ¡Â»â€¹ suy ra thÄ‚Â nh 0; loyalty Ă„â€˜Ä‚Âºng order; phĂ¡ÂºÂ£n hĂ¡Â»â€œi cĂ…Â© khÄ‚Â´ng ghi Ă„â€˜Ä‚Â¨ | ChĂ†Â°a test | Ă„ÂĂ¡Â»â€˜i chiĂ¡ÂºÂ¿u cÄ‚Â¹ng Ă„â€˜Ă†Â¡n vĂ¡Â»â€ºi Admin ReceiptPreview; guest khÄ‚Â´ng Ă„â€˜Ă†Â°Ă¡Â»Â£c mĂ¡Â»Å¸ rĂ¡Â»â„¢ng lĂ¡Â»â€¹ch sĂ¡Â»Â­ |
-

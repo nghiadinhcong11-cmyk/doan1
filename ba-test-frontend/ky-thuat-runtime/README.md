@@ -30,6 +30,20 @@ These are technical/API or multi-session checks, not UI-only substitutes. Keep r
 | AI-02 | API/HTTP client | AI branch scope | Manager/employee tool requests for orders, revenue, tables and status use own vs another branch context | Other-branch data/mutation is rejected or absent; admin global behavior is separately recorded | ChÆ°a test | SEC-005 |
 | AI-03 | API/HTTP client | Customer/guest ownership and confirmation | Registered customer requests own orders; guest requests personal orders/write tools; admin price change requires confirmation token | Customer sees only own scope; guest is denied personal/write tools; sensitive admin write needs confirmation | ChÆ°a test | COV-001, SEC-005 |
 
+## Mock AI follow-up cases
+
+| ID | Phương pháp | Phạm vi | Điều kiện và bước chính | Kết quả mong đợi | Trạng thái | Minh chứng/finding |
+|---|---|---|---|---|---|---|
+| AI-04 | API/HTTP client | Tool failure contract | Gửi tool không tồn tại/argument lỗi hoặc dùng path bị deny; ghi `Success`, `Message`, `Error` | Tool failure không trả `Success=true`; lỗi an toàn và phân biệt được với empty result | Chưa test | AI-001 |
+| AI-05 | API/HTTP client | Service failure contract | Trong môi trường cô lập, tạo lỗi service sau khi chọn tool; đối chiếu response/audit | `Success=false`, text an toàn; không fake success và không lộ exception nội bộ | Chưa test | AI-001, AI-004 |
+| AI-06 | API/HTTP client | Mock intent boundary | Test intent hỗ trợ, unsupported, thiếu period, nhiều ý và câu phủ định; ghi tool/response | Chỉ allowlist mới chọn tool; câu mơ hồ/unsupported/phủ định không chọn nhầm truy vấn nghiệp vụ | Chưa test | AI-001, AI-002 |
+| AI-07 | API/HTTP client | Write-policy decision | Hỏi admin đổi giá, staff đổi trạng thái đơn, customer đặt bàn qua chat | Khớp chính sách Mock được chốt; nếu read-only thì không chạy tool; nếu bật write thì dừng đúng confirmation | Chưa test | AI-002 |
+| AI-08 | API/HTTP client | Price confirmation binding | Admin tạo confirmation; thử đúng admin, admin khác, sản phẩm/giá đã đổi, hết hạn và replay | Token bind đúng user/product/current price, hết hạn, one-use; không mutate sai sản phẩm | Chưa test | AI-002 |
+| AI-09 | API/HTTP client | No pre-confirm mutation | Ghi giá trước khi yêu cầu đổi giá; dừng trước xác nhận rồi đọc lại | Giá không đổi trước confirmation; provider không tự xác nhận | Chưa test | AI-002 |
+| AI-10 | Browser/Network | Chat concurrency và session context | Double-click khi loading, request chậm/lỗi, logout/login user khác, đổi branch/refresh | Không duplicate request/confirmation; pending/error rõ; history cũ không gửi dưới identity/branch mới | Chưa test | AI-003 |
+| AI-11 | API/HTTP client | Tool error redaction | Tạo validation, not-found, conflict và infrastructure/provider failure trong môi trường cô lập | User chỉ nhận thông báo an toàn; chi tiết nội bộ chỉ ở log đã lọc | Chưa test | AI-004 |
+| AI-12 | API/HTTP client | Guest environment/provider gate | Gọi guest-chat trong môi trường không phù hợp hoặc với provider mode khác Mock theo cấu hình kiểm thử được phê duyệt | Endpoint bị từ chối an toàn/404 theo contract hiện tại; không fallback provider và không chạy tool | Chưa test | GST-10 |
+
 ## Diff-review follow-up cases
 
 | ID | Phương pháp | Phạm vi | Điều kiện và bước chính | Kết quả mong đợi | Trạng thái | Minh chứng/finding |

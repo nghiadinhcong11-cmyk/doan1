@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import StaffNavbar from '../../components/StaffNavbar';
 import ForbiddenPage from '../../components/ForbiddenPage';
-import ChatBot from '../../components/ChatBot';
 import OperationsLayout from '../layouts/OperationsLayout';
 import { EmployeeAttendance, EmployeeProfile, EmployeeSchedule } from '../../features/hrm';
 import { InventoryPage } from '../../features/inventory';
@@ -32,7 +31,6 @@ export default function StaffRoutes({ userName, userPosition, onLogout }: StaffR
           <Route path="*" element={<Navigate to="/staff/profile" replace />} />
         </Route>
       </Routes>
-      <ChatBot />
     </div>
   );
 }

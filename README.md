@@ -23,7 +23,7 @@ Hệ thống quản lý bán hàng nhà hàng tập trung vào tính đơn giả
 
 ## Tài liệu chuẩn
 
-`bao-cao/tai-lieu-ky-thuat/system-audit/` là source of truth được kiểm tra theo source code hiện tại. Bắt đầu tại [`bao-cao/tai-lieu-ky-thuat/system-audit/00-README.md`](bao-cao/tai-lieu-ky-thuat/system-audit/00-README.md). Bộ `bao-cao/do-an/` là tài liệu bổ trợ cho báo cáo/khóa luận và có thể chứa nội dung lịch sử; khi có mâu thuẫn, bộ system audit và source code được ưu tiên.
+`bao-cao/02-tai-lieu-ky-thuat/system-audit/` là source of truth được kiểm tra theo source code hiện tại. Bắt đầu tại [`bao-cao/02-tai-lieu-ky-thuat/system-audit/00-README.md`](bao-cao/02-tai-lieu-ky-thuat/system-audit/00-README.md). Bộ `bao-cao/01-khoa-luan/` là tài liệu bổ trợ cho báo cáo/khóa luận và có thể chứa nội dung lịch sử; khi có mâu thuẫn, bộ system audit và source code được ưu tiên.
 
 ## Phân quyền & Bảo mật (RBAC)
 

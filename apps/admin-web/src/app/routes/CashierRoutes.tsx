@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import CashierNavbar from '../../components/CashierNavbar';
 import ForbiddenPage from '../../components/ForbiddenPage';
-import ChatBot from '../../components/ChatBot';
 import OperationsLayout from '../layouts/OperationsLayout';
 import { InvoiceHistory } from '../../features/analytics';
 import { ReservationManagement } from '../../features/operations';
@@ -34,7 +33,6 @@ export default function CashierRoutes({ userName, userPosition, onLogout }: Cash
           <Route path="*" element={<Navigate to="/pos" replace />} />
         </Route>
       </Routes>
-      <ChatBot />
     </div>
   );
 }

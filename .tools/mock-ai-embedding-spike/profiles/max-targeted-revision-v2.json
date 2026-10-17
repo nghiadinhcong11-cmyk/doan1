@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "profileId": "max-targeted-revision-v2",
+  "status": "frozen offline development revision; not integrated",
+  "enabledByDefault": false,
+  "automaticLoading": false,
+  "catalogProfile": "targeted-revision-v2",
+  "scoring": "max",
+  "minimumScore": 0.85,
+  "minimumMargin": 0.01,
+  "catalogVersion": {
+    "retainedSamples": 37,
+    "competingSamples": 35,
+    "competingLabels": 9
+  },
+  "model": {
+    "name": "intfloat/multilingual-e5-small",
+    "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "artifact": "artifacts/onnx/model_O4.onnx",
+    "sha256": "4654C156F3E4171ABC9C716CDB771BF9116455D15AC1AAB364AEEEDE0E3205B0",
+    "tokenizerSha256": "0B44A9D7B51C3C62626640CDA0E2C2F70FDACDC25BBBD68038369D14EBDF4C39"
+  },
+  "sourceSnapshot": {
+    "head": "38bbd423b963aaf5779d4ae3356f942ff236643b",
+    "files": [
+      {
+        "path": ".tools/mock-ai-embedding-spike/IntentCatalog.cs",
+        "sha256": "2D524E2E5BF3D2E7B63AB3864D0703E35EC5697DFCD6F2539BD40C3233CA30F1"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/IntentDecisionPipeline.cs",
+        "sha256": "5B8D7FFE124FD59AC40255094DAB6250FB5300991EA7F8E4F0A3E4F9495BCAD0"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/DecisionReviewRunner.cs",
+        "sha256": "C327F091FFF14CBC9CADF091A585075C17778DC0125064CE580BC69AEA42F37E"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/IntentScorer.cs",
+        "sha256": "31DD9EB7931D19A7146B4C641DDA2173F9463B1F84C2E8270C43D8056736603D"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/SentenceEmbeddingAdapter.cs",
+        "sha256": "63657F23C870FC4BC6751EFB2EB3E9FC51A7476A18FAF8870CE2E316619739C3"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/calibration.json",
+        "sha256": "E68AD7CF07EF403D5479F37B8360B12AD0224C0704377EF17B75097F0D7CB5B0"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/calibration-supplement.json",
+        "sha256": "262F921C9B1C3E1C1F94B0FF9D7A2B9D0839658161554FAEA68311B1FD305ED2"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/calibration-behavior.json",
+        "sha256": "8F87E327EB0BFDCB15537BD703FDA838659373A840425457A1714CC686D82C74"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/evaluation-EMB-E01-E30.json",
+        "sha256": "2F634D54F2B7A5666A350A62043632E3810566000865B9EF0A688C01AB5DC08E"
+      }
+    ]
+  },
+  "evaluationPolicy": "CAL/SUP/EMB are observed development/regression data. Freeze this revision before new internal checks; run once without further edits. Model, scorer, adapter, thresholds and original dataset bytes unchanged.",
+  "invocation": "Use --decision-review --catalog-profile targeted-revision-v2 --scoring max --minimum-score 0.85 --minimum-margin 0.01 explicitly. Not auto-loaded."
+}

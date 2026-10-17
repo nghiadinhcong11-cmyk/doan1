@@ -14,7 +14,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | CSH-08 | Reservations |
 | CSH-09 | Notifications |
 | CSH-10 | Direct URL / authorization |
-| CSH-11 | Branch isolation |
 | CSH-12 | Runtime errors |
 | CSH-13 | Navigation |
 | CSH-14 | Mock AI |
@@ -93,7 +92,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| CSH-11 | Mock AI cashier | Mock bĂ¡ÂºÂ­t | HĂ¡Â»Âi menu, bÄ‚Â n, Ă„â€˜Ă†Â¡n; thĂ¡Â»Â­ thao tÄ‚Â¡c cĂ¡ÂºÂ­p nhĂ¡ÂºÂ­t giÄ‚Â¡ hoĂ¡ÂºÂ·c xem tÄ‚Â i chÄ‚Â­nh admin | ChĂ¡Â»â€° tool Ă„â€˜Ă†Â°Ă¡Â»Â£c phÄ‚Â©p chĂ¡ÂºÂ¡y; thao tÄ‚Â¡c nhĂ¡ÂºÂ¡y cĂ¡ÂºÂ£m bĂ¡Â»â€¹ chĂ¡ÂºÂ·n/confirmation theo server; khÄ‚Â´ng gĂ¡Â»Âi provider ngoÄ‚Â i | ChĂ†Â°a test | |
 
 ## Runtime errors
 
@@ -107,7 +105,9 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 |---|---|---|---|---|---|---|
 | CSH-13 | Hai thanh toÄ‚Â¡n Ă„â€˜Ă¡Â»â€œng thĂ¡Â»Âi | CÄ‚Â³ mĂ¡Â»â„¢t order unpaid vÄ‚Â  hai phiÄ‚Âªn cashier hĂ¡Â»Â£p lĂ¡Â»â€¡ | BĂ¡ÂºÂ¥m thanh toÄ‚Â¡n gĂ¡ÂºÂ§n nhĂ†Â° Ă„â€˜Ă¡Â»â€œng thĂ¡Â»Âi Ă¡Â»Å¸ hai phiÄ‚Âªn rĂ¡Â»â€œi reload invoice | ChĂ¡Â»â€° mĂ¡Â»â„¢t request chuyĂ¡Â»Æ’n paid; request cÄ‚Â²n lĂ¡ÂºÂ¡i bÄ‚Â¡o conflict/Ă„â€˜Ä‚Â£ thanh toÄ‚Â¡n; khÄ‚Â´ng ghi nhĂ¡ÂºÂ­n thu tiĂ¡Â»Ân hai lĂ¡ÂºÂ§n | ChĂ†Â°a test | |
 
-## Mock AI
+## Security / role boundaries (AI checklist centralized)
+
+AI chat cases are maintained in [`../ai-chat/01-chu-quan.md`](../ai-chat/01-chu-quan.md) and API/runtime cases in [`../ky-thuat-runtime/README.md`](../ky-thuat-runtime/README.md). The row below is a non-chat payment-integrity case.
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
@@ -152,4 +152,3 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | CSH-37 | Hai may tao member cung phone | Hai order khac nhau; hai phien cashier/admin hop le; phone chua co member | Gan nhu dong thoi thanh toan hai order voi cung phone va consent bat; reload customer/order/loyalty ca hai may | Khong co member trung; mot request co the thanh cong va request con lai nhan conflict/loi duoc kiem soat; khong tich diem hai lan ngoai rule | Chua test | Schema/unique constraint va customer scope can xac minh; khong mac dinh ca hai request phai thanh cong |
 | CSH-38 | Hai may thanh toan khi may A con mo payment modal | May A dang mo payment modal; may B co cung order va quyen thanh toan | May B thanh toan; de may A nhan polling/event hien hanh roi bam xac nhan lai; reload invoice/order | Chi ghi nhan mot payment; may A hien conflict/da thanh toan va khong ghi diem lap; modal khong doi thanh success gia | Chua test | Lien quan REF-05/CSH-13; tap trung vao modal cu va phan hoi sau polling |
 | CSH-39 | Chuong va lich su thong bao cashier | Hai user cashier/manager cung branch; co notification va don cho xu ly | Mo chuong, doi chieu badge unread voi khu vuc don can xu ly; doc/mar-all; mo `/pos/notifications`, loc va phan trang; thu branch/ID khac quyen va target da xoa | Badge chi dem unread theo user; pending khong bi mark-read; lich su van giu muc da doc; API tu choi scope sai; trang thai van Chua test | Chua test | Can ap migration read-state truoc khi test runtime |
-

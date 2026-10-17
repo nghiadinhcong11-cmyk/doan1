@@ -87,3 +87,10 @@ test-results/
 /.tools/e2e-cert/
 /.tools/pg-e2e-password.txt
 /doan-rootCA.crt
+# Local Mock AI embedding spike artifacts and build output
+.tools/mock-ai-embedding-spike/artifacts/
+.tools/mock-ai-embedding-spike/bin/
+.tools/mock-ai-embedding-spike/obj/
+
+.tools/mock-ai-embedding-spike/.venv/
+.tools/mock-ai-embedding-spike/.venv312/

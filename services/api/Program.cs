@@ -16,6 +16,7 @@ using RestaurantPOS.AI.Prompts;
 using RestaurantPOS.WebAPI.Hubs;
 using RestaurantPOS.WebAPI.Middleware;
 using RestaurantPOS.WebAPI.Configuration;
+using RestaurantPOS.WebAPI.Diagnostics;
 
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
@@ -46,10 +47,14 @@ if (builder.Environment.IsDevelopment() &&
 
 // Development-only, allow-listed AI diagnostics. The provider writes selected
 // fields only; it is never registered in Production and never captures raw logs.
-var safeAiDiagnosticPath = builder.Configuration["AI:Diagnostics:SafeFilePath"];
-if (builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(safeAiDiagnosticPath))
+var uatLoggingEnabled = builder.Configuration.GetValue<bool>("AI:UatLogging:Enabled");
+var safeAiDiagnosticPath = builder.Configuration["AI:UatLogging:Path"] ?? "logs/ai-uat/ai-chat.log";
+var safeAiDiagnosticMaxBytes = builder.Configuration.GetValue<long?>("AI:UatLogging:MaxFileBytes") ?? 5 * 1024 * 1024;
+var safeAiDiagnosticRetainedFiles = builder.Configuration.GetValue<int?>("AI:UatLogging:RetainedFiles") ?? 3;
+if ((builder.Environment.IsDevelopment() || string.Equals(builder.Environment.EnvironmentName, "Test", StringComparison.OrdinalIgnoreCase) || string.Equals(builder.Environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase)) && uatLoggingEnabled)
 {
-    builder.Logging.AddProvider(new SafeAiDiagnosticFileLoggerProvider(safeAiDiagnosticPath));
+    var resolvedPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, safeAiDiagnosticPath));
+    builder.Logging.AddProvider(new SafeAiDiagnosticFileLoggerProvider(resolvedPath, safeAiDiagnosticMaxBytes, safeAiDiagnosticRetainedFiles));
 }
 
 Console.WriteLine("BACKEND_STARTUP_PHASE=SERVICE_REGISTRATION");
@@ -305,7 +310,9 @@ builder.Services.AddScoped<IAiProvider, MockAiProvider>();
 
 // 2. Đăng ký các AI Core Services
 builder.Services.AddScoped<AiContextService>();
+builder.Services.AddScoped<AiCorrelationContext>();
 builder.Services.AddScoped<AiPermissionService>();
+builder.Services.AddSingleton<ManagerEmbeddingPilot>();
 builder.Services.AddSingleton<IAiToolExecutionAuditSink, AiToolExecutionAuditSink>();
 builder.Services.AddSingleton<AiLiveReadOnlyPolicy>();
 // Register the single Mock AI implementation explicitly so startup cannot
@@ -317,8 +324,10 @@ builder.Services.AddScoped<IAiOrchestrator>(serviceProvider =>
         serviceProvider.GetRequiredService<AiToolRegistry>(),
         serviceProvider.GetRequiredService<AiPermissionService>(),
         serviceProvider.GetRequiredService<PromptBuilder>(),
+        serviceProvider.GetRequiredService<ManagerEmbeddingPilot>(),
         serviceProvider.GetRequiredService<ILogger<AiOrchestrator>>(),
-        serviceProvider.GetRequiredService<IAiToolExecutionAuditSink>()));
+        serviceProvider.GetRequiredService<IAiToolExecutionAuditSink>(),
+        serviceProvider.GetRequiredService<AiCorrelationContext>()));
 builder.Services.AddScoped<PromptBuilder>();
 builder.Services.AddScoped<AiAuthorization>();
 builder.Services.AddSingleton<IProductPriceConfirmationStore, ProductPriceConfirmationStore>();
@@ -364,6 +373,18 @@ connectionString = NormalizePostgresConnectionString(connectionString);
 var parsedConnectionString = new NpgsqlConnectionStringBuilder(connectionString);
 SupabaseProjectTargetGuard.Validate(parsedConnectionString, builder.Configuration, builder.Environment.IsDevelopment());
 connectionString = PostgresConnectionPoolPolicy.Apply(connectionString, builder.Configuration);
+
+// Capture the effective TEST target from this process, then verify it with a
+// read-only connection before registering the same connection for EF Core.
+if (builder.Environment.IsDevelopment() &&
+    string.Equals(builder.Configuration["Database:TargetMode"], SupabaseProjectTargetGuard.TestMode, StringComparison.OrdinalIgnoreCase))
+{
+    var targetAttestation = await DatabaseTargetAttestationWriter.WriteAsync(
+        builder.Environment,
+        builder.Configuration,
+        new NpgsqlConnectionStringBuilder(connectionString));
+    Console.WriteLine($"BACKEND_DATABASE_TARGET_ATTESTATION={targetAttestation.Status} PATH={targetAttestation.Path}");
+}
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>

@@ -80,7 +80,7 @@ namespace RestaurantPOS.AI.Tools.Admin
             }
             catch (ArgumentException ex)
             {
-                return AiToolResult.CreateError(ex.Message);
+                return AiToolResult.CreateError(AiToolValidator.GetSafeArgumentError(ex));
             }
             catch (Exception ex)
             {

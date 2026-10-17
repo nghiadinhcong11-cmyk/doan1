@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Send, Bot, User, Sparkles, ChevronRight } from 'lucide-react';
+import { MessageCircle, X, Send, Bot } from 'lucide-react';
 import { API_URL } from '../config';
-import { useLocation } from 'react-router-dom';
 
 const getUsableCustomerToken = (): string | null => {
   const token = localStorage.getItem('customerToken');
@@ -23,15 +22,63 @@ const getUsableCustomerToken = (): string | null => {
   }
 };
 
+const CUSTOMER_WELCOME = 'Xin chào! Tôi là trợ lý DOAN. Bạn có thể nhập câu hỏi bên dưới.';
+
+const readTokenContext = (token: string | null): string => {
+  if (!token) return 'anonymous';
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return `${payload.sub ?? ''}|${payload.role ?? ''}|${payload.branchId ?? ''}`;
+  } catch {
+    return 'invalid-token';
+  }
+};
+
+const getCustomerContextKey = (): string => [
+  readTokenContext(localStorage.getItem('customerToken')),
+  sessionStorage.getItem('customerGuestMode') ?? '',
+  sessionStorage.getItem('guestQrSession') ?? '',
+  sessionStorage.getItem('guestDirectSession') ?? '',
+  sessionStorage.getItem('guestDirectBranchId') ?? '',
+  readTokenContext(sessionStorage.getItem('guestToken'))
+].join('|');
+
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([
-    { id: 1, text: "Xin chào! Tôi là trợ lý DOAN. Bạn muốn xem thực đơn, giá món hay hỏi nhanh điều gì hôm nay?", isBot: true }
+    { id: 1, text: CUSTOMER_WELCOME, isBot: true }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const location = useLocation();
+  const inFlightRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const contextKeyRef = useRef(getCustomerContextKey());
+  const [contextKey, setContextKey] = useState(contextKeyRef.current);
+
+  useEffect(() => {
+    const syncContext = () => {
+      const next = getCustomerContextKey();
+      setContextKey(previous => previous === next ? previous : next);
+    };
+    window.addEventListener('storage', syncContext);
+    const timer = window.setInterval(syncContext, 500);
+    return () => {
+      window.removeEventListener('storage', syncContext);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (contextKeyRef.current === contextKey) return;
+    contextKeyRef.current = contextKey;
+    requestIdRef.current += 1;
+    inFlightRef.current = false;
+    setMessages([{ id: Date.now(), text: CUSTOMER_WELCOME, isBot: true }]);
+    setInput('');
+    setIsOpen(false);
+    setIsTyping(false);
+  }, [contextKey]);
 
   // Draggable states
   const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 150 });
@@ -125,12 +172,12 @@ const ChatBot = () => {
     }
   };
 
-  const getSuggestions = () => {
-    return ["Thực đơn hôm nay có gì?", "Tôi muốn đặt bàn", "Giờ mở cửa của nhà hàng?", "Địa chỉ nhà hàng ở đâu?"];
-  };
-
   const handleSend = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || inFlightRef.current) return;
+
+    inFlightRef.current = true;
+    const requestId = ++requestIdRef.current;
+    const requestContextKey = contextKey;
 
     const userMsg = { id: Date.now(), text, isBot: false };
     setMessages(prev => [...prev, userMsg]);
@@ -163,8 +210,14 @@ const ChatBot = () => {
         throw new Error(`Server trả về lỗi: ${response.status}`);
       }
       const data = await response.json();
+      if (requestId !== requestIdRef.current || requestContextKey !== getCustomerContextKey()) return;
+      if (data.success === false) {
+        setMessages(prev => [...prev, { id: Date.now() + 1, text: data.error ?? 'Yêu cầu AI chưa thực hiện được.', isBot: true }]);
+        return;
+      }
       setMessages(prev => [...prev, { id: Date.now() + 1, text: data.message, isBot: true }]);
     } catch (err: any) {
+      if (requestId !== requestIdRef.current || requestContextKey !== getCustomerContextKey()) return;
       console.error('ChatBot Error:', err);
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
@@ -172,7 +225,10 @@ const ChatBot = () => {
         isBot: true
       }]);
     } finally {
-      setIsTyping(false);
+      if (requestId === requestIdRef.current) {
+        inFlightRef.current = false;
+        setIsTyping(false);
+      }
     }
   };
 
@@ -246,20 +302,8 @@ const ChatBot = () => {
             )}
           </div>
 
-          {/* Suggestions & Input */}
-          <div className="p-4 bg-white border-t border-gray-100 space-y-4">
-            <div className="flex flex-wrap gap-2">
-               {getSuggestions().map((s, i) => (
-                 <button
-                  key={i}
-                  onClick={() => handleSend(s)}
-                  className="rounded-full border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-600 transition-colors hover:bg-orange-100"
-                 >
-                   {s}
-                 </button>
-               ))}
-            </div>
-
+          {/* Input */}
+          <div className="p-4 bg-white border-t border-gray-100">
             <form
               onSubmit={(e) => { e.preventDefault(); handleSend(input); }}
                 className="relative"

@@ -1,0 +1,21 @@
+[
+  {"id":"DEV2-R01","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Hôm nay cửa hàng thu được bao nhiêu tiền?"},
+  {"id":"DEV2-R02","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Doanh thu của tháng này là bao nhiêu?"},
+  {"id":"DEV2-R03","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Cho tôi số tiền bán hàng hôm qua."},
+  {"id":"DEV2-R04","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Tuần này bán hàng được bao nhiêu?"},
+  {"id":"DEV2-S01","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tổng quan hoạt động kinh doanh hôm nay thế nào?"},
+  {"id":"DEV2-S02","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tổng hợp các chỉ số của tháng này."},
+  {"id":"DEV2-S03","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Báo cáo tình hình cửa hàng trong tuần này."},
+  {"id":"DEV2-S04","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Cho tôi bức tranh kinh doanh của hôm qua."},
+  {"id":"DEV2-X01","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Liệt kê món ăn và giá bán hiện tại."},
+  {"id":"DEV2-X02","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Kiểm tra ca làm việc của tôi hôm nay."},
+  {"id":"DEV2-X03","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Đổi đơn hàng sang trạng thái hoàn thành."},
+  {"id":"DEV2-X04","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Xem tồn kho nguyên liệu trong bếp."},
+  {"id":"DEV2-X05","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Nhà hàng tối nay mở cửa đến mấy giờ?"},
+  {"id":"DEV2-X06","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Tra điểm thưởng của khách hàng."},
+  {"id":"DEV2-A01","intent":"AMBIGUOUS","expectedDecision":"CLARIFY","text":"Tình hình hôm nay ra sao?"},
+  {"id":"DEV2-A02","intent":"NEGATED","expectedDecision":"CLARIFY","text":"Tôi không cần xem doanh thu hôm nay."},
+  {"id":"DEV2-A03","intent":"MULTI_INTENT","expectedDecision":"CLARIFY","text":"Xem doanh thu hôm nay và tổng quan kinh doanh."},
+  {"id":"DEV2-A04","intent":"AMBIGUOUS","expectedDecision":"CLARIFY","text":"Doanh thu thế nào?"},
+  {"id":"DEV2-A05","intent":"AMBIGUOUS","expectedDecision":"CLARIFY","text":"Cửa hàng kiếm được bao nhiêu hôm nay?"}
+]

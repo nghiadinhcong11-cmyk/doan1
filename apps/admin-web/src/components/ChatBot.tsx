@@ -1,7 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Send, Bot, User, Sparkles, ChevronRight } from 'lucide-react';
+import { MessageCircle, X, Send, Bot } from 'lucide-react';
 import { API_URL } from '../config';
-import { useLocation } from 'react-router-dom';
+
+const ADMIN_WELCOME = 'Xin chào! Tôi là trợ lý ảo DOAN POS. Tôi có thể giúp gì cho bạn?';
+
+const readTokenContext = (token: string | null): string => {
+  if (!token) return 'anonymous';
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return `${payload.sub ?? ''}|${payload.role ?? ''}|${payload.branchId ?? ''}`;
+  } catch {
+    return 'invalid-token';
+  }
+};
+
+const getAdminContextKey = (): string =>
+  `${readTokenContext(localStorage.getItem('adminToken'))}|${localStorage.getItem('userRole') ?? ''}|${localStorage.getItem('selectedBranchId') ?? ''}`;
 
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,7 +26,35 @@ const ChatBot = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [confirmingMessageId, setConfirmingMessageId] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const location = useLocation();
+  const inFlightRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const contextKeyRef = useRef(getAdminContextKey());
+  const [contextKey, setContextKey] = useState(contextKeyRef.current);
+
+  useEffect(() => {
+    const syncContext = () => {
+      const next = getAdminContextKey();
+      setContextKey(previous => previous === next ? previous : next);
+    };
+    window.addEventListener('storage', syncContext);
+    const timer = window.setInterval(syncContext, 500);
+    return () => {
+      window.removeEventListener('storage', syncContext);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (contextKeyRef.current === contextKey) return;
+    contextKeyRef.current = contextKey;
+    requestIdRef.current += 1;
+    inFlightRef.current = false;
+    setMessages([{ id: Date.now(), text: ADMIN_WELCOME, isBot: true }]);
+    setInput('');
+    setIsOpen(false);
+    setIsTyping(false);
+    setConfirmingMessageId(null);
+  }, [contextKey]);
 
   // Draggable states
   const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 80 });
@@ -107,18 +149,12 @@ const ChatBot = () => {
     }
   };
 
-  const getSuggestions = () => {
-    if (location.pathname.includes('/pos')) {
-      return ["Cách chấm công?", "Làm sao in lại hóa đơn?", "Cách đổi bàn?"];
-    }
-    if (location.pathname.includes('/dashboard') || location.pathname.includes('/settings')) {
-      return ["Xem báo cáo tháng ở đâu?", "Cách thêm chi nhánh mới?", "Đổi mật khẩu Admin?"];
-    }
-    return ["Hướng dẫn sử dụng nhanh", "Liên hệ kỹ thuật"];
-  };
-
   const handleSend = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || inFlightRef.current) return;
+
+    inFlightRef.current = true;
+    const requestId = ++requestIdRef.current;
+    const requestContextKey = contextKey;
 
     const userMsg = { id: Date.now(), text, isBot: false };
     setMessages(prev => [...prev, userMsg]);
@@ -134,7 +170,7 @@ const ChatBot = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const history = messages.map(m => ({ role: m.isBot ? 'assistant' : 'user', content: m.text }));
+      const history = messages.slice(-6).map(m => ({ role: m.isBot ? 'assistant' : 'user', content: m.text }));
 
       const response = await fetch(`${API_URL}/api/Ai/chat`, {
         method: 'POST',
@@ -146,6 +182,11 @@ const ChatBot = () => {
         throw new Error(`Server trả về lỗi: ${response.status}`);
       }
       const data = await response.json();
+      if (requestId !== requestIdRef.current || requestContextKey !== getAdminContextKey()) return;
+      if (data.success === false) {
+        setMessages(prev => [...prev, { id: Date.now() + 1, text: data.error ?? 'Yêu cầu AI chưa thực hiện được.', isBot: true }]);
+        return;
+      }
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         text: data.message,
@@ -153,6 +194,7 @@ const ChatBot = () => {
         confirmation: data.confirmation
       }]);
     } catch (err: any) {
+      if (requestId !== requestIdRef.current || requestContextKey !== getAdminContextKey()) return;
       console.error('ChatBot Error:', err);
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
@@ -160,7 +202,10 @@ const ChatBot = () => {
         isBot: true
       }]);
     } finally {
-      setIsTyping(false);
+      if (requestId === requestIdRef.current) {
+        inFlightRef.current = false;
+        setIsTyping(false);
+      }
     }
   };
 
@@ -280,20 +325,8 @@ const ChatBot = () => {
             )}
           </div>
 
-          {/* Suggestions & Input */}
-          <div className="p-4 bg-white border-t border-gray-100 space-y-4">
-            <div className="flex flex-wrap gap-2">
-               {getSuggestions().map((s, i) => (
-                 <button
-                  key={i}
-                  onClick={() => handleSend(s)}
-                  className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors border border-blue-100"
-                 >
-                   {s}
-                 </button>
-               ))}
-            </div>
-
+          {/* Input */}
+          <div className="p-4 bg-white border-t border-gray-100">
             <form
               onSubmit={(e) => { e.preventDefault(); handleSend(input); }}
               className="relative"

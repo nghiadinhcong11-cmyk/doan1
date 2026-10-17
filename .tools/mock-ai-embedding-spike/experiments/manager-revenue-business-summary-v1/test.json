@@ -1,0 +1,18 @@
+[
+  {"id":"TEST-R01","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Tôi cần biết hôm nay bán hàng thu về bao nhiêu."},
+  {"id":"TEST-R02","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Trong tháng này nhà hàng đạt doanh thu bao nhiêu?"},
+  {"id":"TEST-R03","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Cho xem số tiền bán hàng của ngày hôm qua."},
+  {"id":"TEST-R04","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Cửa hàng kiếm được bao nhiêu trong tuần này?"},
+  {"id":"TEST-S01","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tôi muốn xem bức tranh tổng thể về kinh doanh hôm nay."},
+  {"id":"TEST-S02","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Hãy tổng hợp các chỉ số hoạt động của tháng này."},
+  {"id":"TEST-S03","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Báo cáo nhanh tình hình cửa hàng trong tuần này."},
+  {"id":"TEST-S04","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tổng hợp doanh thu cùng số lượng đơn của hôm qua."},
+  {"id":"TEST-X01","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Cho tôi biết bàn nào đang còn trống."},
+  {"id":"TEST-X02","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Xem danh sách món ăn và giá hiện tại."},
+  {"id":"TEST-X03","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Tôi muốn xem lịch làm việc của mình."},
+  {"id":"TEST-X04","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Đổi trạng thái đơn hàng thành hoàn thành."},
+  {"id":"TEST-X05","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Bao giờ nhà hàng đóng cửa tối nay?"},
+  {"id":"TEST-A01","intent":"OUT_OF_SCOPE","expectedDecision":"CLARIFY","text":"Tình hình hôm nay ra sao?"},
+  {"id":"TEST-A02","intent":"OUT_OF_SCOPE","expectedDecision":"CLARIFY","text":"Tôi không cần xem doanh thu hôm nay."},
+  {"id":"TEST-A03","intent":"OUT_OF_SCOPE","expectedDecision":"CLARIFY","text":"Doanh thu hôm nay và tổng quan kinh doanh thế nào?"}
+]

@@ -13,7 +13,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | MGR-07 | POS & invoices |
 | MGR-08 | Kitchen |
 | MGR-09 | Inventory |
-| MGR-10 | Expenses |
 | MGR-11 | Direct URL / authorization |
 | MGR-12 | Branch isolation |
 | MGR-13 | Runtime errors |
@@ -74,7 +73,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| MGR-10 | Mock AI scope vÄ‚Â  quyĂ¡Â»Ân | Mock AI bĂ¡ÂºÂ­t, cÄ‚Â³ dĂ¡Â»Â¯ liĂ¡Â»â€¡u Branch A | HĂ¡Â»Âi doanh thu/Ă„â€˜Ă†Â¡n/nhÄ‚Â¢n sĂ¡Â»Â± cĂ¡Â»Â§a branch; hĂ¡Â»Âi dĂ¡Â»Â¯ liĂ¡Â»â€¡u Branch B; thĂ¡Â»Â­ tool admin | CÄ‚Â¢u trĂ¡ÂºÂ£ lĂ¡Â»Âi vÄ‚Â  tool chĂ¡Â»â€° trong branch claim; tool khÄ‚Â´ng Ă„â€˜Ă†Â°Ă¡Â»Â£c phÄ‚Â©p bĂ¡Â»â€¹ tĂ¡Â»Â« chĂ¡Â»â€˜i; khÄ‚Â´ng cÄ‚Â³ fallback provider | ChĂ†Â°a test | |
 
 ## Direct URL / authorization
 
@@ -106,9 +104,10 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 |---|---|---|---|---|---|---|
 | MGR-15 | Doanh thu loĂ¡ÂºÂ¡i Ă„â€˜Ă†Â¡n | Branch A cÄ‚Â³ order paid, unpaid vÄ‚Â  cancelled trong cÄ‚Â¹ng khoĂ¡ÂºÂ£ng ngÄ‚Â y | MĂ¡Â»Å¸ dashboard/financial analysis vÄ‚Â  Ă„â€˜Ă¡Â»â€˜i chiĂ¡ÂºÂ¿u invoice tĂ¡Â»Â«ng trĂ¡ÂºÂ¡ng thÄ‚Â¡i | Doanh thu chĂ¡Â»â€° gĂ¡Â»â€œm phĂ¡ÂºÂ¡m vi trĂ¡ÂºÂ¡ng thÄ‚Â¡i Ă„â€˜Ă†Â°Ă¡Â»Â£c nghiĂ¡Â»â€¡p vĂ¡Â»Â¥ quy Ă„â€˜Ă¡Â»â€¹nh; branch/date boundary Ă„â€˜Ä‚Âºng, khÄ‚Â´ng tÄ‚Â­nh nhĂ¡ÂºÂ§m unpaid/cancelled | ChĂ†Â°a test | |
 
-## Mock AI
+## Security / role boundaries (AI checklist centralized)
+
+AI chat cases are maintained in [`../ai-chat/01-chu-quan.md`](../ai-chat/01-chu-quan.md) and API/runtime cases in [`../ky-thuat-runtime/README.md`](../ky-thuat-runtime/README.md). The row below is a non-chat navigation/security case.
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
 | MGR-16 | Navigation chÄ‚Â­nh vÄ‚Â  bÄ‚Â¡nh rĂ„Æ’ng | TÄ‚Â i khoĂ¡ÂºÂ£n `manager` Branch A hoĂ¡ÂºÂ¡t Ă„â€˜Ă¡Â»â„¢ng; cÄ‚Â³ dĂ¡Â»Â¯ liĂ¡Â»â€¡u POS/KDS Branch A | MĂ¡Â»Å¸ trĂ¡Â»Â±c tiĂ¡ÂºÂ¿p `/dashboard`, `/inventory`, `/pos`, `/tables`, `/invoices`, `/kitchen`, `/shifts`; Ă„â€˜Ă¡Â»â€˜i chiĂ¡ÂºÂ¿u menu chÄ‚Â­nh, submenu NhÄ‚Â¢n viÄ‚Âªn vÄ‚Â  bÄ‚Â¡nh rĂ„Æ’ng, rĂ¡Â»â€œi thĂ¡Â»Â­ `/branches` | Route hĂ¡Â»Â£p lĂ¡Â»â€¡ giĂ¡Â»Â¯ cÄ‚Â¹ng menu chÄ‚Â­nh vÄ‚Â  active state trÄ‚Âªn mĂ¡Â»Âi route; `/shifts` chĂ¡Â»â€° lÄ‚Â  submenu Ca lÄ‚Â m cĂ¡Â»Â§a NhÄ‚Â¢n viÄ‚Âªn vÄ‚Â  active Ă„â€˜Ä‚Âºng trÄ‚Âªn desktop/mobile. MĂ¡ÂºÂ«u in `/print-templates` vÄ‚Â  CĂ¡ÂºÂ¥u hÄ‚Â¬nh in bill `/settings/receipt` nĂ¡ÂºÂ±m trong bÄ‚Â¡nh rĂ„Æ’ng; POS/KDS vĂ¡ÂºÂ«n dÄ‚Â¹ng Ă„â€˜Ä‚Âºng branch; `/branches` bĂ¡Â»â€¹ chĂ¡ÂºÂ·n nhĂ†Â° trĂ†Â°Ă¡Â»â€ºc vÄ‚Â  menu khÄ‚Â´ng mĂ¡Â»Å¸ rĂ¡Â»â„¢ng quyĂ¡Â»Ân | ChĂ†Â°a test | |
-

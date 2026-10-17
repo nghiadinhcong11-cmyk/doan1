@@ -12,13 +12,10 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | GST-06 | Session |
 | GST-07 | Notifications |
 | GST-08 | Direct URL / authorization |
-| GST-09 | QR scope |
-| GST-10 | Mock AI |
 | GST-11 | Session transition |
 | GST-12 | Runtime errors |
 | GST-13 | QR scope |
 | GST-14 | QR scope |
-| GST-15 | Mock AI permissions |
 | GST-16 | QR menu regression |
 
 ## QR menu & ordering
@@ -58,15 +55,15 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| GST-09 | Guest chatbot | Mock bĂ¡ÂºÂ­t trong development local | HĂ¡Â»Âi menu/giĂ¡Â»Â/Ă„â€˜Ă¡Â»â€¹a chĂ¡Â»â€°; hĂ¡Â»Âi Ă¢â‚¬Å“Ă„â€˜Ă†Â¡n cĂ¡Â»Â§a tÄ‚Â´iĂ¢â‚¬Â hoĂ¡ÂºÂ·c dĂ¡Â»Â¯ liĂ¡Â»â€¡u cÄ‚Â¡ nhÄ‚Â¢n | DÄ‚Â¹ng `/api/Ai/guest-chat`; cÄ‚Â¢u hĂ¡Â»Âi public Ă„â€˜Ă†Â°Ă¡Â»Â£c xĂ¡Â»Â­ lÄ‚Â½; yÄ‚Âªu cĂ¡ÂºÂ§u order cÄ‚Â¡ nhÄ‚Â¢n yÄ‚Âªu cĂ¡ÂºÂ§u Ă„â€˜Ă„Æ’ng nhĂ¡ÂºÂ­p; khÄ‚Â´ng cÄ‚Â³ mutation | ChĂ†Â°a test | |
 | GST-13 | Guest session scope theo phiÄ‚Âªn | CÄ‚Â³ hai guest session/JTI khÄ‚Â¡c nhau Ă¡Â»Å¸ Branch A/B | DÄ‚Â¹ng session A mĂ¡Â»Å¸ order/table hoĂ¡ÂºÂ·c Ă„â€˜Ă¡Â»â€¢i token/context sang resource cĂ¡Â»Â§a B | Server xÄ‚Â¡c minh cĂ¡ÂºÂ£ branch/table/session; session A khÄ‚Â´ng Ă„â€˜Ă¡Â»Âc hoĂ¡ÂºÂ·c mutate scope B | ChĂ†Â°a test | |
 | GST-14 | Client gĂ¡Â»Â­i branch/table bĂ¡Â»â€¹ ghi Ă„â€˜Ä‚Â¨ | CÄ‚Â³ QR hĂ¡Â»Â£p lĂ¡Â»â€¡ cĂ¡Â»Â§a Branch A/Table 1 | SĂ¡Â»Â­a branchId/tableId trong request UI hoĂ¡ÂºÂ·c query sang B/Table 2 rĂ¡Â»â€œi gĂ¡Â»Â­i order | Backend dÄ‚Â¹ng context QR/guest Ă„â€˜Ä‚Â£ xÄ‚Â¡c minh, bĂ¡Â»Â giÄ‚Â¡ trĂ¡Â»â€¹ client giĂ¡ÂºÂ£; order chĂ¡Â»â€° thuĂ¡Â»â„¢c A/Table 1 | ChĂ†Â°a test | |
 
-## Mock AI
+## Mock AI (centralized in primary suite)
+
+Guest chat cases are maintained in [`../ai-chat/03-khach-qr.md`](../ai-chat/03-khach-qr.md); environment, API and multi-session checks are in [`../ky-thuat-runtime/README.md`](../ky-thuat-runtime/README.md).
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| GST-10 | Guest chatbot giĂ¡Â»â€ºi hĂ¡ÂºÂ¡n mÄ‚Â´i trĂ†Â°Ă¡Â»Âng | ChĂ¡ÂºÂ¡y Ă„â€˜Ä‚Âºng local development vÄ‚Â  mÄ‚Â´i trĂ†Â°Ă¡Â»Âng khÄ‚Â´ng phĂ¡ÂºÂ£i development nĂ¡ÂºÂ¿u cÄ‚Â³ | GĂ¡Â»Âi chatbot guest Ă¡Â»Å¸ mÄ‚Â´i trĂ†Â°Ă¡Â»Âng khÄ‚Â´ng Ă„â€˜Ă†Â°Ă¡Â»Â£c bĂ¡ÂºÂ­t | Route bĂ¡Â»â€¹ chĂ¡ÂºÂ·n theo cĂ¡ÂºÂ¥u hÄ‚Â¬nh; khÄ‚Â´ng biĂ¡ÂºÂ¿n lĂ¡Â»â€”i cĂ¡ÂºÂ¥u hÄ‚Â¬nh thÄ‚Â nh fallback provider hoĂ¡ÂºÂ·c quyĂ¡Â»Ân mĂ¡Â»Å¸ rĂ¡Â»â„¢ng | ChĂ†Â°a test | |
 
 ## Session transition
 
@@ -84,11 +81,9 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| GST-15 | Guest chatbot khÄ‚Â´ng cÄ‚Â³ tool cÄ‚Â¡ nhÄ‚Â¢n | Guest session Mock AI Ă„â€˜ang bĂ¡ÂºÂ­t | HĂ¡Â»Âi menu/giĂ¡Â»Â mĂ¡Â»Å¸ cĂ¡Â»Â­a, sau Ă„â€˜Ä‚Â³ hĂ¡Â»Âi Ă„â€˜Ă†Â¡n cÄ‚Â¡ nhÄ‚Â¢n, Ă„â€˜iĂ¡Â»Æ’m hoĂ¡ÂºÂ·c yÄ‚Âªu cĂ¡ÂºÂ§u mutation | CÄ‚Â¢u hĂ¡Â»Âi public Ă„â€˜Ă†Â°Ă¡Â»Â£c trĂ¡ÂºÂ£ lĂ¡Â»Âi; yÄ‚Âªu cĂ¡ÂºÂ§u dĂ¡Â»Â¯ liĂ¡Â»â€¡u cÄ‚Â¡ nhÄ‚Â¢n trĂ¡ÂºÂ£ login required; khÄ‚Â´ng gĂ¡Â»Âi tool staff/write | ChĂ†Â°a test | |
 
 ## QR menu regression
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
 | GST-16 | Regression giao diĂ¡Â»â€¡n DigitalMenu guest | Guest cÄ‚Â³ QR/session hĂ¡Â»Â£p lĂ¡Â»â€¡ vÄ‚Â  menu | Ă„ÂĂ¡Â»â€¢i danh mĂ¡Â»Â¥c, refresh, mĂ¡Â»Å¸/Ă„â€˜Ä‚Â³ng modal tÄ‚Â¹y chĂ¡Â»Ân vÄ‚Â  xÄ‚Â¡c nhĂ¡ÂºÂ­n, thÄ‚Âªm/sĂ¡Â»Â­a/xÄ‚Â³a mÄ‚Â³n rĂ¡Â»â€œi hĂ¡Â»Â§y/gĂ¡Â»Â­i Ă„â€˜Ă†Â¡n; thĂ¡Â»Â­ lĂ¡Â»â€”i API | Guest session, branch/table, availability, giÄ‚Â¡/sĂ¡Â»â€˜ lĂ†Â°Ă¡Â»Â£ng, loading/empty/error, responsive vÄ‚Â  modal vĂ¡ÂºÂ«n Ă„â€˜Ä‚Âºng; khÄ‚Â´ng cĂ¡ÂºÂ¥p lĂ¡ÂºÂ¡i scope guest hoĂ¡ÂºÂ·c gĂ¡Â»Â­i lĂ¡ÂºÂ·p | ChĂ†Â°a test | |
-

@@ -4,9 +4,13 @@ using System.Security.Cryptography.X509Certificates;
 namespace RestaurantPOS.WebAPI.Configuration;
 
 /// <summary>
-/// Loads the Development LAN PEM pair through a persisted PKCS#12 object.
-/// Windows Schannel cannot use the ephemeral private key produced by
-/// CreateFromPemFile for Kestrel server credentials.
+/// Loads the Development LAN PEM pair through a temporary PKCS#12 object.
+/// The current Windows account cannot import this key with UserKeySet
+/// (the import fails with Access denied). Schannel also cannot serve TLS from
+/// an EphemeralKeySet key on this runtime, so MachineKeySet with
+/// PersistKeySet and Exportable are required for Schannel to retain usable server
+/// credentials. This avoids the inaccessible user key store and does not
+/// change the PEM files or install a certificate into the certificate store.
 /// </summary>
 public static class DevelopmentHttpsCertificateLoader
 {
@@ -26,7 +30,9 @@ public static class DevelopmentHttpsCertificateLoader
             persistedCertificate = new X509Certificate2(
                 pkcs12Bytes,
                 (string?)null,
-                X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.PersistKeySet);
+                X509KeyStorageFlags.MachineKeySet |
+                X509KeyStorageFlags.PersistKeySet |
+                X509KeyStorageFlags.Exportable);
 
             if (!persistedCertificate.HasPrivateKey)
                 throw new InvalidOperationException("The persisted Development HTTPS certificate does not contain a private key.");

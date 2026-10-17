@@ -19,7 +19,8 @@ public sealed record AiToolExecutionAuditEvent(
     bool BranchScopeMatch,
     string ReadOnlyClassification,
     long DurationMilliseconds,
-    string ErrorCategory);
+    string ErrorCategory,
+    string Period);
 
 public interface IAiToolExecutionAuditSink
 {
@@ -32,7 +33,8 @@ public interface IAiToolExecutionAuditSink
         string policyOutcome,
         bool readOnlyMode,
         long durationMilliseconds,
-        string errorCategory);
+        string errorCategory,
+        string? period = null);
 
     IReadOnlyList<AiToolExecutionAuditEvent> Snapshot();
 }
@@ -117,7 +119,8 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
         string policyOutcome,
         bool readOnlyMode,
         long durationMilliseconds,
-        string errorCategory)
+        string errorCategory,
+        string? period = null)
     {
         if (!IsEnabled(readOnlyMode))
             return;
@@ -131,7 +134,8 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
             IsBranchScopePresent(userContext),
             SafeRiskLevel(riskLevel),
             Math.Max(0, durationMilliseconds),
-            ApprovedErrorCategories.Contains(errorCategory) ? errorCategory : "TOOL_EXCEPTION");
+            ApprovedErrorCategories.Contains(errorCategory) ? errorCategory : "TOOL_EXCEPTION",
+            SafePeriod(period));
 
         lock (_sync)
         {
@@ -143,9 +147,10 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
         // The message contains only allow-listed scalar values. The custom
         // Development logger provider applies a second field-level filter.
         _logger.LogWarning(
-            "AI_AUDIT_EVENT=TOOL_EXECUTION AI_FAILURE_CODE=NONE AI_PHASE=TOOL_EXECUTION AI_CORRELATION_ID={CorrelationId} AI_TOOL_NAME={ToolName} AI_EXECUTION_STATE={ExecutionState} AI_POLICY_OUTCOME={PolicyOutcome} AI_ROLE={Role} AI_BRANCH_SCOPE_MATCH={BranchScopeMatch} AI_READ_ONLY={ReadOnly} AI_DURATION_MS={DurationMilliseconds} AI_ERROR_CATEGORY={ErrorCategory}",
+            "AI_AUDIT_EVENT=TOOL_EXECUTION AI_FAILURE_CODE=NONE AI_PHASE=TOOL_EXECUTION AI_CORRELATION_ID={CorrelationId} AI_TOOL_NAME={ToolName} AI_PERIOD={Period} AI_EXECUTION_STATE={ExecutionState} AI_POLICY_OUTCOME={PolicyOutcome} AI_ROLE={Role} AI_BRANCH_SCOPE_MATCH={BranchScopeMatch} AI_READ_ONLY={ReadOnly} AI_DURATION_MS={DurationMilliseconds} AI_ERROR_CATEGORY={ErrorCategory}",
             safeEvent.CorrelationId,
             safeEvent.ToolName,
+            safeEvent.Period,
             safeEvent.ExecutionState,
             safeEvent.PolicyOutcome,
             safeEvent.Role,
@@ -164,16 +169,8 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
     }
 
     private bool IsEnabled(bool readOnlyMode) =>
-        readOnlyMode &&
-        _environment.IsDevelopment() &&
-        string.Equals(_configuration["AI:ProviderMode"], "Mock", StringComparison.OrdinalIgnoreCase) &&
-        IsBoolean("AI:LiveReadOnlyE2E:Enabled", expected: true) &&
-        IsBoolean("DatabaseSafety:AllowAutomaticMigration", expected: false) &&
-        IsBoolean("BackgroundJobs:EnableInsights", expected: false) &&
-        string.Equals(
-            _configuration["DEV_SUPABASE_PROJECT_REF"],
-            QrTokenBackfillTargetGuard.AuthorizedDevProjectRef,
-            StringComparison.Ordinal);
+        (_environment.IsDevelopment() || string.Equals(_environment.EnvironmentName, "Test", StringComparison.OrdinalIgnoreCase) || string.Equals(_environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase)) &&
+        _configuration.GetValue<bool>("AI:UatLogging:Enabled");
 
     private bool IsBoolean(string key, bool expected) =>
         bool.TryParse(_configuration[key], out var value) && value == expected;
@@ -191,4 +188,6 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
         ToolRiskLevel.Destructive => "DESTRUCTIVE",
         _ => "UNKNOWN"
     };
+
+    private static string SafePeriod(string? period) => period is "today" or "yesterday" or "this_week" or "last_week" or "this_month" or "last_month" or "month" or "year" ? period : "unknown";
 }

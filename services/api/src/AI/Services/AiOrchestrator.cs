@@ -35,8 +35,10 @@ namespace RestaurantPOS.AI.Services
         private readonly AiToolRegistry _toolRegistry;
         private readonly AiPermissionService _permissionService;
         private readonly PromptBuilder _promptBuilder;
+        private readonly AiCorrelationContext? _correlationContext;
         private readonly ILogger<AiOrchestrator>? _logger;
         private readonly IAiToolExecutionAuditSink? _toolAudit;
+        private readonly ManagerEmbeddingPilot _embeddingPilot;
 
         [ActivatorUtilitiesConstructor]
         public AiOrchestrator(
@@ -45,14 +47,18 @@ namespace RestaurantPOS.AI.Services
             AiToolRegistry toolRegistry,
             AiPermissionService permissionService,
             PromptBuilder promptBuilder,
+            ManagerEmbeddingPilot embeddingPilot,
             ILogger<AiOrchestrator>? logger = null,
-            IAiToolExecutionAuditSink? toolAudit = null)
+            IAiToolExecutionAuditSink? toolAudit = null,
+            AiCorrelationContext? correlationContext = null)
         {
             _aiProvider = aiProvider;
             _contextService = contextService;
             _toolRegistry = toolRegistry;
             _permissionService = permissionService;
             _promptBuilder = promptBuilder;
+            _embeddingPilot = embeddingPilot;
+            _correlationContext = correlationContext;
             _logger = logger;
             _toolAudit = toolAudit;
         }
@@ -91,7 +97,8 @@ namespace RestaurantPOS.AI.Services
             CancellationToken cancellationToken,
             IReadOnlySet<string>? allowedToolNames = null)
         {
-            var correlationId = Guid.NewGuid();
+            var correlationId = _correlationContext?.CorrelationId ?? Guid.Empty;
+            if (correlationId == Guid.Empty) correlationId = Guid.NewGuid();
             var stopwatch = Stopwatch.StartNew();
             var currentPhase = AuthContextPhase;
 
@@ -110,7 +117,7 @@ namespace RestaurantPOS.AI.Services
                     return new AiResponse { Success = false, Error = "Không xác định được chi nhánh của tài khoản." };
                 }
 
-                // 1. Xây dựng Ngữ cảnh & Lệnh hệ thống (Prompt) theo Role
+                // Build trusted business context and role prompt.
                 currentPhase = BusinessContextPhase;
                 var contextData = await _contextService.GetContextAsync(userContext);
                 currentPhase = PromptBuildPhase;
@@ -119,6 +126,33 @@ namespace RestaurantPOS.AI.Services
                 // 2. Lấy danh sách Tool được phép cho Role này
                 currentPhase = ToolRegistryPhase;
                 var toolsDef = _toolRegistry.GetToolsDefinition(userContext.Role, readOnlyMode, allowedToolNames);
+
+                if (_embeddingPilot.IsEnabled && string.Equals(userContext.Role, RoleNames.Manager, StringComparison.OrdinalIgnoreCase))
+                {
+                    ManagerEmbeddingPilotResult pilot;
+                    try
+                    {
+                        pilot = await _embeddingPilot.DecideAsync(request.Message, userContext, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Embedding pilot failed closed.");
+                        return new AiResponse { Success = false, Error = "Semantic pilot is unavailable; request was not executed." };
+                    }
+
+                    if (pilot.Decision == "CLARIFY")
+                    {
+                        _logger?.LogInformation("AI_EMBEDDING_PILOT_DECISION AI_CORRELATION_ID={CorrelationId} AI_DECISION=CLARIFY AI_PERIOD={Period} AI_REASON={Reason} AI_DURATION_MS={DurationMilliseconds}", correlationId, pilot.Period, pilot.Reason, stopwatch.ElapsedMilliseconds);
+                        return new AiResponse { Success = true, Message = "Vui lòng làm rõ kỳ báo cáo hoặc nội dung cần xem." };
+                    }
+                    if (pilot.Decision == "UNSUPPORTED")
+                    {
+                        _logger?.LogInformation("AI_EMBEDDING_PILOT_DECISION AI_CORRELATION_ID={CorrelationId} AI_DECISION=UNSUPPORTED AI_PERIOD={Period} AI_REASON={Reason} AI_DURATION_MS={DurationMilliseconds}", correlationId, pilot.Period, pilot.Reason, stopwatch.ElapsedMilliseconds);
+                        return new AiResponse { Success = true, Message = "Yêu cầu nằm ngoài phạm vi semantic pilot." };
+                    }
+                    _logger?.LogInformation("AI_EMBEDDING_PILOT_DECISION AI_CORRELATION_ID={CorrelationId} AI_DECISION=ACCEPT AI_INTENT={Intent} AI_TOOL_NAME={ToolName} AI_PERIOD={Period} AI_REASON={Reason} AI_DURATION_MS={DurationMilliseconds}", correlationId, pilot.Intent, pilot.ToolName, pilot.Period, pilot.Reason, stopwatch.ElapsedMilliseconds);
+                    return await ExecutePilotToolAsync(pilot, userContext, readOnlyMode, cancellationToken, correlationId, stopwatch);
+                }
 
                 // 3. Chuẩn bị request cho Mock AI (Lượt 1) bao gồm lịch sử hội thoại
                 var contentsList = new System.Collections.Generic.List<object>();
@@ -302,6 +336,17 @@ namespace RestaurantPOS.AI.Services
                                 };
                             }
 
+                            // Preserve tool failure as an AI failure instead of letting Mock
+                            // format the error as a successful text response.
+                            if (!toolResult.Success)
+                            {
+                                return new AiResponse
+                                {
+                                    Success = false,
+                                    Error = toolResult.Error ?? "Không thể hoàn tất yêu cầu AI lúc này."
+                                };
+                            }
+
                             var functionResponse = new Dictionary<string, object?>
                             {
                                 ["name"] = functionName,
@@ -346,6 +391,51 @@ namespace RestaurantPOS.AI.Services
                     Error = "AI request could not be processed."
                 };
             }
+        }
+
+        private async Task<AiResponse> ExecutePilotToolAsync(
+            ManagerEmbeddingPilotResult pilot,
+            AiUserContext userContext,
+            bool readOnlyMode,
+            CancellationToken cancellationToken,
+            Guid correlationId,
+            Stopwatch stopwatch)
+        {
+            if (pilot.ToolName is null || pilot.Intent is null)
+                return new AiResponse { Success = false, Error = "Semantic pilot returned an invalid decision." };
+            var tool = _toolRegistry.GetTool(pilot.ToolName);
+            var period = pilot.Period;
+            _toolAudit?.Record(correlationId, pilot.ToolName, userContext, tool?.RiskLevel, "SELECTED", "SELECTED", readOnlyMode, stopwatch.ElapsedMilliseconds, tool is null ? "TOOL_NOT_FOUND" : "NONE", period);
+            if (tool is null || !string.Equals(tool.Name, pilot.ToolName, StringComparison.OrdinalIgnoreCase))
+                return new AiResponse { Success = false, Error = "Semantic pilot tool is unavailable." };
+            if (readOnlyMode && tool.RiskLevel != ToolRiskLevel.Read)
+            {
+                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_READ_ONLY", readOnlyMode, stopwatch.ElapsedMilliseconds, "READ_ONLY_BLOCKED", period);
+                return new AiResponse { Success = false, Error = "Semantic pilot tool is not read-only." };
+            }
+            if (!await _permissionService.CanExecuteAsync(tool, userContext))
+            {
+                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_PERMISSION", readOnlyMode, stopwatch.ElapsedMilliseconds, "PERMISSION_DENIED", period);
+                return new AiResponse { Success = false, Error = "Bạn không có quyền thực hiện thao tác này." };
+            }
+            _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "AUTHORIZED", "AUTHORIZED", readOnlyMode, stopwatch.ElapsedMilliseconds, "NONE", period);
+            cancellationToken.ThrowIfCancellationRequested();
+            AiToolResult result;
+            try
+            {
+                result = await tool.ExecuteAsync(pilot.Arguments, userContext);
+            }
+            catch
+            {
+                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "FAILED", "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, "TOOL_EXCEPTION", period);
+                throw;
+            }
+            _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, result.Success ? "EXECUTED" : "FAILED", result.Success ? "EXECUTED" : "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, result.Success ? "NONE" : "TOOL_RESULT_ERROR", period);
+            if (!result.Success)
+                return new AiResponse { Success = false, Error = result.Error ?? "Không thể hoàn tất yêu cầu." };
+            if (result.Confirmation is not null)
+                return new AiResponse { Success = true, Message = result.Data, Confirmation = result.Confirmation };
+            return new AiResponse { Success = true, Message = result.Data };
         }
 
         private void LogSafeFailure(

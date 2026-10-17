@@ -1,0 +1,16 @@
+[
+  {"id":"DEV-R01","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Tổng doanh thu hôm nay là bao nhiêu vậy?"},
+  {"id":"DEV-R02","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Tháng này bán được tổng cộng bao nhiêu tiền?"},
+  {"id":"DEV-R03","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Mình cần biết số tiền cửa hàng thu trong ngày hiện tại."},
+  {"id":"DEV-R04","intent":"REVENUE_QUERY","expectedDecision":"ACCEPT","text":"Doanh số của hôm qua là bao nhiêu?"},
+  {"id":"DEV-S01","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Hãy cho tôi bản tổng quan kinh doanh hôm nay."},
+  {"id":"DEV-S02","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Tôi muốn xem các KPI của tháng này."},
+  {"id":"DEV-S03","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Báo cáo tình hình hoạt động trong tuần này."},
+  {"id":"DEV-S04","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","text":"Cho biết tổng quan doanh thu, số đơn và giá trị đơn hàng."},
+  {"id":"DEV-X01","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Nhà hàng có món chay nào ngon?"},
+  {"id":"DEV-X02","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Tôi muốn xem điểm tích lũy của mình."},
+  {"id":"DEV-X03","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Cập nhật giá bán của món phở."},
+  {"id":"DEV-X04","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","text":"Kiểm tra tồn kho nguyên liệu trong bếp."},
+  {"id":"DEV-A01","intent":"OUT_OF_SCOPE","expectedDecision":"CLARIFY","text":"Doanh thu thế nào?"},
+  {"id":"DEV-A02","intent":"OUT_OF_SCOPE","expectedDecision":"CLARIFY","text":"Đừng cho tôi xem doanh thu hôm nay."}
+]

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "manager-two-intent-v3.3",
+  "status": "RESEARCH_BASELINE_LOCKED",
+  "productionApproved": false,
+  "frozenAt": "2026-10-17",
+  "repositoryHead": "38bbd423b963aaf5779d4ae3356f942ff236643b",
+  "role": "manager",
+  "intents": [
+    {
+      "id": "REVENUE_QUERY",
+      "tool": "get_revenue",
+      "allowedRoles": ["admin", "manager"],
+      "risk": "Read",
+      "branchScope": "userContext.BranchId",
+      "periods": ["today", "month", "year"],
+      "outputs": ["revenue"]
+    },
+    {
+      "id": "BUSINESS_SUMMARY",
+      "tool": "get_business_summary",
+      "allowedRoles": ["admin", "manager"],
+      "risk": "Read",
+      "branchScope": "userContext.BranchId",
+      "periods": ["today", "yesterday", "this_week", "last_week", "this_month", "last_month"],
+      "outputs": ["revenue", "order_count", "aov", "expenses", "estimated_cogs", "estimated_profit", "top_products"]
+    }
+  ],
+  "model": {
+    "name": "intfloat/multilingual-e5-small",
+    "sourceRevision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "onnxPath": ".tools/mock-ai-embedding-spike/artifacts/onnx/model_O4.onnx",
+    "onnxSha256": "4654C156F3E4171ABC9C716CDB771BF9116455D15AC1AAB364AEEEDE0E3205B0",
+    "tokenizerPath": ".tools/mock-ai-embedding-spike/artifacts/onnx/tokenizer.json",
+    "tokenizerSha256": "0B44A9D7B51C3C62626640CDA0E2C2F70FDACDC25BBBD68038369D14EBDF4C39",
+    "configSha256": "BBB7C1333FC4B3E27FBC9CD5D2070AABCC1D4DFB99917C3633E772F97545A6B6",
+    "prefix": "query: ",
+    "pooling": "attention-mask-aware mean pooling",
+    "normalization": "L2",
+    "dimension": 384,
+    "maxTokens": 512
+  },
+  "scoring": {
+    "policyVersion": "v3.3",
+    "aggregation": "Max",
+    "minimumScore": 0.75,
+    "minimumMargin": 0.0,
+    "boundaryGap": 0.0,
+    "negation": "explicit negation produces CLARIFY",
+    "ood": "capability boundary is checked before missing period",
+    "unsupportedPeriod": "CLARIFY; no fallback and no runner-up substitution"
+  },
+  "datasets": [
+    {"name": "reference", "path": ".tools/mock-ai-embedding-spike/experiments/manager-revenue-business-summary-v3/reference.json", "sha256": "E4204386F7049B867776072736888D85F63DB58A4767156357689E9EF5375D38"},
+    {"name": "development", "path": ".tools/mock-ai-embedding-spike/experiments/manager-revenue-business-summary-v3/development.json", "sha256": "6080AF80FD570DA905F47E0C8E087F4E717685847CBA49770E93A84DA7FDFF99"},
+    {"name": "historicalRaw", "path": ".tools/mock-ai-embedding-spike/experiments/manager-revenue-business-summary-v2/test.json", "sha256": "92ECC832D3CDFDA963E77EF6EF21D65AFC55BA54CC40BE857EA4B8A64AA20007"},
+    {"name": "historicalAdjudication", "path": ".tools/mock-ai-embedding-spike/experiments/manager-revenue-business-summary-v33/historical-adjudication.json", "sha256": "2BDFCB6D592CBFA38575BB2FA2E65012A7F99340167B12A5C4C86892C5731DE3"},
+    {"name": "freshHoldoutV3.3", "path": ".tools/mock-ai-embedding-spike/experiments/manager-revenue-business-summary-v33/holdout.json", "sha256": "CE536E8FB96EC8421244F3370C94AE36C9BD297D72B263634365810C84605B9C"}
+  ],
+  "verification": {
+    "resultPath": ".tools/mock-ai-embedding-spike/artifacts/manager-revenue-business-summary-v33-result.json",
+    "resultSha256": "D1E4AFE7E8BC6BE69197EC7FA553C509CB83682A6C0F51B8B6B57F551EBC32A8",
+    "adjudicatedHistorical": "20/20 final decisions correct",
+    "freshHoldout": "16/16 final decisions correct",
+    "policyUnitChecks": "11/11",
+    "onnxInference": "PASS"
+  },
+  "implementationArtifacts": [
+    {"path": ".tools/mock-ai-embedding-spike/V3ExperimentRunner.cs", "sha256": "AFA8B7FA8A07A6A89CA2DD92F1DA544D97153E3E3803AA817DE757068F79B3D1"},
+    {"path": ".tools/mock-ai-embedding-spike/PolicyUnitChecks.cs", "sha256": "26C42414038891D509DAB0E739B15544570F2915B5775DEDCC09672928AC358B"},
+    {"path": ".tools/mock-ai-embedding-spike/MockAiEmbeddingSpike.csproj", "sha256": "62BD25E6AAFEA41B113F16EE573A4BA416C888F236C5E9F4A04C86534E074F61"}
+  ],
+  "freezeRules": [
+    "Do not modify reference, development, holdout, adjudication, model, tokenizer or scoring configuration without a new baseline version.",
+    "This manifest records research status only; it does not approve production or runtime integration."
+  ]
+}

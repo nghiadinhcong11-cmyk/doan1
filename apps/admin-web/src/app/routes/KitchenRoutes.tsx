@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import KitchenNavbar from '../../components/KitchenNavbar';
 import ForbiddenPage from '../../components/ForbiddenPage';
-import ChatBot from '../../components/ChatBot';
 import OperationsLayout from '../layouts/OperationsLayout';
 import { ReservationManagement } from '../../features/operations';
 import { EmployeeAttendance, EmployeeProfile, EmployeeSchedule } from '../../features/hrm';
@@ -32,7 +31,6 @@ export default function KitchenRoutes({ userName, onLogout }: KitchenRoutesProps
           <Route path="*" element={<Navigate to="/kitchen" replace />} />
         </Route>
       </Routes>
-      <ChatBot />
     </div>
   );
 }

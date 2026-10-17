@@ -98,3 +98,22 @@ Case IDs are counted once globally. These additions are not a claim that all rou
 Các case mới đều giữ trạng thái `Chưa test`. `ADM-11` và `ADM-17` tiếp tục được tái sử dụng cho direct URL và navigation chính; không tạo case trùng cho hai nội dung đó.
 
 - HR fix coverage update: employee direct PUT and branch matrix are `ADM-EMP-06..08`; attendance, schedule and shifts are tracked in separate page files. All remain `Chưa test`.
+## Bổ sung Mock AI static-review coverage
+
+| Phạm vi | Case mới | File | Finding |
+|---|---|---|---|
+| Mock provider/orchestrator/tool contract | AI-04..AI-09, AI-11 | `ky-thuat-runtime/README.md` | AI-001, AI-002, AI-004 |
+| Chat UI concurrency/session context | AI-10 | `ky-thuat-runtime/README.md` | AI-003 |
+
+Các case mới giữ trạng thái `Chưa test`; report source là `system-audit/02-static-review/MOCK-AI-REVIEW.md`.
+## Bộ test tay AI 100 câu
+
+| Vai trò | Case | File | Trạng thái |
+|---|---|---|---|
+| Chủ quán | OWN-AI-01..54 | `ai-chat/01-chu-quan.md` | Chưa test |
+| Customer đăng nhập | CUS-AI-01..35 | `ai-chat/02-khach-dang-nhap.md` | Chưa test |
+| Khách QR/guest | QR-AI-01..15 | `ai-chat/03-khach-qr.md` | Chưa test |
+
+Tổng bộ chính sau hợp nhất là 104 case (`OWN-AI-01..54`, `CUS-AI-01..35`, `QR-AI-01..15`). Các case kỹ thuật/API/confirmation vẫn dùng `ky-thuat-runtime/README.md`; không cộng chúng vào số case giao diện.
+
+Các ID legacy trong phần lịch sử được ánh xạ tại [`ai-chat/README.md`](ai-chat/README.md) và không còn là checklist AI hiện hành thứ hai.

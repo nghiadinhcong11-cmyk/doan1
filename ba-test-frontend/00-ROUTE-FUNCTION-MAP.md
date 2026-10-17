@@ -30,7 +30,7 @@ Nguồn route: ManagementRoutes.tsx, CashierRoutes.tsx, StaffRoutes.tsx, Kitchen
 | Chủ quán | /settings, /settings/receipt, /print-templates, /branches | settings/pos pages | system, receipt, print, branch settings | ADM-10, ADM-18, ADM-19 | chu-quan/00-CASES-BY-PAGE.md | Chưa test từng form |
 | Chủ quán | /support | SupportPage.tsx | hỗ trợ | — | — | Chưa có case |
 | Chủ quán | /forbidden, unknown, / redirect | route guards | direct URL, redirect, forbidden | ADM-11, ADM-13 | chu-quan/00-CASES-BY-PAGE.md, chung/web-runtime.md | Chưa test |
-| Chủ quán | ChatBot | ChatBot.tsx | Mock AI, permission, confirmation | ADM-12, FLOW-09, FLOW-14, REF-07 | chu-quan/00-CASES-BY-PAGE.md, lien-vai-tro/order-to-payment.md | Chưa runtime |
+| Chủ quán | ChatBot | ChatBot.tsx | Mock AI, permission, confirmation | OWN-AI-01..54; FLOW-09, FLOW-14, REF-07 | ai-chat/01-chu-quan.md; lien-vai-tro/order-to-payment.md; ky-thuat-runtime/README.md | Chưa runtime |
 | Quản lý | /dashboard, /business-insights | ManagementRoutes + analytics | KPI/insight branch | MGR-01, MGR-02, MGR-12 | quan-ly/00-CASES-BY-PAGE.md | Chưa test |
 | Quản lý | /products, /toppings, /promotions, /customers | management pages | catalog/customer operations | MGR-03, MGR-04 | quan-ly/00-CASES-BY-PAGE.md | Customer actions chưa tách đầy đủ |
 | Quản lý | /employees, /attendance, /schedule, /shifts | HR pages | hồ sơ, EmployeeType/BasicSalary, attendance, schedule, shift | MGR-06, EMP-PROFILE-01..06 | quan-ly/employees.md, quan-ly/00-CASES-BY-PAGE.md | Chưa test |
@@ -105,3 +105,9 @@ Admin-only settings: /settings; /settings/receipt; /print-templates; /branches. 
 
 The route map remains a source-derived index. The linked files contain the actual preparation, steps, expected result, status, actual result and evidence fields.
 - HR fix coverage update: `/employees` now includes `ADM-EMP-06..08`; `/attendance`, `/schedule`, `/shifts` use their page-specific files and cases `ADM-ATT-01..03`, `ADM-SCH-01..04`, `ADM-SHF-01..03`. All remain `Chưa test`.
+| Chủ quán | ChatBot trong management routes | `apps/admin-web/src/components/ChatBot.tsx` | Mock AI owner intents, error/session/branch behavior | OWN-AI-01..54 | ai-chat/01-chu-quan.md; ky-thuat-runtime/README.md | Chưa test |
+| Customer đăng nhập | ChatBot customer web | `apps/customer-web/src/components/ChatBot.tsx` | Menu, own orders, denied customer/owner scope, session | CUS-AI-01..35 | ai-chat/02-khach-dang-nhap.md; ky-thuat-runtime/README.md | Chưa test |
+| Khách QR | ChatBot guest | `apps/customer-web/src/components/ChatBot.tsx`, `AiController.GuestChat` | Public menu only, guest boundary, preserve cart/QR session | QR-AI-01..15 | ai-chat/03-khach-qr.md; ky-thuat-runtime/README.md | Chưa test |
+
+The older role rows above retain historical IDs for traceability only. The current AI test entry points are the three `ai-chat/` files and `ky-thuat-runtime/README.md`; use the merge mapping in `ai-chat/README.md`.
+| Bếp | Không còn ChatBot trong `KitchenRoutes` | `apps/admin-web/src/app/routes/KitchenRoutes.tsx` | KDS/notification/kitchen operations remain; AI endpoint denied server-side | — | ky-thuat-runtime/README.md | Chưa test |

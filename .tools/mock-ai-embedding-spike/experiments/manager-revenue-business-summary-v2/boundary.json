@@ -1,0 +1,12 @@
+[
+  {"id":"BOUNDARY-MENU-01","category":"MENU","text":"Xem thực đơn và giá từng món đang phục vụ."},
+  {"id":"BOUNDARY-MENU-02","category":"MENU","text":"Nhà hàng hiện có những món ăn nào?"},
+  {"id":"BOUNDARY-SHIFT-01","category":"SHIFT","text":"Xem lịch làm việc và ca của tôi."},
+  {"id":"BOUNDARY-ORDER-01","category":"ORDER_STATUS","text":"Cập nhật trạng thái đơn hàng."},
+  {"id":"BOUNDARY-INVENTORY-01","category":"INVENTORY","text":"Kiểm tra tồn kho nguyên liệu."},
+  {"id":"BOUNDARY-HOURS-01","category":"HOURS","text":"Nhà hàng đóng cửa lúc mấy giờ?"},
+  {"id":"BOUNDARY-LOYALTY-01","category":"LOYALTY","text":"Xem điểm tích lũy của khách hàng."},
+  {"id":"BOUNDARY-BOOKING-01","category":"BOOKING","text":"Đặt bàn cho tối nay."},
+  {"id":"BOUNDARY-RANKING-01","category":"RANKING","text":"Xếp hạng món bán chạy nhất tuần này."},
+  {"id":"BOUNDARY-ORDER-COUNT-01","category":"ORDER_COUNT","text":"Đếm số đơn đang chờ xử lý hôm nay."}
+]

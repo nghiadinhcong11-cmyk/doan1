@@ -1,0 +1,156 @@
+[
+  {
+    "id": "NEW-V2-01",
+    "actor": "Guest",
+    "text": "Trước khi chọn bữa, tôi có thể tham khảo bảng món kèm giá ở đâu?",
+    "expectedIntent": "MENU_QUERY",
+    "expectedStatus": "Accepted",
+    "expectedArguments": {},
+    "category": "new-internal-check",
+    "rationale": "menu/giá chung; guest gate do backend kiểm tra"
+  },
+  {
+    "id": "NEW-V2-02",
+    "actor": "Customer",
+    "text": "Liệt kê giúp những đồ ăn quán đang phục vụ để tôi lựa chọn.",
+    "expectedIntent": "MENU_QUERY",
+    "expectedStatus": "Accepted",
+    "expectedArguments": {},
+    "category": "new-internal-check",
+    "rationale": "Menu chung, không phải ranking"
+  },
+  {
+    "id": "NEW-V2-03",
+    "actor": "Owner",
+    "text": "Chốt ngày hôm nay, doanh thu ghi nhận tổng cộng là mấy đồng?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "Accepted",
+    "expectedArguments": {
+      "period": "today"
+    },
+    "category": "new-internal-check",
+    "rationale": "Doanh thu một kỳ today"
+  },
+  {
+    "id": "NEW-V2-04",
+    "actor": "Owner",
+    "text": "Trong tháng này cửa hàng đạt doanh thu bao nhiêu tiền?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "Accepted",
+    "expectedArguments": {
+      "period": "month"
+    },
+    "category": "new-internal-check",
+    "rationale": "month của tool revenue, không truyền this_month"
+  },
+  {
+    "id": "NEW-V2-05",
+    "actor": "Customer",
+    "text": "Tôi cần tra cứu lịch sử các lần đặt hàng bằng tài khoản đang đăng nhập.",
+    "expectedIntent": "MY_ORDERS",
+    "expectedStatus": "Accepted",
+    "expectedArguments": {},
+    "category": "new-internal-check",
+    "rationale": "Self orders, identity backend"
+  },
+  {
+    "id": "NEW-V2-06",
+    "actor": "Customer",
+    "text": "Những đơn mua trước của chính tôi có thể xem lại được chứ?",
+    "expectedIntent": "MY_ORDERS",
+    "expectedStatus": "Accepted",
+    "expectedArguments": {},
+    "category": "new-internal-check",
+    "rationale": "Self orders; không suy customer ID"
+  },
+  {
+    "id": "NEW-V2-07",
+    "actor": "Owner",
+    "text": "Nhà bếp còn bao nhiêu ki-lô thịt bò trong kho?",
+    "expectedIntent": "UNSUPPORTED_INTENT",
+    "expectedStatus": "Unsupported",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Inventory chưa có tool; không khôi phục kitchen AI"
+  },
+  {
+    "id": "NEW-V2-08",
+    "actor": "Customer",
+    "text": "Tài khoản hội viên này có số dư điểm thưởng bao nhiêu?",
+    "expectedIntent": "UNSUPPORTED_INTENT",
+    "expectedStatus": "Unsupported",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Không có loyalty capability, không dùng orders"
+  },
+  {
+    "id": "NEW-V2-09",
+    "actor": "Guest",
+    "text": "Tra số điểm tích lũy gắn với hồ sơ của một người khác.",
+    "expectedIntent": "UNSUPPORTED_INTENT",
+    "expectedStatus": "Unsupported",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Loyalty unsupported trước ownership, không self-order"
+  },
+  {
+    "id": "NEW-V2-10",
+    "actor": "Owner",
+    "text": "Chớ lấy số liệu doanh thu tháng này.",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "Unsupported",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Phủ định hành động; không tool"
+  },
+  {
+    "id": "NEW-V2-11",
+    "actor": "Customer",
+    "text": "Tôi cần danh mục đồ ăn, đồng thời tra lại những đơn đã mua.",
+    "expectedIntent": "AMBIGUOUS_MULTI_INTENT",
+    "expectedStatus": "ClarificationRequired",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Hai capability menu/orders; không chọn một tool"
+  },
+  {
+    "id": "NEW-V2-12",
+    "actor": "Owner",
+    "text": "Cửa hàng có doanh thu bao nhiêu tiền vậy?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "ClarificationRequired",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Thiếu period, không mặc định hôm nay"
+  },
+  {
+    "id": "NEW-V2-13",
+    "actor": "Owner",
+    "text": "Cập nhật giá bán của trà đào sang mức 35 nghìn.",
+    "expectedIntent": "WRITE_INTENT_UNSUPPORTED",
+    "expectedStatus": "Unsupported",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Write vẫn chưa hỗ trợ; không mutation/confirmation"
+  },
+  {
+    "id": "NEW-V2-14",
+    "actor": "Customer",
+    "text": "Tra cứu các đơn đã mua bằng tài khoản của khách hàng khác.",
+    "expectedIntent": "MY_ORDERS",
+    "expectedStatus": "ClarificationRequired",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Giữ target other; không chuyển yêu cầu sang self"
+  },
+  {
+    "id": "NEW-V2-15",
+    "actor": "Owner",
+    "text": "Doanh thu của ngày mai sẽ được ghi là bao nhiêu?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "ClarificationRequired",
+    "expectedArguments": null,
+    "category": "new-internal-check",
+    "rationale": "Kỳ tương lai không hỗ trợ; không suy đoán doanh thu"
+  }
+]

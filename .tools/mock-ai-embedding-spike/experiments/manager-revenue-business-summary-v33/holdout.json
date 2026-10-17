@@ -1,0 +1,18 @@
+﻿[
+ {"id":"V33-H01","text":"Doanh thu chi nhánh hôm nay bao nhiêu?","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","expectedComposition":"SINGLE_INTENT","expectedPeriod":"today","requiredOutputs":["revenue"]},
+ {"id":"V33-H02","text":"Tổng tiền bán hàng tháng này là bao nhiêu?","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","expectedComposition":"SINGLE_INTENT","expectedPeriod":"this_month","requiredOutputs":["revenue"]},
+ {"id":"V33-H03","text":"Doanh số năm nay bao nhiêu tiền?","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","expectedComposition":"SINGLE_INTENT","expectedPeriod":"year","requiredOutputs":["revenue"]},
+ {"id":"V33-H04","text":"Doanh thu hôm qua bao nhiêu?","expectedIntent":"REVENUE_QUERY","expectedDecision":"CLARIFY","expectedComposition":"SINGLE_INTENT","expectedPeriod":"yesterday","requiredOutputs":["revenue"]},
+ {"id":"V33-H05","text":"Doanh thu tuần này bao nhiêu?","expectedIntent":"REVENUE_QUERY","expectedDecision":"CLARIFY","expectedComposition":"SINGLE_INTENT","expectedPeriod":"this_week","requiredOutputs":["revenue"]},
+ {"id":"V33-H06","text":"Tóm tắt KPI kinh doanh hôm nay","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","expectedComposition":"SINGLE_TOOL_MULTI_FIELD","expectedPeriod":"today","requiredOutputs":["revenue","order_count","aov","expenses","estimated_cogs","estimated_profit","top_products"]},
+ {"id":"V33-H07","text":"Tổng quan kinh doanh tháng này","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","expectedComposition":"SINGLE_TOOL_MULTI_FIELD","expectedPeriod":"this_month","requiredOutputs":["revenue","order_count","aov","expenses","estimated_cogs","estimated_profit","top_products"]},
+ {"id":"V33-H08","text":"Cho biết tình hình vận hành tuần này","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"CLARIFY","expectedComposition":"AMBIGUOUS","expectedPeriod":"this_week","requiredOutputs":[]},
+ {"id":"V33-H09","text":"Tổng doanh thu và số đơn hôm nay","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","expectedComposition":"SINGLE_TOOL_MULTI_FIELD","expectedPeriod":"today","requiredOutputs":["revenue","order_count"]},
+ {"id":"V33-H10","text":"Doanh thu hôm nay và thực đơn hôm nay","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","expectedComposition":"OUT_OF_SCOPE","expectedPeriod":"today","requiredOutputs":["revenue","menu"]},
+ {"id":"V33-H11","text":"Đừng xem doanh thu hôm nay","expectedIntent":"REVENUE_QUERY","expectedDecision":"CLARIFY","expectedComposition":"SINGLE_INTENT","expectedPeriod":"today","requiredOutputs":["revenue"]},
+ {"id":"V33-H12","text":"Không cần báo cáo tổng quan hôm nay","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"CLARIFY","expectedComposition":"AMBIGUOUS","expectedPeriod":"today","requiredOutputs":[]},
+ {"id":"V33-H13","text":"Kiểm tra tồn kho hôm nay","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","expectedComposition":"OUT_OF_SCOPE","expectedPeriod":"today","requiredOutputs":["inventory"]},
+ {"id":"V33-H14","text":"Nhà hàng mở cửa đến mấy giờ tối nay?","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","expectedComposition":"OUT_OF_SCOPE","expectedPeriod":"missing","requiredOutputs":[]},
+ {"id":"V33-H15","text":"Khách còn bao nhiêu điểm thành viên?","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","expectedComposition":"OUT_OF_SCOPE","expectedPeriod":"missing","requiredOutputs":[]},
+ {"id":"V33-H16","text":"Cập nhật trạng thái đơn hàng","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","expectedComposition":"OUT_OF_SCOPE","expectedPeriod":"missing","requiredOutputs":["order_status"]}
+]

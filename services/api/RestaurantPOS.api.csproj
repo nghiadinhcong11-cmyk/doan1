@@ -27,6 +27,8 @@
     <PackageReference Include="Npgsql" Version="8.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.1" />
+    <PackageReference Include="Tokenizers.HuggingFace" Version="3.23.1" />
   </ItemGroup>
 
 </Project>

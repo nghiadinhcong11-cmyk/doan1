@@ -17,7 +17,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | KIT-09 | Reservations |
 | KIT-10 | Attendance / schedule |
 | KIT-11 | Direct URL / authorization |
-| KIT-12 | Branch isolation |
 | KIT-13 | Runtime errors |
 | KIT-14 | Navigation |
 | KIT-15 | Mock AI |
@@ -85,7 +84,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| KIT-12 | Mock AI bĂ¡ÂºÂ¿p | Chatbot hiĂ¡Â»Æ’n thĂ¡Â»â€¹ cho role kitchen; Mock bĂ¡ÂºÂ­t | HĂ¡Â»Âi trĂ¡ÂºÂ¡ng thÄ‚Â¡i bÄ‚Â n, Ă„â€˜Ă†Â¡n/mÄ‚Â³n bĂ¡ÂºÂ¿p vÄ‚Â  thĂ¡Â»Â­ yÄ‚Âªu cĂ¡ÂºÂ§u xem doanh thu nhĂ¡ÂºÂ¡y cĂ¡ÂºÂ£m | CÄ‚Â¢u hĂ¡Â»Âi Ă„â€˜Ă†Â°Ă¡Â»Â£c hĂ¡Â»â€” trĂ¡Â»Â£ trĂ¡ÂºÂ£ Ă„â€˜Ä‚Âºng scope; tool khÄ‚Â´ng thuĂ¡Â»â„¢c allowlist bĂ¡Â»â€¹ tĂ¡Â»Â« chĂ¡Â»â€˜i; khÄ‚Â´ng lĂ¡Â»â„¢ dĂ¡Â»Â¯ liĂ¡Â»â€¡u tÄ‚Â i chÄ‚Â­nh ngoÄ‚Â i quyĂ¡Â»Ân | ChĂ†Â°a test | |
 
 ## Runtime errors
 
@@ -99,7 +97,9 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 |---|---|---|---|---|---|---|
 | KIT-14 | Reconnect khÄ‚Â´ng nhÄ‚Â¢n Ă„â€˜Ä‚Â´i | POS vÄ‚Â  KDS cÄ‚Â¹ng mĂ¡Â»Å¸, cÄ‚Â³ request mĂ¡Â»â€ºi | NgĂ¡ÂºÂ¯t mĂ¡ÂºÂ¡ng lÄ‚Âºc event bĂ¡ÂºÂ¿p Ă„â€˜ang Ă„â€˜Ă¡ÂºÂ¿n, bĂ¡ÂºÂ­t lĂ¡ÂºÂ¡i, chĂ¡Â»Â reconnect rĂ¡Â»â€œi refresh danh sÄ‚Â¡ch | Item/request cuĂ¡Â»â€˜i cÄ‚Â¹ng xuĂ¡ÂºÂ¥t hiĂ¡Â»â€¡n Ă„â€˜Ä‚Âºng mĂ¡Â»â„¢t lĂ¡ÂºÂ§n; trĂ¡ÂºÂ¡ng thÄ‚Â¡i sau reconnect lĂ¡ÂºÂ¥y tĂ¡Â»Â« API, khÄ‚Â´ng nhÄ‚Â¢n Ă„â€˜Ä‚Â´i event | ChĂ†Â°a test | |
 
-## Mock AI
+## Security / role boundaries (AI chat removed)
+
+Kitchen has no AI chat entry point. Direct AI endpoint denial is kept in `ai-chat/01-chu-quan.md` (`OWN-AI-49`) and `ky-thuat-runtime/README.md`; the row below is a non-chat KDS branch-isolation case.
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
@@ -110,4 +110,3 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
 | KIT-16 | CĂ¡ÂºÂ¥u hÄ‚Â¬nh chĂ¡Â»Â§ quÄ‚Â¡n trÄ‚Â¡i quyĂ¡Â»Ân | TÄ‚Â i khoĂ¡ÂºÂ£n kitchen Branch A | MĂ¡Â»Å¸ trĂ¡Â»Â±c tiĂ¡ÂºÂ¿p `/settings`, `/settings/receipt`, `/print-templates`, `/branches` | KhÄ‚Â´ng cÄ‚Â³ bÄ‚Â¡nh rĂ„Æ’ng hoĂ¡ÂºÂ·c page cĂ¡ÂºÂ¥u hÄ‚Â¬nh; khÄ‚Â´ng thĂ¡Â»Æ’ sĂ¡Â»Â­a cĂ¡ÂºÂ¥u hÄ‚Â¬nh qua URL; Kitchen flow vĂ¡ÂºÂ«n hoĂ¡ÂºÂ¡t Ă„â€˜Ă¡Â»â„¢ng | ChĂ†Â°a test | |
-

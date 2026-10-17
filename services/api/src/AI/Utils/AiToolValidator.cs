@@ -6,6 +6,11 @@ namespace RestaurantPOS.AI.Utils
 {
     public static class AiToolValidator
     {
+        public static string GetSafeArgumentError(ArgumentException exception) =>
+            exception.TargetSite?.DeclaringType == typeof(AiToolValidator)
+                ? exception.Message
+                : "Tham số yêu cầu không hợp lệ.";
+
         private static void EnsureObject(JsonElement arguments)
         {
             if (arguments.ValueKind != JsonValueKind.Object)

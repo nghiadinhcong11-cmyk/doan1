@@ -1,0 +1,569 @@
+[
+  {
+    "id": "EMB-E01",
+    "actor": "Owner",
+    "text": "Hôm nay doanh thu được bao nhiêu?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_revenue",
+    "originalParameters": "today",
+    "semanticExpected": "REVENUE_QUERY",
+    "expectedArguments": {
+      "period": "today"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E02",
+    "actor": "Owner",
+    "text": "Tiền bán hàng trong ngày hiện tại là bao nhiêu?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_revenue",
+    "originalParameters": "today",
+    "semanticExpected": "REVENUE_QUERY",
+    "expectedArguments": {
+      "period": "today"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E03",
+    "actor": "Owner",
+    "text": "Cho tôi biết doanh số của hôm nay.",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_revenue",
+    "originalParameters": "today",
+    "semanticExpected": "REVENUE_QUERY",
+    "expectedArguments": {
+      "period": "today"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E04",
+    "actor": "Owner",
+    "text": "So sánh doanh thu hôm nay với hôm qua.",
+    "expectedIntent": "REVENUE_COMPARISON",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_revenue_comparison",
+    "originalParameters": "today/yesterday",
+    "semanticExpected": "REVENUE_COMPARISON",
+    "expectedArguments": {
+      "currentPeriod": "today",
+      "comparisonPeriod": "yesterday"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E05",
+    "actor": "Owner",
+    "text": "Hôm nay bán được nhiều tiền hơn hôm qua không?",
+    "expectedIntent": "REVENUE_COMPARISON",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_revenue_comparison",
+    "originalParameters": "today/yesterday",
+    "semanticExpected": "REVENUE_COMPARISON",
+    "expectedArguments": {
+      "currentPeriod": "today",
+      "comparisonPeriod": "yesterday"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E06",
+    "actor": "Owner",
+    "text": "Đối chiếu doanh thu giữa hôm nay và ngày trước.",
+    "expectedIntent": "REVENUE_COMPARISON",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "hỏi lại nếu parser chưa hiểu",
+    "originalParameters": "cần xác nhận",
+    "semanticExpected": "REVENUE_COMPARISON",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E07",
+    "actor": "Owner",
+    "text": "Món nào đang bán chạy nhất tuần này?",
+    "expectedIntent": "PRODUCT_RANKING",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_best_sellers",
+    "originalParameters": "week",
+    "semanticExpected": "PRODUCT_RANKING",
+    "expectedArguments": {
+      "period": "week"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E08",
+    "actor": "Owner",
+    "text": "Xếp hạng các món bán nhiều trong tuần.",
+    "expectedIntent": "PRODUCT_RANKING",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_best_sellers",
+    "originalParameters": "week",
+    "semanticExpected": "PRODUCT_RANKING",
+    "expectedArguments": {
+      "period": "week"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E09",
+    "actor": "Owner",
+    "text": "Tuần này khách gọi món nào nhiều nhất?",
+    "expectedIntent": "PRODUCT_RANKING",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_best_sellers",
+    "originalParameters": "week",
+    "semanticExpected": "PRODUCT_RANKING",
+    "expectedArguments": {
+      "period": "week"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E10",
+    "actor": "Owner",
+    "text": "Tóm tắt tình hình kinh doanh tháng này.",
+    "expectedIntent": "BUSINESS_SUMMARY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_business_summary",
+    "originalParameters": "this_month",
+    "semanticExpected": "BUSINESS_SUMMARY",
+    "expectedArguments": {
+      "period": "this_month"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E11",
+    "actor": "Owner",
+    "text": "Cho tôi bức tranh tổng quan hoạt động tháng hiện tại.",
+    "expectedIntent": "BUSINESS_SUMMARY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_business_summary",
+    "originalParameters": "this_month",
+    "semanticExpected": "BUSINESS_SUMMARY",
+    "expectedArguments": {
+      "period": "this_month"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E12",
+    "actor": "Owner",
+    "text": "Báo cáo KPI của tháng này.",
+    "expectedIntent": "BUSINESS_SUMMARY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_business_summary",
+    "originalParameters": "this_month",
+    "semanticExpected": "BUSINESS_SUMMARY",
+    "expectedArguments": {
+      "period": "this_month"
+    },
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E13",
+    "actor": "Customer",
+    "text": "Tôi muốn xem thực đơn hôm nay.",
+    "expectedIntent": "MENU_QUERY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "customer_get_menu",
+    "originalParameters": "none",
+    "semanticExpected": "MENU_QUERY",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E14",
+    "actor": "Guest",
+    "text": "Nhà hàng hiện có những món nào?",
+    "expectedIntent": "MENU_QUERY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "guest menu only",
+    "originalParameters": "none",
+    "semanticExpected": "MENU_QUERY",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E15",
+    "actor": "Customer",
+    "text": "Cho tôi danh sách các món ăn và giá.",
+    "expectedIntent": "MENU_QUERY",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "customer_get_menu",
+    "originalParameters": "none",
+    "semanticExpected": "MENU_QUERY",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E16",
+    "actor": "Customer",
+    "text": "Xem lại những đơn tôi đã đặt.",
+    "expectedIntent": "MY_ORDERS",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_my_orders",
+    "originalParameters": "none",
+    "semanticExpected": "MY_ORDERS",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E17",
+    "actor": "Customer",
+    "text": "Các đơn hàng của tài khoản này là gì?",
+    "expectedIntent": "MY_ORDERS",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_my_orders, identity từ JWT",
+    "originalParameters": "none",
+    "semanticExpected": "MY_ORDERS",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E18",
+    "actor": "Employee",
+    "text": "Hôm nay tôi làm ca nào?",
+    "expectedIntent": "MY_SHIFT",
+    "expectedStatus": "Accepted",
+    "category": "EMB-original-evaluation",
+    "rationale": "get_my_shift, identity từ JWT",
+    "originalParameters": "none",
+    "semanticExpected": "MY_SHIFT",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Accepted"
+    ],
+    "requiresNoTool": false,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E19",
+    "actor": "Owner",
+    "text": "Doanh thu thế nào?",
+    "expectedIntent": "REVENUE_QUERY",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Hỏi lại; không chọn today mặc định",
+    "originalParameters": "thiếu period",
+    "semanticExpected": "REVENUE_QUERY",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E20",
+    "actor": "Owner",
+    "text": "So sánh doanh thu giúp tôi.",
+    "expectedIntent": "REVENUE_COMPARISON",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Hỏi lại; không gọi tool",
+    "originalParameters": "thiếu hai kỳ",
+    "semanticExpected": "REVENUE_COMPARISON",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E21",
+    "actor": "Owner",
+    "text": "Xem doanh thu hôm nay và món bán chạy tuần này.",
+    "expectedIntent": "ambiguous",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Hỏi tách câu",
+    "originalParameters": "hai intent",
+    "semanticExpected": null,
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E22",
+    "actor": "Owner",
+    "text": "Báo cáo bán hàng hôm nay.",
+    "expectedIntent": "policy-dependent",
+    "expectedStatus": "PolicyUnresolved",
+    "category": "EMB-original-evaluation",
+    "rationale": "Đo top-1/margin; có thể hỏi lại revenue/summary",
+    "originalParameters": "today",
+    "semanticExpected": null,
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "PolicyUnresolved"
+    ],
+    "requiresNoTool": false,
+    "policyNote": "Source says policy-dependent; do not force a single semantic label or correctness decision.",
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E23",
+    "actor": "Customer",
+    "text": "Còn hôm qua thì sao?",
+    "expectedIntent": "continuation",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Chỉ xử lý nếu state trước là revenue",
+    "originalParameters": "phụ thuộc state",
+    "semanticExpected": null,
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": "No prior state supplied to this stateless spike; require clarification, not an inferred intent.",
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E24",
+    "actor": "Customer",
+    "text": "Cho tôi 3 món phở bán chạy.",
+    "expectedIntent": "ranking/menu",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Không đoán quantity/filter nếu parser chưa hỗ trợ",
+    "originalParameters": "quantity/product filter",
+    "semanticExpected": null,
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": "Source says ranking/menu and unsupported filters. Preserve ambiguity; no tool eligibility without clarifying period/filter.",
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E25",
+    "actor": "Owner",
+    "text": "Tôi không muốn xem doanh thu hôm nay.",
+    "expectedIntent": "negative revenue",
+    "expectedStatus": "Unsupported",
+    "category": "EMB-original-evaluation",
+    "rationale": "Không gọi get_revenue",
+    "originalParameters": "today",
+    "semanticExpected": "REVENUE_QUERY",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Unsupported",
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E26",
+    "actor": "Owner",
+    "text": "Đừng cập nhật trạng thái đơn này.",
+    "expectedIntent": "write/negative",
+    "expectedStatus": "Unsupported",
+    "category": "EMB-original-evaluation",
+    "rationale": "Không mutation",
+    "originalParameters": "none",
+    "semanticExpected": "WRITE_INTENT_UNSUPPORTED",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Unsupported",
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E27",
+    "actor": "Owner",
+    "text": "Kiểm tra tồn kho nguyên liệu.",
+    "expectedIntent": "unsupported inventory",
+    "expectedStatus": "Unsupported",
+    "category": "EMB-original-evaluation",
+    "rationale": "Từ chối capability",
+    "originalParameters": "none",
+    "semanticExpected": "UNSUPPORTED_INTENT",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Unsupported"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E28",
+    "actor": "Customer",
+    "text": "Cho tôi doanh thu toàn chuỗi.",
+    "expectedIntent": "revenue + permission denial",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Nhận diện revenue rồi kiểm tra quyền, không đổi thành menu",
+    "originalParameters": "thiếu period",
+    "semanticExpected": "REVENUE_QUERY",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": "Revenue intent, missing period. Backend permission denial not executed by this component.",
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E29",
+    "actor": "Guest",
+    "text": "Cho tôi xem đơn của khách hàng khác.",
+    "expectedIntent": "ownership denial",
+    "expectedStatus": "ClarificationRequired",
+    "category": "EMB-original-evaluation",
+    "rationale": "Từ chối/yêu cầu đăng nhập",
+    "originalParameters": "customer absent",
+    "semanticExpected": "MY_ORDERS",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Unsupported",
+      "ClarificationRequired"
+    ],
+    "requiresNoTool": true,
+    "policyNote": "Order domain, other-subject request; source requires denial/login. Offline may only stop tool eligibility and preserve target, not prove permission enforcement.",
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  },
+  {
+    "id": "EMB-E30",
+    "actor": "Guest",
+    "text": "Đổi giá món Phở thành 50.000 đồng.",
+    "expectedIntent": "write unsupported",
+    "expectedStatus": "Unsupported",
+    "category": "EMB-original-evaluation",
+    "rationale": "Không gọi write/confirmation",
+    "originalParameters": "product/price",
+    "semanticExpected": "WRITE_INTENT_UNSUPPORTED",
+    "expectedArguments": null,
+    "allowedStatuses": [
+      "Unsupported"
+    ],
+    "requiresNoTool": true,
+    "policyNote": null,
+    "source": "bao-cao/tai-lieu-ky-thuat/system-audit/02-static-review/MOCK-AI-EMBEDDING-PROPOSAL.md"
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "experimentId": "max-full-baseline-threshold-trials-v1",
+  "status": "Predeclared before execution; CAL and SUP are observed development data",
+  "catalogProfile": "full-baseline",
+  "scoring": "max",
+  "fixedScoreReason": "All 19 valid requests have top score above 0.85; the known weather negative is below 0.85. No score-floor change is justified by these observations.",
+  "trials": [
+    { "id": "T0", "minimumScore": 0.85, "minimumMargin": 0.02, "reason": "Existing baseline; reproduce before comparing." },
+    { "id": "T1", "minimumScore": 0.85, "minimumMargin": 0.015, "reason": "Reduce the gap requirement by one quarter; several correct candidates cluster between 0.015 and 0.02." },
+    { "id": "T2", "minimumScore": 0.85, "minimumMargin": 0.01, "reason": "Halve the original gap; test recovery of correct candidates in the 0.01 to 0.015 band without changing any guard." },
+    { "id": "T3", "minimumScore": 0.85, "minimumMargin": 0.005, "reason": "One-quarter gap sensitivity check for the remaining correct narrow-gap candidates; not automatically preferred even if development coverage is highest." }
+  ],
+  "constraints": [
+    "No per-case thresholds, no further trials, no sample/label/model/scorer/parser/guard changes.",
+    "Do not open or execute the held-out final EMB manual evaluation set.",
+    "Keep the default 0.85/0.02 baseline unchanged after selection."
+  ]
+}

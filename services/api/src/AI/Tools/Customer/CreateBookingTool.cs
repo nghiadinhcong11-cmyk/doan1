@@ -76,7 +76,7 @@ namespace RestaurantPOS.AI.Tools.Customer
             }
             catch (ArgumentException ex)
             {
-                return AiToolResult.CreateError(ex.Message);
+                return AiToolResult.CreateError(AiToolValidator.GetSafeArgumentError(ex));
             }
             catch (Exception ex)
             {

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "profileId": "max-full-baseline-candidate-v1",
+  "status": "ứng viên thử nghiệm, chưa triển khai",
+  "frozenBeforeIndependentEvaluation": true,
+  "enabledByDefault": false,
+  "automaticLoading": false,
+  "invocation": "Manifest only. Pass these settings explicitly to DecisionReviewRunner; no runtime/default configuration is changed.",
+  "catalogProfile": "full-baseline",
+  "scoring": "max",
+  "minimumScore": 0.85,
+  "minimumMargin": 0.01,
+  "catalogVersion": {
+    "retainedSamples": 34,
+    "competingSamples": 32,
+    "competingLabels": 9,
+    "sourceFile": ".tools/mock-ai-embedding-spike/IntentCatalog.cs",
+    "sourceSha256": "868A12272E7253C3B46BBB69F1BADE466AE55013F094FF0F7F6630F86D38A81C"
+  },
+  "model": {
+    "name": "intfloat/multilingual-e5-small",
+    "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "artifact": "artifacts/onnx/model_O4.onnx",
+    "sha256": "4654C156F3E4171ABC9C716CDB771BF9116455D15AC1AAB364AEEEDE0E3205B0",
+    "tokenizer": "artifacts/onnx/tokenizer.json",
+    "tokenizerSha256": "0B44A9D7B51C3C62626640CDA0E2C2F70FDACDC25BBBD68038369D14EBDF4C39",
+    "prefix": "query: ",
+    "maxTokens": 512,
+    "dimension": 384,
+    "pooling": "attention-mask-aware mean",
+    "l2Normalized": true
+  },
+  "sourceSnapshot": {
+    "head": "38bbd423b963aaf5779d4ae3356f942ff236643b",
+    "workingTree": "dirty; these hashes identify the component rather than HEAD alone",
+    "pathsRelativeTo": "repository-root",
+    "files": [
+      {
+        "path": ".tools/mock-ai-embedding-spike/IntentCatalog.cs",
+        "sha256": "868A12272E7253C3B46BBB69F1BADE466AE55013F094FF0F7F6630F86D38A81C"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/IntentScorer.cs",
+        "sha256": "31DD9EB7931D19A7146B4C641DDA2173F9463B1F84C2E8270C43D8056736603D"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/IntentDecisionPipeline.cs",
+        "sha256": "CD8D027D9477AB8B4A8641B3C3C9A3B12FDAAD5BB232CA3A8006E01D9B2B7E14"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/SentenceEmbeddingAdapter.cs",
+        "sha256": "63657F23C870FC4BC6751EFB2EB3E9FC51A7476A18FAF8870CE2E316619739C3"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/DecisionReviewRunner.cs",
+        "sha256": "988973A668D2EE0A04554038DCE982860F7CF5A1FFCCFCB3958E01FDDB52B00F"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/calibration.json",
+        "sha256": "E68AD7CF07EF403D5479F37B8360B12AD0224C0704377EF17B75097F0D7CB5B0"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/calibration-supplement.json",
+        "sha256": "262F921C9B1C3E1C1F94B0FF9D7A2B9D0839658161554FAEA68311B1FD305ED2"
+      },
+      {
+        "path": ".tools/mock-ai-embedding-spike/calibration-behavior.json",
+        "sha256": "8F87E327EB0BFDCB15537BD703FDA838659373A840425457A1714CC686D82C74"
+      }
+    ]
+  },
+  "selectedTrial": "T2",
+  "selectionReason": "14/19 valid requests accepted correctly on observed development data, 0 false accepts observed. T3 gains three cases but approaches the known unresolved multi-intent margin too closely. This is not a production quality claim.",
+  "developmentEvidence": {
+    "validRequests": 19,
+    "totalRequests": 42,
+    "correctAccepted": 14,
+    "falseAccepted": 0,
+    "validDeferred": 5,
+    "correctNonAccepted": 22,
+    "decisionMismatches": 1,
+    "independent": false
+  },
+  "independentEvaluation": {
+    "status": "Not opened or run in this task",
+    "holdSettingsFixed": true,
+    "retuningConvertsEvaluationToDevelopment": true
+  }
+}

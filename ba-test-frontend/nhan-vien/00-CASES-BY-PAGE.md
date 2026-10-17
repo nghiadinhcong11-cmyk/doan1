@@ -14,7 +14,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 | EMP-06 | Session |
 | EMP-07 | Inventory |
 | EMP-08 | Notifications |
-| EMP-09 | Kitchen handoff |
 | EMP-10 | Direct URL / authorization |
 | EMP-11 | Branch isolation |
 | EMP-12 | Runtime errors |
@@ -70,7 +69,6 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
-| EMP-09 | Mock AI phĂ¡Â»Â¥c vĂ¡Â»Â¥ | Mock bĂ¡ÂºÂ­t | HĂ¡Â»Âi tÄ‚Â¬nh trĂ¡ÂºÂ¡ng bÄ‚Â n, menu, ca; thĂ¡Â»Â­ yÄ‚Âªu cĂ¡ÂºÂ§u sĂ¡Â»Â­a giÄ‚Â¡ hoĂ¡ÂºÂ·c xem bÄ‚Â¡o cÄ‚Â¡o quĂ¡ÂºÂ£n trĂ¡Â»â€¹ | Tool phÄ‚Â¹ hĂ¡Â»Â£p chĂ¡ÂºÂ¡y trong branch; tool khÄ‚Â´ng Ă„â€˜Ă†Â°Ă¡Â»Â£c phÄ‚Â©p bĂ¡Â»â€¹ tĂ¡Â»Â« chĂ¡Â»â€˜i; khÄ‚Â´ng cÄ‚Â³ confirmation giĂ¡ÂºÂ£ phÄ‚Â­a client | ChĂ†Â°a test | |
 
 ## Direct URL / authorization
 
@@ -96,9 +94,10 @@ Các case được chuyển khỏi checklist legacy và phân loại theo trang/
 |---|---|---|---|---|---|---|
 | EMP-13 | Branch claim authoritative | Employee A Ă„â€˜Ă†Â°Ă¡Â»Â£c gÄ‚Â¡n Branch A; cÄ‚Â³ Branch B trÄ‚Âªn giao diĂ¡Â»â€¡n hoĂ¡ÂºÂ·c request | SĂ¡Â»Â­a branch Ă„â€˜Ă†Â°Ă¡Â»Â£c gĂ¡Â»Â­i trong form/query sang B khi tĂ¡ÂºÂ¡o/cĂ¡ÂºÂ­p nhĂ¡ÂºÂ­t order | Server bĂ¡Â»Â qua branch client vÄ‚Â  giĂ¡Â»Â¯ Branch A; khÄ‚Â´ng tĂ¡ÂºÂ¡o hoĂ¡ÂºÂ·c chuyĂ¡Â»Æ’n order sang B | ChĂ†Â°a test | |
 
-## Mock AI
+## Security / role boundaries (AI checklist centralized)
+
+AI chat cases are maintained in [`../ai-chat/01-chu-quan.md`](../ai-chat/01-chu-quan.md) and API/runtime cases in [`../ky-thuat-runtime/README.md`](../ky-thuat-runtime/README.md). The row below is a non-chat terminal-status case.
 
 | ID | Trang/chức năng | Điều kiện trước | Bước thực hiện | Kết quả mong đợi | Trạng thái | Ghi chú |
 |---|---|---|---|---|---|---|
 | EMP-14 | TrĂ¡ÂºÂ¡ng thÄ‚Â¡i terminal | CÄ‚Â³ order Ă„â€˜Ä‚Â£ paid vÄ‚Â  mĂ¡Â»â„¢t order cancelled | MĂ¡Â»Å¸ tĂ¡Â»Â«ng order tĂ¡Â»Â« employee, thĂ¡Â»Â­ Ă„â€˜Ă¡Â»â€¢i trĂ¡ÂºÂ¡ng thÄ‚Â¡i/xÄ‚Â³a/gĂ¡Â»Â­i thÄ‚Âªm | Server tĂ¡Â»Â« chĂ¡Â»â€˜i mĂ¡Â»Âi mutation terminal; UI hiĂ¡Â»Æ’n thĂ¡Â»â€¹ lĂ¡Â»â€”i/disabled vÄ‚Â  khÄ‚Â´ng Ă„â€˜Ă¡Â»â€¢i invoice/order | ChĂ†Â°a test | |
-

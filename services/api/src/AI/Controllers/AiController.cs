@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using RestaurantPOS.AI.Models;
 using RestaurantPOS.AI.Services;
+using RestaurantPOS.AI.Diagnostics;
 using RestaurantPOS.AI.Security;
 using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.Application.Services;
@@ -31,6 +32,7 @@ namespace RestaurantPOS.AI.Controllers
         private readonly AiLiveReadOnlyPolicy _liveReadOnlyPolicy;
         private readonly IConfiguration? _configuration;
         private readonly IHostEnvironment? _environment;
+        private readonly AiCorrelationContext? _correlationContext;
 
         public AiController(IAiOrchestrator orchestrator)
             : this(orchestrator, null, null)
@@ -45,7 +47,8 @@ namespace RestaurantPOS.AI.Controllers
             ILogger<AiController>? logger = null,
             AiLiveReadOnlyPolicy? liveReadOnlyPolicy = null,
             IConfiguration? configuration = null,
-            IHostEnvironment? environment = null)
+            IHostEnvironment? environment = null,
+            AiCorrelationContext? correlationContext = null)
         {
             _orchestrator = orchestrator;
             _confirmationStore = confirmationStore;
@@ -54,6 +57,7 @@ namespace RestaurantPOS.AI.Controllers
             _liveReadOnlyPolicy = liveReadOnlyPolicy ?? new AiLiveReadOnlyPolicy();
             _configuration = configuration;
             _environment = environment;
+            _correlationContext = correlationContext;
         }
 
         /// <summary>
@@ -61,11 +65,32 @@ namespace RestaurantPOS.AI.Controllers
         /// </summary>
         /// <param name="request">Nội dung tin nhắn và lịch sử hội thoại</param>
         [EnableRateLimiting("ai-limiter")]
+        [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Manager + "," + RoleNames.Employee + "," + RoleNames.Cashier + "," + RoleNames.Customer)]
+        [RequestSizeLimit(16 * 1024)]
         [HttpPost("chat")]
         public async Task<IActionResult> Chat([FromBody] AiRequest request)
         {
+            var correlationId = _correlationContext?.Begin() ?? Guid.NewGuid();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            HttpContext.Response.OnCompleted(() =>
+            {
+                _logger?.LogInformation(
+                    "AI_HTTP_RESPONSE AI_CORRELATION_ID={CorrelationId} AI_HTTP_STATUS={HttpStatus} AI_DURATION_MS={DurationMilliseconds} AI_ERROR_CODE={ErrorCode}",
+                    correlationId,
+                    HttpContext.Response.StatusCode,
+                    stopwatch.ElapsedMilliseconds,
+                    HttpContext.Response.StatusCode >= 400 ? "HTTP_ERROR" : "NONE");
+                return Task.CompletedTask;
+            });
             try
             {
+                if (request == null || string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 1000)
+                    return BadRequest(new { error = "Nội dung câu hỏi không hợp lệ." });
+
+                if (request.History is not null &&
+                    (request.History.Count > 6 || request.History.Any(item => item.Content?.Length > 1000)))
+                    return BadRequest(new { error = "Lịch sử hội thoại không hợp lệ." });
+
                 string userRole = "";
                 Guid userId = Guid.Empty;
                 string userName = "Khách vãng lai";
@@ -120,6 +145,14 @@ namespace RestaurantPOS.AI.Controllers
                     PhoneNumber = string.Equals(userRole, "customer", StringComparison.OrdinalIgnoreCase) ? User.Identity?.Name : null
                 };
 
+                _logger?.LogInformation(
+                    "AI_HTTP_REQUEST AI_CORRELATION_ID={CorrelationId} AI_ROUTE={Route} AI_ROLE={Role} AI_FEATURE_FLAG={FeatureFlag} AI_ENVIRONMENT={Environment}",
+                    correlationId,
+                    HttpContext.Request.Path.Value ?? "/api/Ai/chat",
+                    string.IsNullOrWhiteSpace(userRole) ? "UNKNOWN" : userRole,
+                    _configuration?.GetValue<bool>("AI:EmbeddingPilot:Enabled") == true ? "ON" : "OFF",
+                    _environment?.EnvironmentName ?? "UNKNOWN");
+
                 if (_liveReadOnlyPolicy.IsMisconfigured)
                     return StatusCode(503, new { error = "AI read-only test mode configuration is invalid." });
 
@@ -163,6 +196,9 @@ namespace RestaurantPOS.AI.Controllers
                 (request.History.Count > 6 || request.History.Any(item => item.Content?.Length > 1000)))
                 return BadRequest(new { error = "Lịch sử hội thoại không hợp lệ." });
 
+            if (User.Identity?.IsAuthenticated == true && User.IsInRole(RoleNames.Kitchen))
+                return Forbid();
+
             // Personal orders must never be downgraded to an anonymous lookup.
             if (MockAiIntentRecognizer.IsPersonalOrderRequest(request.Message))
             {
@@ -195,6 +231,7 @@ namespace RestaurantPOS.AI.Controllers
         }
 
         [HttpGet("live-read-only-status")]
+        [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Manager + "," + RoleNames.Employee + "," + RoleNames.Cashier + "," + RoleNames.Customer)]
         public IActionResult GetLiveReadOnlyStatus()
         {
             if (_liveReadOnlyPolicy.IsMisconfigured)

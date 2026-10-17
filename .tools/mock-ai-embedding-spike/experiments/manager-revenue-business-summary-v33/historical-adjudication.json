@@ -1,0 +1,9 @@
+﻿[
+ {"id":"NEW-R03","intent":"REVENUE_QUERY","expectedDecision":"CLARIFY","capabilityClassification":"UNSUPPORTED_PERIOD","period":"yesterday","requiredOutputs":["revenue"],"composition":"SINGLE_INTENT","adjudicationReason":"get_revenue allowlist excludes yesterday"},
+ {"id":"NEW-R04","intent":"REVENUE_QUERY","expectedDecision":"CLARIFY","capabilityClassification":"UNSUPPORTED_PERIOD","period":"this_week","requiredOutputs":["revenue"],"composition":"SINGLE_INTENT","adjudicationReason":"get_revenue allowlist excludes this_week"},
+ {"id":"NEW-S03","intent":"BUSINESS_SUMMARY","expectedDecision":"CLARIFY","capabilityClassification":"AMBIGUOUS","period":"this_week","requiredOutputs":[],"composition":"AMBIGUOUS","adjudicationReason":"subject does not identify requested summary fields"},
+ {"id":"NEW-X03","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","capabilityClassification":"OUT_OF_SCOPE","period":"missing","requiredOutputs":["order_status"],"composition":"OUT_OF_SCOPE","adjudicationReason":"status update is outside read-only contracts"},
+ {"id":"NEW-X05","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","capabilityClassification":"OUT_OF_SCOPE","period":"missing","requiredOutputs":[],"composition":"OUT_OF_SCOPE","adjudicationReason":"opening hours are outside both tools"},
+ {"id":"NEW-X06","intent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","capabilityClassification":"OUT_OF_SCOPE","period":"missing","requiredOutputs":[],"composition":"OUT_OF_SCOPE","adjudicationReason":"loyalty points are outside both tools"},
+ {"id":"NEW-A03","intent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","capabilityClassification":"SINGLE_TOOL_MULTI_FIELD","period":"today","requiredOutputs":["revenue","order_count","aov","expenses","estimated_cogs","estimated_profit","top_products"],"composition":"SINGLE_TOOL_MULTI_FIELD","adjudicationReason":"summary tool supplies revenue and overview fields"}
+]

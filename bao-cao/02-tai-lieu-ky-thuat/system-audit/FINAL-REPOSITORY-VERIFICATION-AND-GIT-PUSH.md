@@ -60,10 +60,10 @@ Repository: `D:\\Dev\\doan`
 ## 8. Commit and push
 
 - Files staged: các file modified/deleted/untracked thuộc nhóm AI/HTTPS/frontend/documentation/verification đã được audit; local certificates, private keys, build artifacts và local data bị loại.
-- Commit: `PENDING`
-- Branch/remote: `PENDING`
-- Push result: `PENDING`
-- Post-push status: `PENDING`
+- Commit: `99b907dd8a8ab671cebd7dbc2d0ac0910bf6d1a1` (`chore: consolidate thesis docs and stabilize AI embedding pilot`)
+- Branch/remote: `main` → `origin` (`https://github.com/nghiadinhcong11-cmyk/doan1.git`)
+- Push result: `PUSH_SUCCESS`; GitHub accepted `main -> main`.
+- Post-push status: clean; `HEAD` and `@{u}` both resolve to `99b907dd8a8ab671cebd7dbc2d0ac0910bf6d1a1`.
 
 ## 9. Remaining limitations
 

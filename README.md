@@ -1,127 +1,147 @@
-# Restaurant POS System (KiotViet Simplified Clone)
+# Restaurant POS System
 
-Hệ thống quản lý bán hàng nhà hàng tập trung vào tính đơn giản và chính xác trong doanh thu - chi phí.
+Hệ thống quản lý nhà hàng đa chi nhánh gồm Admin/POS Web, Customer Web đặt món qua QR, Kitchen Display System và trợ lý AI local.
 
-## Phạm vi dự án
-- **Tập trung**: Quản lý bán hàng đa chi nhánh, quản lý doanh thu, nhân sự, và theo dõi chi tiêu của chủ quán (Expenses). Nhân sự hiện tập trung vào hồ sơ, ca, lịch và chấm công.
-- **Tính năng nổi bật**: Tích hợp Kitchen Display System (KDS) qua SignalR và trợ lý AI local dùng sentence embedding, được bảo vệ bởi feature flag, permission và branch isolation.
+## Phạm vi hiện tại
 
-## Cấu trúc thư mục backend phân lớp
-- `apps/`: Chứa các ứng dụng frontend (React)
-  - `admin-web`: Tích hợp Trang quản trị (Admin) và Giao diện bán hàng (POS). Quản lý chi nhánh, nhân sự, doanh thu và chi tiêu.
-  - `customer-web`: Giao diện dành cho khách hàng - Đặt món tại bàn qua mã QR và theo dõi tích điểm.
-- `services/`: Chứa mã nguồn backend (ASP.NET Core 8)
-  - `api/src/`: Hệ thống API chính
-    - `Domain`: Thực thể (Product, Order, Employee...) và các khái niệm nghiệp vụ.
-    - `Application`: Logic xử lý nghiệp vụ, DTOs, Services.
-    - `Infrastructure`: Persistence (EF Core), dịch vụ hạ tầng và JWT service.
-    - `WebAPI`: Controllers, Middleware, Auth config.
-    - `AI`: Trợ lý ảo AI, Tool Registry và Permission Service.
-- `services/api/src/Infrastructure/Persistence/Migrations/`: EF Core migrations và model snapshot.
-- `bao-cao/`: Kho tài liệu báo cáo, kỹ thuật, hình ảnh và minh chứng; xem [`bao-cao/README.md`](bao-cao/README.md).
-- `scripts/`: Công cụ HTTPS, OpenAPI và diagnostics có phạm vi rõ ràng; xem [`scripts/README.md`](scripts/README.md).
+- Quản lý chi nhánh, thực đơn, topping, khuyến mãi, bàn và đặt bàn.
+- POS, đơn hàng, thanh toán, hóa đơn, doanh thu, chi phí và báo cáo.
+- Quản lý nhân viên, chấm công, ca làm và lịch làm việc.
+- Kho và các nghiệp vụ hỗ trợ vận hành nhà hàng.
+- KDS realtime qua SignalR tại `/kitchenHub`.
+- Customer Web cho khách đăng nhập và khách QR/guest.
+- AI chạy bằng local E5 sentence-embedding pilots, không gọi provider bên ngoài.
 
-## Tài liệu chuẩn
+## Cấu trúc repository
 
-`bao-cao/02-tai-lieu-ky-thuat/system-audit/` là source of truth được kiểm tra theo source code hiện tại. Bắt đầu tại [`bao-cao/02-tai-lieu-ky-thuat/system-audit/00-README.md`](bao-cao/02-tai-lieu-ky-thuat/system-audit/00-README.md). Bộ `bao-cao/01-khoa-luan/` là tài liệu bổ trợ cho báo cáo/khóa luận và có thể chứa nội dung lịch sử; khi có mâu thuẫn, bộ system audit và source code được ưu tiên.
+```text
+apps/
+  admin-web/       # Admin, POS, quản lý vận hành
+  customer-web/    # Menu, đặt món, profile và QR guest
 
-## Phân quyền & Bảo mật (RBAC)
+services/api/      # ASP.NET Core 8 API
+  src/Domain/       # Entity và khái niệm nghiệp vụ
+  src/Application/  # DTO, application service, use case
+  src/Infrastructure/# EF Core, PostgreSQL, migration
+  src/WebAPI/       # Controller, authentication, middleware
+  src/AI/           # Orchestrator, pilot, tool registry, permission
 
-Hệ thống triển khai mô hình phân quyền dựa trên vai trò (Role-Based Access Control) với cơ chế cách ly chi nhánh (Branch Isolation) nghiêm ngặt:
-
-| Role | Phạm vi (Scope) | Mô tả |
-| :--- | :--- | :--- |
-| **admin** | GLOBAL | Toàn quyền hệ thống, quản lý nhiều chi nhánh. |
-| **manager** | OWN_BRANCH | Quản lý nghiệp vụ trong phạm vi chi nhánh được gán (Active role). |
-| **cashier** | OWN_BRANCH | Thu ngân, quản lý đơn hàng và thanh toán tại chi nhánh. |
-| **kitchen** | OWN_BRANCH | Tiếp nhận và chế biến món ăn tại chi nhánh. |
-| **employee** | OWN_BRANCH | Ghi món, phục vụ và quản lý lịch cá nhân. |
-| **customer** | OWN_DATA | Khách hàng đặt món và xem thông tin cá nhân qua QR. |
-
-**Nguyên tắc vàng**:
-- **Role** là nguồn định danh duy nhất cho việc phân quyền (Authorization).
-- **Position** (Chức danh) chỉ dùng để hiển thị và mô tả nghiệp vụ.
-- Dữ liệu chi nhánh được cách ly tại Server thông qua JWT `branchId`.
-
-## Chạy local HTTP/HTTPS
-
-- Chuẩn bị chứng chỉ bằng `.\scripts\setup-https.ps1` trong PowerShell; script dùng một cặp PEM multi-LAN trong `certs/`.
-- Chạy API tại `https://localhost:5000`, Admin Web tại `https://localhost:5173` và Customer Web tại `https://localhost:5174`. API và SignalR đều dùng cùng base URL API; SignalR chạy tại `/kitchenHub`.
-- LAN là chế độ opt-in: đặt `DOAN_DEV_LAN_HOST` đúng hostname/IP có trong SAN của `certs/doan-pos-lan.pem`, chạy lại script setup rồi khởi động các app trong cùng session. Không dùng IP cũ hardcode trong cấu hình.
-- Production không dùng chứng chỉ tự ký này; TLS phải do hosting hoặc reverse proxy production cung cấp. `VITE_HTTPS=false` chỉ là override local có chủ đích và không thay đổi API HTTPS.
-
-## Kiểm thử hiện hành
-
-Repository dùng build/typecheck và OpenAPI codegen để kiểm tra tính hợp lệ của source/config. Bộ test tự động xUnit, Node source-contract và Playwright đã được gỡ theo quyết định chuyển sang kiểm thử thủ công; checklist hiện hành nằm tại [`ba-test-frontend/README.md`](ba-test-frontend/README.md). Không chạy `dotnet test`, Playwright hoặc Node test runner sau khi đợt dọn này hoàn tất.
-## Multi-LAN HTTPS development
-
-Dung mot PEM certificate duy nhat trong `certs/`. Danh sach IPv4 LAN da dang ky duoc luu trong `certs/lan-hosts.txt`.
-
-```powershell
-$lanHost = '172.18.41.58'
-. .\scripts\setup-https.ps1 -LanHost $lanHost
+ba-test-frontend/  # Checklist manual theo role
+bao-cao/            # Báo cáo, hình ảnh và audit học thuật
+scripts/            # HTTPS, codegen và diagnostics có phạm vi rõ ràng
+certs/              # Certificate development multi-LAN
 ```
 
-`setup-https.ps1` duoc dot-source trong terminal API. IP moi se duoc them vao danh sach va cap lai leaf certificate bao gom toan bo IP da dang ky; IP da dang ky se duoc tai su dung neu certificate con hop le.
+## Kiến trúc và bảo mật
 
-Sau khi doi Wi-Fi/IP: chay lai launcher voi host moi, trust public root CA tren dien thoai neu thiet bi chua trust, roi tao/in lai QR vi QR cu van chua host cu. Khong bao gio chuyen private key server hoac CA private key sang dien thoai. Dung cung CA thi cap leaf moi khong tu dong doi yeu cau trust CA; neu CA doi/het han hoac chinh sach mobile doi thi phai trust lai theo chinh sach thiet bi.
+Luồng xử lý chính:
 
-Firewall, client isolation, VPN va routing la dieu kien mang rieng; cung Wi-Fi khong dam bao dien thoai truy cap duoc may tinh. API/Admin/Customer van giu ba cong 5000/5173/5174 va khong dung CORS wildcard.
+```text
+Web / AI
+  → Controller hoặc AI Tool
+  → Application Service
+  → Infrastructure / PostgreSQL
+```
 
-`StartManualTestBackend.ps1` van la launcher test doc lap co runtime attestation va target database test; khong dung no de khoi dong POS development hang ngay.
+- API dùng ASP.NET Core 8, EF Core, PostgreSQL, JWT Bearer và SignalR.
+- `admin` có phạm vi toàn hệ thống; `manager`, `cashier`, `kitchen`, `employee` được giới hạn theo branch; `customer` chỉ truy cập dữ liệu của mình; guest bị giới hạn theo QR session.
+- Role là nguồn phân quyền. Không dùng `Position`, localStorage hoặc dữ liệu client để cấp quyền.
+- Giá, tổng tiền, payment state và branch scope được backend xác minh.
+- AI không truy cập trực tiếp EF Core. Mọi tool phải đi qua `AiPermissionService` và application service.
+- Write tool nhạy cảm dùng confirmation token, kiểm tra ownership, thời hạn, expected value và chỉ dùng một lần.
 
-Neu `VITE_API_URL`, `VITE_CUSTOMER_WEB_URL` hoac `DOAN_DEV_LAN_HOST` trong shell dang tro toi host cu, xoa cac bien nay truoc khi dot-source setup.
+## AI runtime hiện tại
 
-### Chay ba terminal PowerShell rieng cung LAN
+Runtime dùng hai pilot local:
 
-`setup-https.ps1` la setup-only: no chi kiem tra/chuan bi certificate va export environment, khong khoi dong ung dung. Trong PowerShell, dung dot-sourcing (`. .\scripts\setup-https.ps1`) de bien moi truong duoc giu trong chinh terminal; goi bang `&` se khong truyen bien nguoc ve parent shell.
+- `AdminEmbeddingPilot` cho `POST /api/Ai/chat` của Admin; yêu cầu JWT role `admin`.
+- `CustomerGuestEmbeddingPilot` cho Customer Web và guest; chỉ hỗ trợ capability theo scope tương ứng.
 
-Thay gia tri `$lanHost` bang IP LAN hien tai. Chay block 1 truoc mot lan de dang ky/cap lai leaf neu can; chi sau khi block 1 thanh cong moi chay block 2 va 3. Hai block sau dung `-ValidateOnly`, khong ghi lai certificate.
+Admin AI hiện hỗ trợ đọc doanh thu/KPI/đơn hàng/món bán chạy và các write flow:
 
-**Terminal 1 — setup va API**
+- Đổi giá sản phẩm: `update_product_price`.
+- Tạo sản phẩm: `create_product`.
+- Tạo topping: `create_topping`.
+- Đổi tên sản phẩm: `update_product_name`.
+
+Các write flow đều phải preview và xác nhận. AI fail-closed khi thiếu hoặc sai model, tokenizer hay reference catalog; không có fallback `MockAiProvider`.
+
+Các flag và đường dẫn model nằm trong `services/api/appsettings.Development.json` dưới:
+
+```text
+AI:AdminEmbeddingPilot
+AI:CustomerGuestEmbeddingPilot
+AI:UatLogging
+```
+
+Các flag pilot mặc định tắt. Khi UAT, bật bằng biến môi trường của phiên chạy API, không commit secret hoặc token.
+
+## Chạy local bằng HTTPS
+
+Yêu cầu: .NET SDK 8, Node/npm và PostgreSQL/Supabase development phù hợp với cấu hình ứng dụng.
+
+### API
 
 ```powershell
 Set-Location D:\Dev\doan
-$lanHost = '172.18.41.58' # thay bang IP LAN hien tai
-try {
-    . .\scripts\setup-https.ps1 -LanHost $lanHost
-} catch {
-    Write-Error $_
-    exit 1
-}
+. .\scripts\setup-https.ps1
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
-$env:DatabaseSafety__AllowAutomaticMigration = 'false'
 dotnet run --project .\services\api\RestaurantPOS.api.csproj --no-launch-profile
 ```
 
-**Terminal 2 — validate va Admin Web**
+API mặc định: `https://localhost:5000`.
+
+### Admin Web
 
 ```powershell
 Set-Location D:\Dev\doan
-$lanHost = '172.18.41.58' # phai trung IP o Terminal 1
-try {
-    . .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
-} catch {
-    Write-Error $_
-    exit 1
-}
 npm run dev --prefix .\apps\admin-web
 ```
 
-**Terminal 3 — validate va Customer Web**
+Admin mặc định: `https://localhost:5173`.
+
+### Customer Web
 
 ```powershell
 Set-Location D:\Dev\doan
-$lanHost = '172.18.41.58' # phai trung IP o Terminal 1
-try {
-    . .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
-} catch {
-    Write-Error $_
-    exit 1
-}
 npm run dev --prefix .\apps\customer-web
 ```
 
-URL LAN: API `https://172.18.41.58:5000`, Admin `https://172.18.41.58:5173`, Customer `https://172.18.41.58:5174`. Khi doi IP, thay `$lanHost` trong ca ba terminal. Backend van can `ConnectionStrings__DefaultConnection`/User Secrets va `Jwt__Secret` hop le; setup HTTPS khong tao hoac in cac secret nay.
+Customer mặc định: `https://localhost:5174`.
 
-Khi doi Wi-Fi/IP, dung Ctrl+C ca ba process, chay lai block 1 voi IP moi, sau do chay lai block 2 va 3 voi cung IP. QR da in voi IP cu khong tu cap nhat. Neu IP moi chua co trong SAN, block 1 se cap leaf bang CA mkcert hien tai; hai block `-ValidateOnly` phai chay sau do. Neu CA mkcert doi hoac thiet bi chua trust CA, xu ly trust public root CA theo chinh sach thiet bi; khong chuyen private key sang dien thoai.
+### Truy cập từ LAN
+
+LAN là chế độ opt-in. Thay `<LAN_IP>` bằng IP hiện tại có thể truy cập từ thiết bị test:
+
+```powershell
+Set-Location D:\Dev\doan
+$lanHost = '<LAN_IP>'
+. .\scripts\setup-https.ps1 -LanHost $lanHost
+```
+
+Terminal Admin và Customer dùng cùng `$lanHost` với `-ValidateOnly`. Không hardcode IP LAN vào source/config. Khi đổi Wi-Fi hoặc IP, chạy lại setup và dùng certificate/QR phù hợp; không chuyển private key sang thiết bị client.
+
+## Build và kiểm tra
+
+```powershell
+dotnet build .\services\api\RestaurantPOS.api.csproj
+npm run build --prefix .\apps\admin-web
+npm run build --prefix .\apps\customer-web
+npm run codegen:check
+git diff --check
+```
+
+Kiểm thử nghiệp vụ frontend hiện được thực hiện thủ công. Mở [ba-test-frontend/README.md](ba-test-frontend/README.md) để chọn checklist theo role. AI checklist nằm tại [ba-test-frontend/ai-chat/README.md](ba-test-frontend/ai-chat/README.md).
+
+Repository hiện không có thư mục `tests/` hoặc bộ Playwright/Node test runner hoạt động; không coi việc build thành công là thay thế cho manual UAT.
+
+## Tài liệu
+
+- [Checklist frontend theo role](ba-test-frontend/README.md)
+- [Checklist AI](ba-test-frontend/ai-chat/README.md)
+- [Tài liệu báo cáo](bao-cao/README.md)
+- [Audit học thuật](bao-cao/05-audit-hoc-thuat/README.md)
+- [Scripts và diagnostics](scripts/README.md)
+- [Ví dụ biến môi trường](.env.example)
+
+Không commit API key, JWT secret, database password, private key hoặc access token. Các tài liệu lịch sử trong `bao-cao/` có thể không phản ánh runtime hiện tại; khi có mâu thuẫn, ưu tiên source code, cấu hình hiện tại và checklist UAT.

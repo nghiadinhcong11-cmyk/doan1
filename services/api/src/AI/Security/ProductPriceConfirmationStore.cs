@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using RestaurantPOS.AI.Models;
@@ -55,34 +54,28 @@ public sealed class ProductPriceConfirmationStore : IProductPriceConfirmationSto
     {
         pending = null!;
         error = string.Empty;
-
         if (string.IsNullOrWhiteSpace(token) || !_pending.TryGetValue(token, out var stored))
         {
-            error = "Confirmation không hợp lệ hoặc đã được sử dụng.";
+            error = "Xác nhận không hợp lệ hoặc đã được sử dụng.";
             return false;
         }
-
         if (stored.UserId != userId)
         {
-            error = "Confirmation không thuộc về tài khoản đang đăng nhập.";
+            error = "Xác nhận không thuộc về tài khoản đang đăng nhập.";
             return false;
         }
-
         if (stored.ExpiresAtUtc <= DateTimeOffset.UtcNow)
         {
             _pending.TryRemove(token, out _);
-            error = "Confirmation đã hết hạn; vui lòng yêu cầu xác nhận lại.";
+            error = "Xác nhận đã hết hạn; vui lòng yêu cầu xác nhận lại.";
             return false;
         }
-
         if (!_pending.TryRemove(token, out var consumed) || consumed is null)
         {
-            error = "Confirmation không hợp lệ hoặc đã được sử dụng.";
+            error = "Xác nhận không hợp lệ hoặc đã được sử dụng.";
             return false;
         }
-
         pending = consumed;
-
         return true;
     }
 }

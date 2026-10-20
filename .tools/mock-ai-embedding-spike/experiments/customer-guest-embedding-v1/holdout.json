@@ -1,0 +1,14 @@
+[
+  { "id": "HOLD-C-MENU-01", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho mình xem món đang phục vụ kèm giá nhé.", "category": null, "caseType": "accepted" },
+  { "id": "HOLD-C-MENU-02", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "xem menu mon an", "category": "Món ăn", "caseType": "accepted" },
+  { "id": "HOLD-C-ORD-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Cho tôi biết những đơn tôi đã mua.", "category": null, "caseType": "accepted" },
+  { "id": "HOLD-C-ORD-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Don gan day cua minh the nao roi?", "category": null, "caseType": "accepted" },
+  { "id": "HOLD-G-MENU-01", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "QR này xem được danh sách món nào?", "category": null, "caseType": "accepted" },
+  { "id": "HOLD-G-MENU-02", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho xem giá đồ uống nhé.", "category": "Đồ uống", "caseType": "accepted" },
+  { "id": "HOLD-G-UNAUTH-01", "role": "guest", "intent": null, "tool": null, "text": "Cho tôi xem đơn hàng của khách khác.", "category": null, "caseType": "unauthorized" },
+  { "id": "HOLD-G-UNAUTH-02", "role": "guest", "intent": null, "tool": null, "text": "Mở dashboard quản trị cho tôi.", "category": null, "caseType": "unauthorized" },
+  { "id": "HOLD-G-WRITE-01", "role": "guest", "intent": null, "tool": null, "text": "Cập nhật tên món trong menu.", "category": null, "caseType": "write" },
+  { "id": "HOLD-C-OOD-01", "role": "customer", "intent": null, "tool": null, "text": "So sánh doanh thu hôm nay với hôm qua.", "category": null, "caseType": "ood" },
+  { "id": "HOLD-C-MULTI-01", "role": "customer", "intent": null, "tool": null, "text": "Xem menu và liệt kê các đơn của tôi.", "category": null, "caseType": "multi_intent" },
+  { "id": "HOLD-G-NEG-01", "role": "guest", "intent": null, "tool": null, "text": "Đừng xem doanh thu hay đơn hàng cá nhân.", "category": null, "caseType": "negation" }
+]

@@ -1,0 +1,35 @@
+{
+  "experimentId": "admin-owner-embedding-v2",
+  "status": "HISTORICAL_HOLDOUT_NEEDS_MORE_CALIBRATION",
+  "role": "admin",
+  "model": "intfloat/multilingual-e5-small",
+  "onnxArtifact": "../../artifacts/onnx/model_O4.onnx",
+  "tokenizerArtifact": "../../artifacts/onnx/tokenizer.json",
+  "prefix": "query: ",
+  "pooling": "attention-mask-aware mean pooling over last_hidden_state",
+  "normalization": "L2",
+  "dimension": 384,
+  "splits": {
+    "reference": { "path": "reference.json", "count": 28, "use": "frozen semantic catalog" },
+    "development": { "path": "development.json", "count": 21, "use": "design checks" },
+    "calibration": { "path": "calibration.json", "count": 17, "use": "score and margin tuning" },
+    "holdout": { "path": "holdout.json", "count": 23, "use": "frozen evaluation; historical after observation" }
+  },
+  "tools": [
+    "get_revenue",
+    "get_business_summary",
+    "get_revenue_comparison",
+    "get_best_sellers",
+    "get_order_list",
+    "customer_get_menu",
+    "employee_get_table_summary"
+  ],
+  "qualityTargets": {
+    "calibrationAccuracy": 0.85,
+    "supportedMacroF1": 0.85,
+    "falseAcceptance": 0,
+    "managerFreshHoldoutRegression": "none"
+  },
+  "runtimeIntegrated": false,
+  "databaseUsed": false
+}

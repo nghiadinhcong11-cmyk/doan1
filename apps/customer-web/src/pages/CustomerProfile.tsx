@@ -171,7 +171,7 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
       });
       localStorage.setItem('customerInfo', JSON.stringify(data));
       await fetchLoyaltyHistory(data.id);
-      await fetchOrderHistory(phone);
+      await fetchOrderHistory();
       await fetchReservationHistory(phone);
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : 'Không thể tải hồ sơ.');
@@ -221,10 +221,10 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
     }
   };
 
-  const fetchOrderHistory = async (phone: string) => {
+  const fetchOrderHistory = async () => {
     try {
       const token = localStorage.getItem('customerToken');
-      const response = await fetch(`${API_URL}/api/Order?customerPhone=${encodeURIComponent(phone)}`, {
+      const response = await fetch(`${API_URL}/api/Order/customer-summary`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       if (!response.ok) throw new Error('Không thể tải lịch sử đơn hàng.');

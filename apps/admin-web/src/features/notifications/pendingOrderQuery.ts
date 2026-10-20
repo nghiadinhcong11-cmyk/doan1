@@ -41,7 +41,7 @@ async function fetchPendingWebOrderSnapshot(signal?: AbortSignal): Promise<Pendi
   if (selectedBranchId) params.set('branchId', selectedBranchId);
 
   const request = (async () => {
-    const response = await fetch(`${API_URL}/api/Order?${params.toString()}`, { signal });
+  const response = await fetch(`${API_URL}/api/Order/pending-summary?${params.toString()}`, { signal });
     assertSuccessfulOrderListResponse(response, 'Pending order snapshot');
     const orders: unknown = await response.json();
     return Array.isArray(orders) ? orders as PendingOrderCandidate[] : [];

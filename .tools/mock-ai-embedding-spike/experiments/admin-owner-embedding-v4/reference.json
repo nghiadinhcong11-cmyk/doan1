@@ -1,0 +1,8 @@
+[
+ {"id":"V4-REF-REV","text":"doanh thu hom nay","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","toolName":"get_revenue","expectedSlots":{"period":"today"},"source":"admin-contract","dataType":"reference"},
+ {"id":"V4-REF-SUM","text":"chi so kinh doanh hom nay","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"today"},"source":"admin-contract","dataType":"reference"},
+ {"id":"V4-REF-CMP","text":"so sanh doanh thu hom nay voi hom qua","expectedIntent":"REVENUE_COMPARISON","expectedDecision":"ACCEPT","toolName":"get_revenue_comparison","expectedSlots":{"currentPeriod":"today","comparisonPeriod":"yesterday"},"source":"admin-contract","dataType":"reference"},
+ {"id":"V4-REF-RANK","text":"mon nao ban chay hom nay","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"today"},"source":"admin-contract","dataType":"reference"},
+ {"id":"V4-REF-COUNT","text":"bao nhieu don hom nay","expectedIntent":"ORDER_COUNT","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"today"},"source":"admin-contract","dataType":"reference"},
+ {"id":"V4-REF-STATUS","text":"don dang xu ly hom nay","expectedIntent":"ORDER_STATUS","expectedDecision":"ACCEPT","toolName":"get_order_list","expectedSlots":{"period":"today","status":"processing"},"source":"admin-contract","dataType":"reference"}
+]

@@ -333,7 +333,6 @@ static async Task<long> CountOtherRecordsAsync(ApplicationDbContext context, Can
     total += await context.ReceiptSettings.LongCountAsync(cancellationToken);
     total += await context.SystemSettings.LongCountAsync(cancellationToken);
     total += await context.LoyaltyTransactions.LongCountAsync(cancellationToken);
-    total += await context.BusinessInsights.LongCountAsync(cancellationToken);
     total += await context.InventoryItems.LongCountAsync(cancellationToken);
     total += await context.BranchInventories.LongCountAsync(cancellationToken);
     total += await context.StockReceipts.LongCountAsync(cancellationToken);

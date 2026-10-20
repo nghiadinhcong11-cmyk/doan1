@@ -1,0 +1,12 @@
+[
+ {"id":"V4-HLD-UAT-REV","text":"Trong thang nay minh ban duoc bao nhieu tien?","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","toolName":"get_revenue","expectedSlots":{"period":"this_month"},"source":"uat-failure","dataType":"holdout"},
+ {"id":"V4-HLD-UAT-SUM","text":"Cho xem cac chi so cua hom qua.","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"yesterday"},"source":"uat-failure","dataType":"holdout"},
+ {"id":"V4-HLD-UAT-RANK","text":"xep hang mon ban chay thang nay","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"this_month"},"source":"uat-failure","dataType":"holdout"},
+ {"id":"V4-HLD-UAT-LEAD","text":"Trong hom qua mon nao dung dau doanh so?","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"yesterday"},"source":"uat-failure","dataType":"holdout"},
+ {"id":"V4-HLD-UAT-COUNT","text":"hom qua co bao nhieu don?","expectedIntent":"ORDER_COUNT","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"yesterday"},"source":"uat-failure","dataType":"holdout"},
+ {"id":"V4-HLD-REV","text":"Doanh thu hom nay la bao nhieu?","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","toolName":"get_revenue","expectedSlots":{"period":"today"},"source":"counterexample","dataType":"holdout"},
+ {"id":"V4-HLD-CMP","text":"So sanh doanh thu hom nay voi hom qua.","expectedIntent":"REVENUE_COMPARISON","expectedDecision":"ACCEPT","toolName":"get_revenue_comparison","expectedSlots":{"currentPeriod":"today","comparisonPeriod":"yesterday"},"source":"counterexample","dataType":"holdout"},
+ {"id":"V4-HLD-COUNT","text":"Hom nay co tong cong bao nhieu don?","expectedIntent":"ORDER_COUNT","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"today"},"source":"counterexample","dataType":"holdout"},
+ {"id":"V4-HLD-MULTI","text":"Xem doanh thu va so don hom nay.","expectedIntent":"MULTI_INTENT","expectedDecision":"CLARIFY","toolName":null,"expectedSlots":{"period":"today"},"source":"counterexample","dataType":"holdout"},
+ {"id":"V4-HLD-WRITE","text":"Cap nhat gia mon Mi Y bo bam thanh 60000.","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","toolName":null,"expectedSlots":{},"source":"write-boundary","dataType":"holdout"}
+]

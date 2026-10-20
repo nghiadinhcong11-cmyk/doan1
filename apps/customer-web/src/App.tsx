@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import DigitalMenu from './pages/DigitalMenu';
 import CustomerLogin from './pages/CustomerLogin';
@@ -26,11 +26,20 @@ if (!customerFetchInstalled && typeof window !== 'undefined') {
       '/api/Branch',
       '/api/Promotion'
     ].includes(path);
-    const isGuestBootstrap = path === '/api/guest/bootstrap' || path === '/api/guest/direct-session';
-    const useGuestSession = sessionStorage.getItem('guestQrSession') === 'true' ||
-      sessionStorage.getItem('guestDirectSession') === 'true';
+    const isGuestBootstrap = path === '/api/guest/bootstrap';
+    // Customer registration and password login are anonymous authentication
+    // flows. A QR guest session must not be attached to them, otherwise the
+    // backend correctly treats the request as a guest mutation and returns
+    // 403 before it can create a new registered account.
+    const isCustomerAuthRoute = path === '/api/Customer' ||
+      path.startsWith('/api/Customer/exists/') ||
+      path === '/api/Auth/customer-token';
+    const useGuestSession = sessionStorage.getItem('guestQrSession') === 'true';
     const token = useGuestSession ? sessionStorage.getItem('guestToken') : localStorage.getItem('customerToken');
-    if (!isPublicMenuRead && !isGuestBootstrap && token && !headers.has('Authorization')) {
+    // Product remains a public endpoint for branch selection, but a QR guest
+    // must send the signed session so the API can reject a mismatched branchId.
+    const isGuestProductRead = useGuestSession && path === '/api/Product';
+    if ((!isPublicMenuRead || isGuestProductRead) && !isGuestBootstrap && !isCustomerAuthRoute && token && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${token}`);
     }
     return nativeFetch(input, { ...init, headers }).then(response => {
@@ -38,6 +47,7 @@ if (!customerFetchInstalled && typeof window !== 'undefined') {
         if (useGuestSession) {
           sessionStorage.removeItem('guestToken');
           sessionStorage.removeItem('guestQrSession');
+          sessionStorage.removeItem('guestQrToken');
           sessionStorage.removeItem('guestDirectSession');
           sessionStorage.removeItem('guestDirectBranchId');
         } else {
@@ -55,10 +65,8 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isGuest, setIsGuest] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return sessionStorage.getItem('customerGuestMode') === 'true' ||
-      sessionStorage.getItem('guestQrSession') === 'true' ||
-      sessionStorage.getItem('guestDirectSession') === 'true' ||
-      Boolean(sessionStorage.getItem('guestToken'));
+    const hasQrUrl = new URLSearchParams(window.location.search).has('qr');
+    return hasQrUrl;
   });
   const [isLoginRequested, setIsLoginRequested] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<any>(null);
@@ -73,6 +81,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Guest access is QR-only. Clear legacy direct-link session markers so an
+    // old browser session cannot reopen the menu without a QR URL.
+    sessionStorage.removeItem('customerGuestMode');
+    sessionStorage.removeItem('guestDirectSession');
+    sessionStorage.removeItem('guestDirectBranchId');
     const guestMode = sessionStorage.getItem('customerGuestMode') === 'true';
     if (guestMode) {
       localStorage.removeItem('customerToken');
@@ -104,6 +117,7 @@ function App() {
     sessionStorage.removeItem('customerGuestMode');
     sessionStorage.removeItem('guestToken');
     sessionStorage.removeItem('guestQrSession');
+    sessionStorage.removeItem('guestQrToken');
     sessionStorage.removeItem('guestDirectSession');
     sessionStorage.removeItem('guestDirectBranchId');
     localStorage.setItem('customerInfo', JSON.stringify(customer));
@@ -116,6 +130,7 @@ function App() {
     sessionStorage.removeItem('customerGuestMode');
     sessionStorage.removeItem('guestToken');
     sessionStorage.removeItem('guestQrSession');
+    sessionStorage.removeItem('guestQrToken');
     sessionStorage.removeItem('guestDirectSession');
     sessionStorage.removeItem('guestDirectBranchId');
     localStorage.removeItem('customerInfo');
@@ -143,7 +158,6 @@ function App() {
         isGuest={isGuest}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        onGuestEntry={handleGuestEntry}
         onLoginRequest={handleLoginRequest}
         isLoginRequested={isLoginRequested}
       />
@@ -156,14 +170,26 @@ interface CustomerAppShellProps {
   isGuest: boolean;
   onLogin: (customer: any) => void;
   onLogout: () => void;
-  onGuestEntry: () => void;
   onLoginRequest: () => void;
   isLoginRequested: boolean;
 }
 
-const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest, onLogin, onLogout, onGuestEntry, onLoginRequest, isLoginRequested }) => {
+const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest, onLogin, onLogout, onLoginRequest, isLoginRequested }) => {
   const location = useLocation();
-  const isQrBootstrap = new URLSearchParams(window.location.search).has('qr');
+  const menuWasOpened = useRef(location.pathname === '/');
+  const reservationWasOpened = useRef(location.pathname === '/reservation');
+  const profileWasOpened = useRef(location.pathname === '/profile');
+  if (location.pathname === '/') menuWasOpened.current = true;
+  if (location.pathname === '/reservation') reservationWasOpened.current = true;
+  if (location.pathname === '/profile') profileWasOpened.current = true;
+  const locationQrToken = new URLSearchParams(location.search).get('qr');
+  const currentQrToken = locationQrToken || sessionStorage.getItem('guestQrToken');
+  // The URL itself is enough to keep the QR shell visible while bootstrap is
+  // still in flight. Waiting for the session marker caused a login-screen
+  // redirect when an already-authenticated customer scanned a QR code.
+  const isQrBootstrap = Boolean(locationQrToken || (currentQrToken && sessionStorage.getItem('guestQrSession') === 'true'));
+  const qrGuestView = !isLoggedIn && (isGuest || isQrBootstrap);
+  const qrHomeHref = currentQrToken ? `/?qr=${encodeURIComponent(currentQrToken)}` : '/';
 
   if (location.pathname === '/scan') {
     return (
@@ -176,23 +202,38 @@ const CustomerAppShell: React.FC<CustomerAppShellProps> = ({ isLoggedIn, isGuest
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {!isLoggedIn && (isLoginRequested || (!isGuest && !isQrBootstrap)) ? (
+      {!isLoggedIn && (isLoginRequested || !qrGuestView) ? (
         <>
-          <CustomerLogin onLogin={onLogin} onGuestEntry={onGuestEntry} />
-          <ChatBot />
+          <CustomerLogin onLogin={onLogin} />
         </>
       ) : (
         <>
-          <CustomerHeader homeHref={isQrBootstrap ? `/${window.location.search}` : '/'} isGuest={!isLoggedIn} />
+          <CustomerHeader homeHref={isQrBootstrap ? qrHomeHref : '/'} isGuest={!isLoggedIn} />
+          {menuWasOpened.current && (
+            <div className={location.pathname === '/' ? undefined : 'hidden'}>
+              <DigitalMenu />
+            </div>
+          )}
+          {reservationWasOpened.current && (
+            <div className={location.pathname === '/reservation' ? undefined : 'hidden'}>
+              <ReservationPage />
+            </div>
+          )}
+          {profileWasOpened.current && (
+            <div className={location.pathname === '/profile' ? undefined : 'hidden'}>
+              <CustomerProfile isGuest={qrGuestView} onLoginRequest={onLoginRequest} onLogout={onLogout} />
+            </div>
+          )}
           <Routes>
-            <Route path="/" element={<DigitalMenu />} />
-            <Route path="/reservation" element={<ReservationPage />} />
-            <Route path="/profile" element={<CustomerProfile isGuest={isGuest} onLoginRequest={onLoginRequest} onLogout={onLogout} />} />
+            <Route path="/" element={null} />
+            <Route path="/reservation" element={null} />
+            <Route path="/profile" element={null} />
             <Route path="/scan" element={<QRScan />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <BottomNav />
-          {!isQrBootstrap && <ChatBot />}
+          {(isLoggedIn ||
+            (isQrBootstrap && sessionStorage.getItem('guestQrSession') === 'true')) && <ChatBot />}
         </>
       )}
     </div>

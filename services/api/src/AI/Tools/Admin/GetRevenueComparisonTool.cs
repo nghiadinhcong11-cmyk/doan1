@@ -13,7 +13,7 @@ namespace RestaurantPOS.AI.Tools.Admin
         private readonly IDashboardService _dashboardService;
         public string Name => "get_revenue_comparison";
         public string Description => "So sánh doanh thu giữa hai khoảng thời gian để phân tích tăng trưởng.";
-        public string[] AllowedRoles => new[] { "admin", "manager" };
+        public string[] AllowedRoles => new[] { "admin" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetRevenueComparisonTool(IDashboardService dashboardService)
@@ -53,12 +53,12 @@ namespace RestaurantPOS.AI.Tools.Admin
                 var currentData = await _dashboardService.GetRevenueReportAsync(
                     TimeZoneInfo.ConvertTimeToUtc(currentRange.start, vnZone),
                     TimeZoneInfo.ConvertTimeToUtc(currentRange.end, vnZone),
-                    userContext.BranchId);
+                    null);
 
                 var comparisonData = await _dashboardService.GetRevenueReportAsync(
                     TimeZoneInfo.ConvertTimeToUtc(comparisonRange.start, vnZone),
                     TimeZoneInfo.ConvertTimeToUtc(comparisonRange.end, vnZone),
-                    userContext.BranchId);
+                    null);
 
                 decimal diff = currentData.Revenue - comparisonData.Revenue;
                 decimal? percent = null;

@@ -248,7 +248,6 @@ static async Task<SeedState> ReadSeedStateAsync(ApplicationDbContext context, Ca
         await context.ReceiptSettings.LongCountAsync(cancellationToken) +
         await context.SystemSettings.LongCountAsync(cancellationToken) +
         await context.LoyaltyTransactions.LongCountAsync(cancellationToken) +
-        await context.BusinessInsights.LongCountAsync(cancellationToken) +
         await context.InventoryItems.LongCountAsync(cancellationToken) +
         await context.BranchInventories.LongCountAsync(cancellationToken) +
         await context.StockReceipts.LongCountAsync(cancellationToken) +

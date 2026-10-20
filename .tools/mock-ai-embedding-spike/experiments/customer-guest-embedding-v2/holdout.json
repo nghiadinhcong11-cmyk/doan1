@@ -1,0 +1,22 @@
+[
+  { "id": "V2-FROZEN-M-01", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Những thức uống nào quán đang phục vụ?", "category": "do_uong", "caseType": "accepted" },
+  { "id": "V2-FROZEN-M-02", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Có món khai vị nào để bắt đầu bữa ăn?", "category": "khai_vi", "caseType": "accepted" },
+  { "id": "V2-FROZEN-M-03", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho mình xem món chính hôm nay.", "category": "mon_chinh", "caseType": "accepted" },
+  { "id": "V2-FROZEN-M-04", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Thực đơn hiện tại của quán có gì?", "category": null, "caseType": "accepted" },
+  { "id": "V2-FROZEN-M-05", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Gửi tôi bảng giá món ăn của quán.", "category": "mon_an", "caseType": "accepted" },
+  { "id": "V2-FROZEN-O-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Lấy danh sách những đơn tôi vừa đặt.", "category": null, "caseType": "accepted" },
+  { "id": "V2-FROZEN-O-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Tài khoản của tôi có đơn nào gần đây không?", "category": null, "caseType": "accepted" },
+  { "id": "V2-FROZEN-G-01", "role": "guest", "intent": null, "tool": null, "text": "Tôi quét QR rồi, cho xem đơn gần nhất.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-FROZEN-G-02", "role": "guest", "intent": null, "tool": null, "text": "QR này mở menu của chi nhánh khác được không?", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-FROZEN-C-01", "role": "customer", "intent": null, "tool": null, "text": "Xem đơn của tài khoản khác.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-FROZEN-C-02", "role": "customer", "intent": null, "tool": null, "text": "Tính doanh thu cho tôi.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-FROZEN-W-01", "role": "guest", "intent": null, "tool": null, "text": "Sửa giá món trong thực đơn.", "category": null, "caseType": "write" },
+  { "id": "V2-FROZEN-W-02", "role": "customer", "intent": null, "tool": null, "text": "Đổi tên sản phẩm trong menu.", "category": null, "caseType": "write" },
+  { "id": "V2-FROZEN-U-01", "role": "customer", "intent": null, "tool": null, "text": "Lọc menu có giá thấp hơn 30000.", "category": null, "caseType": "unsupported" },
+  { "id": "V2-FROZEN-U-02", "role": "customer", "intent": null, "tool": null, "text": "Tìm món bún bò trong thực đơn.", "category": null, "caseType": "unsupported" },
+  { "id": "V2-FROZEN-OOD-01", "role": "customer", "intent": null, "tool": null, "text": "Tính lương nhân viên tháng này.", "category": null, "caseType": "ood" },
+  { "id": "V2-FROZEN-N-01", "role": "guest", "intent": null, "tool": null, "text": "Không cần xem doanh thu đâu.", "category": null, "caseType": "negation" },
+  { "id": "V2-FROZEN-N-02", "role": "customer", "intent": null, "tool": null, "text": "Đừng lấy đơn của người khác.", "category": null, "caseType": "negation" },
+  { "id": "V2-FROZEN-X-01", "role": "guest", "intent": null, "tool": null, "text": "Xem menu, đồng thời cho biết doanh thu.", "category": null, "caseType": "multi_intent" },
+  { "id": "V2-FROZEN-X-02", "role": "customer", "intent": null, "tool": null, "text": "Cho xem món rồi kiểm tra đơn của tôi.", "category": null, "caseType": "multi_intent" }
+]

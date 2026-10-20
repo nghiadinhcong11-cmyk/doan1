@@ -14,5 +14,14 @@ namespace RestaurantPOS.AI.Services
         Task<AiResponse> ProcessReadOnlyAsync(AiRequest request, AiUserContext userContext, CancellationToken cancellationToken = default);
 
         Task<AiResponse> ProcessGuestReadOnlyAsync(AiRequest request, CancellationToken cancellationToken = default);
+
+        Task<AiResponse> ProcessGuestReadOnlyAsync(
+            AiRequest request,
+            AiUserContext guestContext,
+            CancellationToken cancellationToken = default);
+
+        Task<AiResponse> ConfirmProductPriceAsync(string token, AiUserContext userContext, CancellationToken cancellationToken = default);
+        Task<AiResponse> ConfirmProductNameAsync(string token, AiUserContext userContext, CancellationToken cancellationToken = default);
+        Task<AiResponse> ConfirmCatalogCreationAsync(string token, string type, AiUserContext userContext, CancellationToken cancellationToken = default);
     }
 }

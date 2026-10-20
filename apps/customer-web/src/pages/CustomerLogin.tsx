@@ -5,10 +5,9 @@ import { Button, Feedback, FormField } from '../components/ui';
 
 interface CustomerLoginProps {
   onLogin: (customer: any) => void;
-  onGuestEntry: () => void;
 }
 
-const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin, onGuestEntry }) => {
+const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
@@ -154,12 +153,12 @@ const CustomerLogin: React.FC<CustomerLoginProps> = ({ onLogin, onGuestEntry }) 
                    <button
                      type="button"
                      onClick={() => {
-                       onGuestEntry();
+                       return;
                        window.history.pushState({}, '', '/');
                        window.dispatchEvent(new PopStateEvent('popstate'));
                      }}
                      disabled={loading}
-                     className="min-h-11 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-[#85796d] transition-colors hover:bg-orange-50 hover:text-orange-600"
+                     className="hidden min-h-11 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-[#85796d] transition-colors hover:bg-orange-50 hover:text-orange-600"
                    >
                       Tiếp tục với tư cách khách vãng lai
                    </button>

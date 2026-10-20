@@ -182,81 +182,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.BusinessInsight", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AiExplanation")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AiRecommendation")
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("BranchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ComparisonPeriodEnd")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("ComparisonPeriodStart")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeduplicationKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("DetectedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("EvidenceJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("PeriodEnd")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("PeriodStart")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Severity")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Summary")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BranchId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("DeduplicationKey")
-                        .IsUnique();
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("BusinessInsights");
-                });
-
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -587,9 +512,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("UseLegacyReadState")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("text");
@@ -610,6 +532,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("UseLegacyReadState")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
@@ -901,7 +826,7 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("BranchId", "Status");
 
-                    b.ToTable("ProductBranchAvailabilities");
+                    b.ToTable("ProductBranchAvailabilities", (string)null);
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Promotion", b =>
@@ -1433,17 +1358,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("SystemSettings");
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.NotificationRead", b =>
-                {
-                    b.HasOne("RestaurantPOS.Domain.Entities.Notification", "Notification")
-                        .WithMany()
-                        .HasForeignKey("NotificationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Notification");
-                });
-
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Topping", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1567,15 +1481,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Navigation("InventoryItem");
                 });
 
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.BusinessInsight", b =>
-                {
-                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
-                        .WithMany()
-                        .HasForeignKey("BranchId");
-
-                    b.Navigation("Branch");
-                });
-
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Employee", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Branch", null)
@@ -1621,6 +1526,17 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.NotificationRead", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Notification", "Notification")
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notification");
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.Order", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
@@ -1652,6 +1568,24 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ToppingId");
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequest", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequestItem", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.OrderRequest", null)
+                        .WithMany("Items")
+                        .HasForeignKey("OrderRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.ProductBranchAvailability", b =>
                 {
                     b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
@@ -1669,24 +1603,6 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Navigation("Branch");
 
                     b.Navigation("Product");
-                });
-
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequest", b =>
-                {
-                    b.HasOne("RestaurantPOS.Domain.Entities.Order", null)
-                        .WithMany()
-                        .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderRequestItem", b =>
-                {
-                    b.HasOne("RestaurantPOS.Domain.Entities.OrderRequest", null)
-                        .WithMany("Items")
-                        .HasForeignKey("OrderRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.ReceiptSettings", b =>
@@ -1880,4 +1796,3 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
         }
     }
 }
-

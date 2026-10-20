@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, User, Phone, MapPin, Mail, Edit2, Trash2, Loader2, Download, X, Star, History, Save, TrendingUp, Users } from 'lucide-react';
+import { Plus, Search, User, Phone, MapPin, Mail, Edit2, Trash2, Loader2, Download, X, Star, History, Save, TrendingUp, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { useRef } from 'react';
 import { notifyFeedback } from '../../../components/ui';
@@ -26,6 +26,8 @@ const CustomerManagement = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const [filterGroup, setFilterGroup] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -45,17 +47,20 @@ const CustomerManagement = () => {
     totalSpending: 0
   });
 
-  const fetchCustomers = async (query = searchTerm) => {
+  const fetchCustomers = async (query = searchTerm, requestedPage = page) => {
     const generation = ++requestGeneration.current;
     abortController.current?.abort();
     const controller = new AbortController();
     abortController.current = controller;
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/Customer${query ? `?search=${encodeURIComponent(query)}` : ''}`, { signal: controller.signal });
+      const params = new URLSearchParams({ page: String(requestedPage), pageSize: '50' });
+      if (query) params.set('search', query);
+      const response = await fetch(`${API_URL}/api/Customer?${params.toString()}`, { signal: controller.signal });
       const data = await response.json();
       if (generation !== requestGeneration.current) return;
-      setCustomers(data);
+      setCustomers(Array.isArray(data) ? data : []);
+      setHasNextPage(response.headers.get('X-Has-Next-Page') === 'true');
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) console.error(err);
     } finally {
@@ -65,7 +70,8 @@ const CustomerManagement = () => {
   };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void fetchCustomers(), 350);
+    setPage(1);
+    const timer = window.setTimeout(() => void fetchCustomers(searchTerm, 1), 350);
     return () => window.clearTimeout(timer);
   }, [searchTerm]);
 
@@ -260,6 +266,29 @@ const CustomerManagement = () => {
                 ))}
               </tbody>
             </table>
+            <div className="flex items-center justify-between border-t border-gray-100 px-8 py-4">
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Trang {page}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { const nextPage = page - 1; setPage(nextPage); void fetchCustomers(searchTerm, nextPage); }}
+                  disabled={page === 1 || loading}
+                  className="rounded-lg border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label="Trang trước"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const nextPage = page + 1; setPage(nextPage); void fetchCustomers(searchTerm, nextPage); }}
+                  disabled={!hasNextPage || loading}
+                  className="rounded-lg border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label="Trang sau"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

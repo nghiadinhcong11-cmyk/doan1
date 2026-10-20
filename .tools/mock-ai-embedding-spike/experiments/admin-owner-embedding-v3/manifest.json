@@ -1,0 +1,41 @@
+{
+  "experimentId": "admin-owner-embedding-v3",
+  "role": "admin",
+  "status": "EVALUATED_ONCE_HISTORICAL",
+  "holdoutFrozenBeforeEvaluation": true,
+  "model": "intfloat/multilingual-e5-small",
+  "onnxArtifact": "../../artifacts/onnx/model_O4.onnx",
+  "tokenizerArtifact": "../../artifacts/onnx/tokenizer.json",
+  "prefix": "query: ",
+  "pooling": "attention-mask-aware mean pooling over last_hidden_state",
+  "normalization": "L2",
+  "supportedIntents": [
+    "REVENUE_QUERY",
+    "BUSINESS_SUMMARY",
+    "REVENUE_COMPARISON",
+    "PRODUCT_RANKING",
+    "ORDER_COUNT",
+    "ORDER_STATUS"
+  ],
+  "deferredIntents": {
+    "TABLE_STATUS": "Admin global versus branch scope requires decision; actual tool is employee_get_table_summary.",
+    "MENU_QUERY": "Existing customer_get_menu is not included in Admin embedding v3; preserve existing branch/sellable policy."
+  },
+  "contracts": {
+    "REVENUE_QUERY": {"tool":"get_revenue","periods":["today","month","year"],"branchScope":"trusted userContext.BranchId"},
+    "BUSINESS_SUMMARY": {"tool":"get_business_summary","periods":["today","yesterday","this_week","last_week","this_month","last_month"],"outputs":["revenue","order_count","aov","expenses","estimated_cogs","estimated_profit","top_products"],"branchScope":"trusted userContext.BranchId"},
+    "REVENUE_COMPARISON": {"tool":"get_revenue_comparison","currentPeriods":["today","this_week","this_month"],"comparisonPeriods":["yesterday","last_week","last_month"],"branchScope":"trusted userContext.BranchId"},
+    "PRODUCT_RANKING": {"tool":"get_best_sellers","periods":["today","yesterday","week","month"],"limit":"1..20","branchScope":"trusted userContext.BranchId"},
+    "ORDER_COUNT": {"tool":"get_business_summary","period":"required","output":"KPIs.OrderCount","branchScope":"trusted userContext.BranchId"},
+    "ORDER_STATUS": {"tool":"get_order_list","fields":["fromDate","toDate","status","limit"],"statuses":["Đang xử lý","Hoàn thành","Đã hủy"],"branchScope":"trusted userContext.BranchId"}
+  },
+  "splits": {
+    "reference": {"path":"reference.json","count":27},
+    "development": {"path":"development.json","count":18},
+    "calibration": {"path":"calibration.json","count":18},
+    "holdout": {"path":"holdout.json","count":18}
+  },
+  "qualityTargets": {"calibrationAccuracy":0.85,"supportedMacroF1":0.85,"falseAcceptance":0,"managerFreshHoldout":"16/16"},
+  "runtimeIntegrated": false,
+  "databaseUsed": false
+}

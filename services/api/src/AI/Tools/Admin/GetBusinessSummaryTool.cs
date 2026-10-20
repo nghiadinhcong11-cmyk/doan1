@@ -13,7 +13,7 @@ namespace RestaurantPOS.AI.Tools.Admin
         private readonly IDashboardService _dashboardService;
         public string Name => "get_business_summary";
         public string Description => "Lấy bản tóm tắt KPI kinh doanh (Doanh thu, Số đơn, AOV, Lợi nhuận ước tính) cho một khoảng thời gian.";
-        public string[] AllowedRoles => new[] { "admin", "manager" };
+        public string[] AllowedRoles => new[] { "admin" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetBusinessSummaryTool(IDashboardService dashboardService)
@@ -78,7 +78,7 @@ namespace RestaurantPOS.AI.Tools.Admin
                 var startUtc = TimeZoneInfo.ConvertTimeToUtc(startVn, vnZone);
                 var endUtc = TimeZoneInfo.ConvertTimeToUtc(endVn, vnZone);
 
-                var summary = await _dashboardService.GetBusinessSummaryAsync(startUtc, endUtc, userContext.BranchId);
+                var summary = await _dashboardService.GetBusinessSummaryAsync(startUtc, endUtc, null);
 
                 return AiToolResult.CreateSuccess(JsonSerializer.Serialize(new
                 {

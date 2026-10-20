@@ -35,10 +35,18 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         /// <summary>Lấy danh sách món theo các bộ lọc.</summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive, [FromQuery] Guid? branchId)
+        public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive, [FromQuery] Guid? branchId, [FromQuery] bool sellableOnly = false)
         {
+            // A QR/customer request carrying a malformed or expired bearer must
+            // not be downgraded to anonymous branch selection.
+            if (sellableOnly && Request.Headers.ContainsKey("Authorization") && User.Identity?.IsAuthenticated != true)
+                return Unauthorized();
+
             if (!TryResolveReadBranch(branchId, out var effectiveBranchId))
                 return Forbid();
+
+            if (sellableOnly && !effectiveBranchId.HasValue)
+                return BadRequest(new { message = "Sellable menu requires a verified branch." });
 
             var query = _context.Products.AsNoTracking().AsQueryable();
 
@@ -57,6 +65,20 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             if (isActive.HasValue)
                 query = query.Where(p => p.IsActive == isActive.Value);
+
+            if (sellableOnly)
+            {
+                var scopedBranchId = effectiveBranchId!.Value;
+                // Catalog reads intentionally remain available to management and
+                // Kitchen. A customer-facing sellable menu requires an explicit
+                // Available row; missing availability fails closed.
+                query = query.Where(product =>
+                    _context.Branches.Any(branch => branch.Id == scopedBranchId && branch.IsActive) &&
+                    _context.ProductBranchAvailabilities.Any(state =>
+                        state.ProductId == product.Id &&
+                        state.BranchId == scopedBranchId &&
+                        state.Status == "Available"));
+            }
 
             var products = await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
             if (effectiveBranchId.HasValue)
@@ -99,6 +121,12 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             try
             {
+                var existingBranchIds = await _context.Branches
+                    .AsNoTracking()
+                    .Select(branch => branch.Id)
+                    .ToListAsync();
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+
                 product.Id = Guid.NewGuid();
                 product.CreatedAt = DateTime.UtcNow;
 
@@ -109,7 +137,17 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
 
                 _context.Products.Add(product);
+                // Product is a shared catalog entry. It must not become
+                // sellable at every branch merely because it was created.
+                _context.ProductBranchAvailabilities.AddRange(existingBranchIds.Select(branchId =>
+                    new ProductBranchAvailability
+                    {
+                        ProductId = product.Id,
+                        BranchId = branchId,
+                        Status = "TemporarilyUnavailable"
+                    }));
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
                 return Ok(product);
             }
             catch (Exception ex)

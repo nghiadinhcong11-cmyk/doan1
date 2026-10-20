@@ -1,0 +1,37 @@
+{
+  "experimentId": "customer-guest-embedding-v1",
+  "status": "offline-research-only",
+  "model": {
+    "name": "intfloat/multilingual-e5-small",
+    "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "modelPath": "../../artifacts/onnx/model_O4.onnx",
+    "tokenizerPath": "../../artifacts/onnx/tokenizer.json",
+    "sha256": {
+      "model": "4654C156F3E4171ABC9C716CDB771BF9116455D15AC1AAB364AEEEDE0E3205B0",
+      "tokenizer": "0B44A9D7B51C3C62626640CDA0E2C2F70FDACDC25BBBD68038369D14EBDF4C39"
+    },
+    "prefix": "query: ",
+    "pooling": "attention-mask-aware mean pooling over last_hidden_state",
+    "normalization": "L2",
+    "dimension": 384,
+    "similarity": "cosine"
+  },
+  "policy": {
+    "minimumScore": 0.70,
+    "minimumMargin": 0.03,
+    "customerIntents": ["MENU_QUERY", "MY_ORDERS"],
+    "guestIntents": ["MENU_QUERY"],
+    "customerTools": ["customer_get_menu", "get_my_orders"],
+    "guestTools": ["customer_get_menu"]
+  },
+  "splits": {
+    "reference": "reference.json",
+    "development": "development.json",
+    "calibration": "calibration.json",
+    "holdout": "holdout.json"
+  },
+  "holdoutFrozen": true,
+  "database": false,
+  "runtimeIntegrated": false,
+  "notes": "Independent offline catalog. Holdout must not be used for tuning. This evaluator does not execute tools."
+}

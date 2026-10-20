@@ -19,6 +19,7 @@ const KitchenPage = () => {
   const [error, setError] = useState('');
   const [products, setProducts] = useState<KitchenProduct[]>([]);
   const lastSyncRef = useRef(0);
+  const connectedRef = useRef(false);
   const activeRequestsInFlightRef = useRef(false);
   const activeRequestsRefreshQueuedRef = useRef(false);
 
@@ -113,14 +114,16 @@ const KitchenPage = () => {
       setProducts(prev => prev.map(product => product.id === id ? { ...product, availabilityStatus } : product));
     };
     connection.on('NewOrderRequest', onNew); connection.on('RequestStatusUpdated', onStatus); connection.on('ProductAvailabilityChanged', onAvailabilityChanged);
-    connection.onreconnecting(() => { if (!disposed) setConnected(false); });
-    connection.onreconnected(() => { if (!disposed) { setConnected(true); requestActiveRequestsRefresh(true, true, () => !disposed); void fetchProducts(() => !disposed); } });
-    connection.onclose(() => { if (!disposed) setConnected(false); });
+    connection.onreconnecting(() => { connectedRef.current = false; if (!disposed) setConnected(false); });
+    connection.onreconnected(() => { connectedRef.current = true; if (!disposed) { setConnected(true); requestActiveRequestsRefresh(true, true, () => !disposed); void fetchProducts(() => !disposed); } });
+    connection.onclose(() => { connectedRef.current = false; if (!disposed) setConnected(false); });
     void fetchActiveRequests(false, () => !disposed);
     void fetchProducts(() => !disposed);
     void connection.start().then(() => {
+      connectedRef.current = true;
       if (!disposed) setConnected(true);
     }).catch(err => {
+      connectedRef.current = false;
       if (!disposed) {
         console.error('Kitchen hub failed:', err);
         setError('Realtime đang chờ khôi phục. Dữ liệu vẫn tự đồng bộ.');
@@ -133,13 +136,19 @@ const KitchenPage = () => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') refreshIfVisible();
     };
-    const poll = window.setInterval(() => {
-      if (!disposed && document.visibilityState === 'visible') requestActiveRequestsRefresh(true, false, () => !disposed);
-    }, 10000);
+    let pollTimer: number | undefined;
+    const schedulePoll = () => {
+      pollTimer = window.setTimeout(() => {
+        if (disposed) return;
+        if (document.visibilityState === 'visible') requestActiveRequestsRefresh(true, false, () => !disposed);
+        schedulePoll();
+      }, connectedRef.current ? 30000 : 10000);
+    };
+    schedulePoll();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       disposed = true;
-      window.clearInterval(poll);
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       activeRequestsRefreshQueuedRef.current = false;
       connection.off('NewOrderRequest', onNew);

@@ -138,6 +138,16 @@ const ProductManagement = () => {
   }, [filterGroup, filterCategory, filterStatus]);
 
   useEffect(() => {
+    const handleCatalogChanged = () => void fetchProducts();
+    window.addEventListener('product-price-updated', handleCatalogChanged);
+    window.addEventListener('catalog-item-created', handleCatalogChanged);
+    return () => {
+      window.removeEventListener('product-price-updated', handleCatalogChanged);
+      window.removeEventListener('catalog-item-created', handleCatalogChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!searchEffectInitialized.current) {
       searchEffectInitialized.current = true;
       return;

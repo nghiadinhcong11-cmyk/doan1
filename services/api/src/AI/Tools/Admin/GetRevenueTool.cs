@@ -14,7 +14,7 @@ namespace RestaurantPOS.AI.Tools.Admin
         private readonly IDashboardService _dashboardService;
         public string Name => "get_revenue";
         public string Description => "Lấy doanh thu nhà hàng theo thời gian (today, month, year).";
-        public string[] AllowedRoles => new[] { "admin", "manager" };
+        public string[] AllowedRoles => new[] { "admin" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetRevenueTool(IDashboardService dashboardService)
@@ -53,7 +53,36 @@ namespace RestaurantPOS.AI.Tools.Admin
                     return AiToolResult.CreateError("Giá trị period không hợp lệ. Phải là today, month hoặc year.");
                 }
 
-                var revenue = await _dashboardService.GetRevenueByPeriodAsync(period, userContext.BranchId);
+                var scope = arguments.TryGetProperty("scope", out var scopeProperty)
+                    ? scopeProperty.GetString()?.ToLowerInvariant()
+                    : "all";
+                var requestedBranchId = string.Equals(scope, "current", StringComparison.OrdinalIgnoreCase)
+                    ? userContext.BranchId
+                    : null;
+                if (string.Equals(scope, "current", StringComparison.OrdinalIgnoreCase) && !requestedBranchId.HasValue)
+                    return AiToolResult.CreateError("Không xác định được chi nhánh hiện tại của tài khoản Admin.");
+
+                // Admin dashboard scope is the whole chain. For today, reuse the
+                // dashboard read model so the response also explains the total by
+                // branch instead of silently reporting only the central branch.
+                if (period == "today" && !requestedBranchId.HasValue && string.Equals(userContext.Role, "admin", StringComparison.OrdinalIgnoreCase))
+                {
+                    var dashboard = await _dashboardService.GetSummaryAsync(null);
+                    using var dashboardDocument = JsonDocument.Parse(JsonSerializer.Serialize(dashboard));
+                    var root = dashboardDocument.RootElement;
+                    var branches = root.TryGetProperty("branchRevenue", out var branchRevenue)
+                        ? branchRevenue
+                        : JsonSerializer.SerializeToElement(Array.Empty<object>());
+                    var todayTotal = root.TryGetProperty("todayRevenue", out var todayRevenue) ? todayRevenue.GetDecimal() : 0m;
+                    return AiToolResult.CreateSuccess(JsonSerializer.Serialize(new
+                    {
+                        Period = period,
+                        Revenue = todayTotal,
+                        Branches = branches
+                    }));
+                }
+
+                var revenue = await _dashboardService.GetRevenueByPeriodAsync(period, requestedBranchId);
 
                 return AiToolResult.CreateSuccess($"Doanh thu ({period}): {revenue:N0} VNĐ");
             }

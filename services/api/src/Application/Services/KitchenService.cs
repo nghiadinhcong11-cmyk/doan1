@@ -47,6 +47,8 @@ namespace RestaurantPOS.Application.Services
                     if (order.BranchId == Guid.Empty || !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == order.BranchId && branch.IsActive))
                         throw new InvalidOperationException("Không thể gửi đơn không có chi nhánh hợp lệ xuống bếp.");
                     if (order.Status != "Đang xử lý") throw new InvalidOperationException("Đơn hàng đã đóng hoặc đã hủy.");
+                    if (!await AreOrderProductsAvailableAsync(order))
+                        throw new InvalidOperationException("Không thể gửi món không còn khả dụng tại chi nhánh xuống bếp.");
                     
                     var itemsToSend = order.Details.Where(d => d.Quantity > d.SentQuantity).ToList();
                     if (!itemsToSend.Any()) throw new InvalidOperationException("Không có món mới cần gửi bếp.");
@@ -115,6 +117,31 @@ namespace RestaurantPOS.Application.Services
                     throw;
                 }
             });
+        }
+
+        private async Task<bool> AreOrderProductsAvailableAsync(Order order)
+        {
+            var productIds = order.Details
+                .Where(detail => detail.ProductId.HasValue)
+                .Select(detail => detail.ProductId!.Value)
+                .Distinct()
+                .ToArray();
+
+            if (productIds.Length == 0)
+                return false;
+
+            var availableProductCount = await _context.Products
+                .Where(product => productIds.Contains(product.Id) &&
+                    product.IsActive &&
+                    _context.ProductBranchAvailabilities.Any(availability =>
+                        availability.ProductId == product.Id &&
+                        availability.BranchId == order.BranchId &&
+                        availability.Branch != null &&
+                        availability.Branch.IsActive &&
+                        availability.Status == "Available"))
+                .CountAsync();
+
+            return availableProductCount == productIds.Length;
         }
 
         public async Task<List<object>> GetActiveKitchenRequestsAsync(Guid? branchId)

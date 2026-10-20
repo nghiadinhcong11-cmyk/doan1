@@ -116,6 +116,12 @@ namespace RestaurantPOS.Application.DTOs.Orders
         /// Ngày kết thúc (định dạng yyyy-MM-dd)
         /// </summary>
         public string? ToDate { get; set; }
+
+        // Internal UTC half-open range used by trusted server-side callers such
+        // as the Admin read-only AI tool. The public date filters above remain
+        // date-only for backward compatibility with existing clients.
+        public DateTime? FromDateUtc { get; set; }
+        public DateTime? ToDateUtc { get; set; }
     }
 
     /// <summary>
@@ -151,5 +157,48 @@ namespace RestaurantPOS.Application.DTOs.Orders
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public string? Options { get; set; }
+    }
+
+    /// <summary>
+    /// Minimal read model used by the staff notification center for pending web orders.
+    /// Keeping this separate from Order avoids sending payment and financial snapshots
+    /// when the notification only needs a preview.
+    /// </summary>
+    public sealed class PendingOrderSummaryDto
+    {
+        public Guid Id { get; set; }
+        public string? Status { get; set; }
+        public string? CreatedBy { get; set; }
+        public string? TableName { get; set; }
+        public string? CustomerName { get; set; }
+        public string? CustomerPhone { get; set; }
+        public decimal TotalAmount { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public List<PendingOrderSummaryDetailDto> Details { get; set; } = new();
+    }
+
+    public sealed class PendingOrderSummaryDetailDto
+    {
+        public string? ProductName { get; set; }
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public string? Options { get; set; }
+    }
+
+    public sealed class StaffOverviewOrderCountsDto
+    {
+        public int PendingCount { get; set; }
+        public int ActiveCount { get; set; }
+        public int CompletedTodayCount { get; set; }
+    }
+
+    public sealed class CustomerOrderSummaryDto
+    {
+        public Guid Id { get; set; }
+        public string? InvoiceCode { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? PaymentAt { get; set; }
+        public string? Status { get; set; }
+        public decimal TotalAmount { get; set; }
     }
 }

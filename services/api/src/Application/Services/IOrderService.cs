@@ -21,14 +21,18 @@ namespace RestaurantPOS.Application.Services
         NotFound,
         Conflict,
         Forbidden,
-        InvalidTable
+        InvalidTable,
+        UnavailableProducts
     }
 
     public interface IOrderService
     {
         Task<List<Order>> GetOrdersAsync(OrderQueryFilter filter);
+        Task<List<PendingOrderSummaryDto>> GetPendingOrderSummariesAsync(Guid? branchId);
+        Task<StaffOverviewOrderCountsDto> GetStaffOverviewOrderCountsAsync(Guid branchId);
+        Task<List<CustomerOrderSummaryDto>> GetCustomerOrderSummariesAsync(string customerPhone);
         Task<Order?> GetOrderByIdAsync(Guid id);
-        Task<Order> CreateOrUpdateOrderAsync(Order order);
+        Task<Order> CreateOrUpdateOrderAsync(Order order, bool deferAvailabilityValidation = false);
         Task<(WebOrderAcceptResult Result, Order? Order)> AcceptWebOrderAsync(Guid id, Guid? tableId, Guid? allowedBranchId, string acceptedBy);
         Task<(PaymentAttemptResult Result, Order? Order)> PayOrderAsync(Guid id, decimal amount, string paymentMethod, string? customerPhone = null, string? customerName = null, bool createMember = false);
         Task<Order?> UpdateOrderStatusAsync(Guid id, OrderUpdateDto update);

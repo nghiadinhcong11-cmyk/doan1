@@ -9,7 +9,7 @@ Thư mục này chỉ chứa công cụ phát triển, kiểm tra cấu hình v�
 | [`setup-https.ps1`](setup-https.ps1) | Tạo hoặc cập nhật một chứng chỉ PEM HTTPS development multi-LAN trong `certs/`; danh sách IP được lưu trong `certs/lan-hosts.txt`. | Ghi `certs/` và danh sách IP LAN; không ghi database. Chỉ dùng development. |
 | `npm run codegen:file` | Sinh `packages/shared/types/api.ts` từ OpenAPI snapshot. | Ghi source được sinh; cần Node/npm. |
 | `npm run codegen:check` | So sánh type sinh ra với snapshot mà không giữ file tạm. | Ghi file generated tạm rồi xóa khi pass; không gọi API. |
-| [`diagnostics/StartManualTestBackend.ps1`](diagnostics/StartManualTestBackend.ps1) | Khởi động API development đã build cho checklist thủ công với `AI__ProviderMode=Mock`, target `Test`, migration tự động tắt và runtime attestation. | Khởi động process, đọc database qua API startup nếu ứng dụng yêu cầu; có thể ghi attestation cục bộ. Không chạy production. Không dùng nếu chưa xác minh target database. |
+| [`diagnostics/StartManualTestBackend.ps1`](diagnostics/StartManualTestBackend.ps1) | Khởi động API development đã build cho checklist thủ công với embedding pilot được cấu hình riêng, target `Test`, migration tự động tắt và runtime attestation. | Khởi động process, đọc database qua API startup nếu ứng dụng yêu cầu; có thể ghi attestation cục bộ. Không chạy production. Không dùng nếu chưa xác minh target database. |
 | `diagnostics/VerifyRuntimeAttestation.ps1` | Đối chiếu attestation với PID, process start time, correlation, mode và target database. | Chỉ đọc file attestation và process metadata. |
 | [`phase2_readonly_audit.sql`](phase2_readonly_audit.sql) | Bộ truy vấn audit Phase 2 chỉ đọc để kiểm tra metadata/dữ liệu đã chọn. | Có thể đọc database nếu được chạy thủ công; không chạy trong phiên audit này. Không chứa lệnh ghi theo kiểm tra tĩnh. |
 
@@ -52,7 +52,7 @@ Không chạy các lệnh `--apply`, migration hoặc seed trong phiên audit n�
 - Kiểm thử giao diện hiện hành thực hiện thủ công theo [`ba-test-frontend/README.md`](../ba-test-frontend/README.md); repository không còn bộ test xUnit/Node/Playwright để chạy.
 - CORS, branch isolation, role readiness và đối soát doanh thu được kiểm tra trong checklist; không còn static test runner riêng cho các nội dung này.
 - Tài liệu trong `bao-cao/` có thể chứa lệnh hoặc đường dẫn lịch sử. Nếu một báo cáo cũ nhắc tới launcher/preflight đã retired, không phục hồi hoặc chạy lại lệnh đó; dùng tool hiện hành ở README này.
-- Không có script hiện hành nào gửi request tới provider AI bên ngoài. Mock AI được cấu hình ở runtime của API và launcher test hiện hành chỉ đặt `AI__ProviderMode=Mock`.
+- Không có script hiện hành nào gửi request tới provider AI bên ngoài. Embedding pilot được cấu hình bằng các khóa `AI:AdminEmbeddingPilot` và `AI:CustomerGuestEmbeddingPilot`; không có provider fallback.
 ## Multi-LAN HTTPS/LAN
 
 `setup-https.ps1` tao mot PEM certificate trong `certs/` va luu cac IPv4 LAN da dang ky trong `certs/lan-hosts.txt`.

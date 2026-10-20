@@ -78,7 +78,9 @@ public sealed class GuestController : ControllerBase
     /// Creates a short-lived guest session for a direct menu visitor. The selected
     /// branch/table are only a request; the server verifies both before issuing claims.
     /// </summary>
-    [AllowAnonymous]
+    // Guest sessions must originate from a verified table QR token. The old
+    // branch-selected direct session is intentionally no longer routable.
+    [NonAction]
     [HttpPost("direct-session")]
     public async Task<IActionResult> DirectSession([FromBody] DirectSessionRequest? request)
     {

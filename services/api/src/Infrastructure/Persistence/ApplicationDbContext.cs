@@ -35,7 +35,6 @@ namespace RestaurantPOS.Infrastructure.Persistence
         public DbSet<ReceiptSettings> ReceiptSettings { get; set; }
         public DbSet<SystemSetting> SystemSettings { get; set; }
         public DbSet<LoyaltyTransaction> LoyaltyTransactions { get; set; }
-        public DbSet<BusinessInsight> BusinessInsights { get; set; }
         public DbSet<InventoryItem> InventoryItems { get; set; }
         public DbSet<BranchInventory> BranchInventories { get; set; }
         public DbSet<StockReceipt> StockReceipts { get; set; }
@@ -47,22 +46,6 @@ namespace RestaurantPOS.Infrastructure.Persistence
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
-            // BusinessInsight Configuration
-            modelBuilder.Entity<BusinessInsight>()
-                .HasIndex(i => i.DeduplicationKey).IsUnique();
-            modelBuilder.Entity<BusinessInsight>()
-                .HasIndex(i => i.BranchId);
-            modelBuilder.Entity<BusinessInsight>()
-                .HasIndex(i => i.CreatedAt);
-            modelBuilder.Entity<BusinessInsight>()
-                .HasIndex(i => i.Status);
-            modelBuilder.Entity<BusinessInsight>()
-                .HasOne(i => i.Branch)
-                .WithMany()
-                .HasForeignKey(i => i.BranchId)
-                .IsRequired(false)
-                .OnDelete(DeleteBehavior.ClientSetNull);
 
             // Phase 1 domain relationship refinement. Nullable FKs preserve legacy
             // rows until the deterministic backfill has been verified.

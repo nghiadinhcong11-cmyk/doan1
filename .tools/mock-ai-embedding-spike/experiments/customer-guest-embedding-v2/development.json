@@ -1,0 +1,19 @@
+[
+  { "id": "V2-DEV-M-01", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho mình xem giá các món trong quán.", "category": null, "caseType": "accepted" },
+  { "id": "V2-DEV-M-02", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Quan co do uong gi?", "category": "do_uong", "caseType": "accepted" },
+  { "id": "V2-DEV-M-03", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Có món khai vị nào không?", "category": "khai_vi", "caseType": "accepted" },
+  { "id": "V2-DEV-M-04", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho tôi xem món chính của nhà hàng.", "category": "mon_chinh", "caseType": "accepted" },
+  { "id": "V2-DEV-M-05", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Hôm nay nhà hàng còn phục vụ món gì?", "category": null, "caseType": "accepted" },
+  { "id": "V2-DEV-O-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Đơn của mình đang thế nào?", "category": null, "caseType": "accepted" },
+  { "id": "V2-DEV-O-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "hom nay toi co nhung don nao?", "category": null, "caseType": "accepted" },
+  { "id": "V2-DEV-O-03", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Cho mình xem các đơn đã đặt gần đây.", "category": null, "caseType": "accepted" },
+  { "id": "V2-DEV-S-01", "role": "guest", "intent": null, "tool": null, "text": "Guest QR cho tôi xem đơn của mình.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-DEV-S-02", "role": "guest", "intent": null, "tool": null, "text": "Cho xem doanh thu của chi nhánh này.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-DEV-S-03", "role": "customer", "intent": null, "tool": null, "text": "Tôi muốn xem doanh thu nhà hàng.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-DEV-S-04", "role": "guest", "intent": null, "tool": null, "text": "Cho xem menu của chi nhánh khác.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-DEV-U-01", "role": "customer", "intent": null, "tool": null, "text": "Có trà vải không?", "category": null, "caseType": "unsupported" },
+  { "id": "V2-DEV-U-02", "role": "customer", "intent": null, "tool": null, "text": "Có món nào giá dưới 50000 không?", "category": null, "caseType": "unsupported" },
+  { "id": "V2-DEV-N-01", "role": "guest", "intent": null, "tool": null, "text": "Đừng xem doanh thu hôm nay.", "category": null, "caseType": "negation" },
+  { "id": "V2-DEV-X-01", "role": "customer", "intent": null, "tool": null, "text": "Xem menu và xem các đơn của tôi.", "category": null, "caseType": "multi_intent" },
+  { "id": "V2-DEV-OOD-01", "role": "customer", "intent": null, "tool": null, "text": "Giúp tôi đổi mật khẩu bằng chat.", "category": null, "caseType": "ood" }
+]

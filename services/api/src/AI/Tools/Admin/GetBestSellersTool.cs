@@ -14,7 +14,7 @@ namespace RestaurantPOS.AI.Tools.Admin
         private readonly IDashboardService _dashboardService;
         public string Name => "get_best_sellers";
         public string Description => "Xác định các món bán chạy nhất trong một khoảng thời gian.";
-        public string[] AllowedRoles => new[] { "admin", "manager", "employee", "cashier", "kitchen" };
+        public string[] AllowedRoles => new[] { "admin" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetBestSellersTool(IDashboardService dashboardService)
@@ -83,7 +83,7 @@ namespace RestaurantPOS.AI.Tools.Admin
                 var startUtc = TimeZoneInfo.ConvertTimeToUtc(startVn, vnZone);
                 var endUtc = TimeZoneInfo.ConvertTimeToUtc(endVn, vnZone);
 
-                var bestSellers = await _dashboardService.GetBestSellersAsync(startUtc, endUtc, userContext.BranchId, limit);
+                var bestSellers = await _dashboardService.GetBestSellersAsync(startUtc, endUtc, null, limit);
 
                 if (bestSellers.Count == 0)
                     return AiToolResult.CreateSuccess($"Không có dữ liệu bán hàng trong khoảng thời gian {period}.");

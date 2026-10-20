@@ -270,7 +270,9 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   const fetchProducts = async () => {
     try {
       const branchId = localStorage.getItem('selectedBranchId');
-      const branchQuery = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+      const posQuery = new URLSearchParams({ sellableOnly: 'true' });
+      if (branchId) posQuery.set('branchId', branchId);
+      const branchQuery = `?${posQuery.toString()}`;
       const [prodRes, toppingRes] = await Promise.all([
         fetch(`${API_URL}/api/Product${branchQuery}`),
         fetch(`${API_URL}/api/Topping`)
@@ -399,7 +401,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     try {
       // Lấy đơn hàng mới & yêu cầu đổi quà
       // LƯU Ý: Chỉ lấy đơn Web (vãng lai/Mang về) chưa được gán vào bàn cụ thể trong POS
-      const orderRes = await fetch(`${API_URL}/api/Order?status=Đang xử lý,Đổi quà${branchId ? `&branchId=${branchId}` : ''}`, { signal: controller.signal });
+      const orderRes = await fetch(`${API_URL}/api/Order/pending-summary${branchId ? `?branchId=${branchId}` : ''}`, { signal: controller.signal });
       if (!orderRes.ok) {
         setPendingOrdersError('Không thể tải danh sách đơn đang chờ xử lý.');
         throw new Error(`Failed to fetch orders (${orderRes.status})`);
@@ -497,13 +499,18 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') refreshIfVisible(true);
     };
-    const interval = window.setInterval(() => refreshIfVisible(false), 15000);
+    const handlePriceUpdated = () => { void fetchProducts(); };
+    window.addEventListener('product-price-updated', handlePriceUpdated);
+    // SignalR handles immediate kitchen updates; this polling remains a low-frequency
+    // reconciliation for pending web orders/reservations and missed events.
+    const interval = window.setInterval(() => refreshIfVisible(false), 30000);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       disposed = true;
       operationalRefreshOwnerActiveRef.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('product-price-updated', handlePriceUpdated);
       operationalRefreshQueuedRef.current = false;
     };
   }, []);

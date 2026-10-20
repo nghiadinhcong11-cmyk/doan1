@@ -26,35 +26,26 @@ namespace RestaurantPOS.AI.Controllers
     public class AiController : ControllerBase
     {
         private readonly IAiOrchestrator _orchestrator;
-        private readonly IProductPriceConfirmationStore? _confirmationStore;
-        private readonly IProductService? _productService;
         private readonly ILogger<AiController>? _logger;
-        private readonly AiLiveReadOnlyPolicy _liveReadOnlyPolicy;
         private readonly IConfiguration? _configuration;
         private readonly IHostEnvironment? _environment;
         private readonly AiCorrelationContext? _correlationContext;
 
         public AiController(IAiOrchestrator orchestrator)
-            : this(orchestrator, null, null)
+            : this(orchestrator, null)
         {
         }
 
         [ActivatorUtilitiesConstructor]
         public AiController(
             IAiOrchestrator orchestrator,
-            IProductPriceConfirmationStore? confirmationStore,
-            IProductService? productService,
             ILogger<AiController>? logger = null,
-            AiLiveReadOnlyPolicy? liveReadOnlyPolicy = null,
             IConfiguration? configuration = null,
             IHostEnvironment? environment = null,
             AiCorrelationContext? correlationContext = null)
         {
             _orchestrator = orchestrator;
-            _confirmationStore = confirmationStore;
-            _productService = productService;
             _logger = logger;
-            _liveReadOnlyPolicy = liveReadOnlyPolicy ?? new AiLiveReadOnlyPolicy();
             _configuration = configuration;
             _environment = environment;
             _correlationContext = correlationContext;
@@ -65,7 +56,7 @@ namespace RestaurantPOS.AI.Controllers
         /// </summary>
         /// <param name="request">Nội dung tin nhắn và lịch sử hội thoại</param>
         [EnableRateLimiting("ai-limiter")]
-        [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Manager + "," + RoleNames.Employee + "," + RoleNames.Cashier + "," + RoleNames.Customer)]
+        [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Customer)]
         [RequestSizeLimit(16 * 1024)]
         [HttpPost("chat")]
         public async Task<IActionResult> Chat([FromBody] AiRequest request)
@@ -115,10 +106,22 @@ namespace RestaurantPOS.AI.Controllers
                                ?? User.FindFirst(ClaimTypes.Name)?.Value
                                ?? "User";
 
+                    // Keep the signed branch claim available for an explicit
+                    // "current branch" query. Tools default to chain-wide scope;
+                    // the user message never supplies an arbitrary branch id.
                     var branchIdClaim = User.FindFirst("branchId")?.Value;
                     if (Guid.TryParse(branchIdClaim, out var parsedBranchId))
                     {
                         branchId = parsedBranchId;
+                    }
+
+                    // Admin's branch selector is sent as an explicit request
+                    // scope. It is only accepted for Admin; managers keep the
+                    // signed JWT branch scope and cannot override it.
+                    if (string.Equals(userRole, RoleNames.Admin, StringComparison.OrdinalIgnoreCase) &&
+                        Guid.TryParse(Request.Headers["X-Branch-Id"].ToString(), out var selectedBranchId))
+                    {
+                        branchId = selectedBranchId;
                     }
                 }
                 else
@@ -129,8 +132,12 @@ namespace RestaurantPOS.AI.Controllers
                     userName = "Khách hàng";
                 }
 
+                if (User.Identity?.IsAuthenticated != true || userId == Guid.Empty ||
+                    (userRole != RoleNames.Admin && userRole != RoleNames.Customer))
+                    return Forbid();
+
                 if (string.Equals(userRole, "customer", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(User.FindFirst("customerSessionType")?.Value, "guest", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(User.FindFirst("customerSessionType")?.Value, "registered", StringComparison.OrdinalIgnoreCase))
                 {
                     return Forbid();
                 }
@@ -145,23 +152,16 @@ namespace RestaurantPOS.AI.Controllers
                     PhoneNumber = string.Equals(userRole, "customer", StringComparison.OrdinalIgnoreCase) ? User.Identity?.Name : null
                 };
 
+
                 _logger?.LogInformation(
-                    "AI_HTTP_REQUEST AI_CORRELATION_ID={CorrelationId} AI_ROUTE={Route} AI_ROLE={Role} AI_FEATURE_FLAG={FeatureFlag} AI_ENVIRONMENT={Environment}",
+                    "AI_HTTP_REQUEST AI_CORRELATION_ID={CorrelationId} AI_ROUTE={Route} AI_ROLE={Role} AI_ADMIN_EMBEDDING_FLAG={FeatureFlag} AI_ENVIRONMENT={Environment}",
                     correlationId,
                     HttpContext.Request.Path.Value ?? "/api/Ai/chat",
                     string.IsNullOrWhiteSpace(userRole) ? "UNKNOWN" : userRole,
-                    _configuration?.GetValue<bool>("AI:EmbeddingPilot:Enabled") == true ? "ON" : "OFF",
+                    _configuration?.GetValue<bool>("AI:AdminEmbeddingPilot:Enabled") == true ? "ON" : "OFF",
                     _environment?.EnvironmentName ?? "UNKNOWN");
 
-                if (_liveReadOnlyPolicy.IsMisconfigured)
-                    return StatusCode(503, new { error = "AI read-only test mode configuration is invalid." });
-
-                if (_liveReadOnlyPolicy.IsRequested && !_liveReadOnlyPolicy.IsEnabledFor(User))
-                    return Forbid();
-
-                var result = _liveReadOnlyPolicy.IsEnabledFor(User)
-                    ? await _orchestrator.ProcessReadOnlyAsync(request, userContext, HttpContext.RequestAborted)
-                    : await _orchestrator.ProcessAsync(request, userContext, HttpContext.RequestAborted);
+                var result = await _orchestrator.ProcessReadOnlyAsync(request, userContext, HttpContext.RequestAborted);
                 return Ok(result);
             }
             catch (Exception)
@@ -180,8 +180,7 @@ namespace RestaurantPOS.AI.Controllers
         }
 
         /// <summary>
-        /// Development-only public Mock AI route for non-personal restaurant questions.
-        /// It never trusts client identity and exposes only the public menu tool.
+        /// Development-only E5 menu route for a verified QR guest session.
         /// </summary>
         [AllowAnonymous]
         [EnableRateLimiting("ai-limiter")]
@@ -199,25 +198,32 @@ namespace RestaurantPOS.AI.Controllers
             if (User.Identity?.IsAuthenticated == true && User.IsInRole(RoleNames.Kitchen))
                 return Forbid();
 
-            // Personal orders must never be downgraded to an anonymous lookup.
-            if (MockAiIntentRecognizer.IsPersonalOrderRequest(request.Message))
-            {
-                return Ok(new AiResponse
-                {
-                    Success = true,
-                    Message = "Vui lòng đăng nhập để xem đơn hàng của bạn."
-                });
-            }
+            // AI guest access requires a server-issued QR session even in Mock mode.
+            if (!GuestSessionContext.TryCreate(User, out var guestSession) ||
+                guestSession?.SessionType != GuestSessionContext.QrSessionType)
+                return Forbid();
 
-            if (_environment?.IsDevelopment() != true ||
-                !string.Equals(_configuration?["AI:ProviderMode"], "Mock", StringComparison.OrdinalIgnoreCase))
+            var customerGuestEmbeddingEnabled = _configuration?.GetValue<bool>("AI:CustomerGuestEmbeddingPilot:Enabled") == true;
+            if (_environment?.IsDevelopment() != true || !customerGuestEmbeddingEnabled)
             {
-                return StatusCode(404, new { error = "Guest Mock AI is not available." });
+                return StatusCode(404, new { error = "Guest AI is not available." });
             }
 
             try
             {
-                var result = await _orchestrator.ProcessGuestReadOnlyAsync(request, HttpContext.RequestAborted);
+                var guestContext = new AiUserContext
+                {
+                    Role = RoleNames.Customer,
+                    IsGuest = true,
+                    UserName = "Khách vãng lai",
+                    BranchId = guestSession?.BranchId,
+                    HasVerifiedGuestSession = guestSession is not null
+                };
+
+                var result = await _orchestrator.ProcessGuestReadOnlyAsync(
+                    request,
+                    guestContext,
+                    HttpContext.RequestAborted);
                 return Ok(result);
             }
             catch (Exception)
@@ -231,13 +237,59 @@ namespace RestaurantPOS.AI.Controllers
         }
 
         [HttpGet("live-read-only-status")]
-        [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Manager + "," + RoleNames.Employee + "," + RoleNames.Cashier + "," + RoleNames.Customer)]
+        [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Customer)]
         public IActionResult GetLiveReadOnlyStatus()
         {
-            if (_liveReadOnlyPolicy.IsMisconfigured)
-                return StatusCode(503, new { enabled = false });
+            return Ok(new { enabled = true });
+        }
 
-            return Ok(new { enabled = _liveReadOnlyPolicy.IsEnabledFor(User) });
+        [HttpPost("product-price-confirmation")]
+        [Authorize(Roles = RoleNames.Admin)]
+        [RequestSizeLimit(4 * 1024)]
+        public async Task<IActionResult> ConfirmProductPrice([FromBody] ProductPriceConfirmationRequest request)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.Token))
+                return BadRequest(new { message = "Confirmation token is required." });
+
+            var userId = Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var parsedId)
+                ? parsedId
+                : Guid.Empty;
+            var context = new AiUserContext
+            {
+                UserId = userId,
+                Role = RoleNames.Admin,
+                UserName = User.FindFirst("fullName")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Admin"
+            };
+
+            var result = await _orchestrator.ConfirmProductPriceAsync(
+                request.Token, context, HttpContext.RequestAborted);
+            return result.Success ? Ok(new { message = result.Message }) : BadRequest(new { message = result.Error });
+        }
+
+        [HttpPost("product-name-confirmation")]
+        [Authorize(Roles = RoleNames.Admin)]
+        [RequestSizeLimit(4 * 1024)]
+        public async Task<IActionResult> ConfirmProductName([FromBody] ProductNameConfirmationRequest request)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.Token))
+                return BadRequest(new { message = "Confirmation token is required." });
+            var userId = Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var parsedId) ? parsedId : Guid.Empty;
+            var context = new AiUserContext { UserId = userId, Role = RoleNames.Admin, UserName = User.FindFirst("fullName")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Admin" };
+            var result = await _orchestrator.ConfirmProductNameAsync(request.Token, context, HttpContext.RequestAborted);
+            return result.Success ? Ok(new { message = result.Message }) : BadRequest(new { message = result.Error });
+        }
+
+        [HttpPost("catalog-creation-confirmation")]
+        [Authorize(Roles = RoleNames.Admin)]
+        [RequestSizeLimit(4 * 1024)]
+        public async Task<IActionResult> ConfirmCatalogCreation([FromBody] CatalogCreationConfirmationRequest request)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.Type))
+                return BadRequest(new { message = "Confirmation token and type are required." });
+            var userId = Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var parsedId) ? parsedId : Guid.Empty;
+            var context = new AiUserContext { UserId = userId, Role = RoleNames.Admin, UserName = User.FindFirst("fullName")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Admin" };
+            var result = await _orchestrator.ConfirmCatalogCreationAsync(request.Token, request.Type, context, HttpContext.RequestAborted);
+            return result.Success ? Ok(new { message = result.Message }) : BadRequest(new { message = result.Error });
         }
 
         /// <summary>
@@ -251,12 +303,7 @@ namespace RestaurantPOS.AI.Controllers
             if (_environment?.IsDevelopment() != true || _configuration == null)
                 return NotFound();
 
-            var providerMode = string.Equals(
-                _configuration["AI:ProviderMode"],
-                "Mock",
-                StringComparison.OrdinalIgnoreCase)
-                ? "Mock"
-                : "NON_MOCK";
+            const string providerMode = "E5_ONLY";
 
             var migrationEnabled = _configuration.GetValue<bool>("DatabaseSafety:AllowAutomaticMigration");
             var backgroundInsightsEnabled = _configuration.GetValue<bool>("BackgroundJobs:EnableInsights");
@@ -269,42 +316,12 @@ namespace RestaurantPOS.AI.Controllers
             {
                 environment = "Development",
                 providerMode,
-                readOnlyEnabled = _liveReadOnlyPolicy.IsEnabledFor(User),
+                readOnlyEnabled = true,
                 automaticMigrationEnabled = migrationEnabled,
                 backgroundInsightsEnabled,
                 databaseTargetGuard
             });
         }
 
-        [HttpPost("product-price-confirmation")]
-        [Authorize(Roles = RoleNames.Admin)]
-        public async Task<IActionResult> ConfirmProductPrice([FromBody] ProductPriceConfirmationRequest request)
-        {
-            if (_confirmationStore == null || _productService == null)
-                return StatusCode(500, new { message = "Product price confirmation is not configured." });
-
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            if (!string.Equals(role, RoleNames.Admin, StringComparison.OrdinalIgnoreCase))
-                return Forbid();
-
-            if (!Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) || userId == Guid.Empty)
-                return Forbid();
-
-            if (request == null || string.IsNullOrWhiteSpace(request.Token))
-                return BadRequest(new { message = "Confirmation token is required." });
-
-            if (!_confirmationStore.TryConsume(request.Token, userId, out var pending, out var error))
-                return BadRequest(new { message = error });
-
-            var result = await _productService.UpdatePriceByIdAsync(
-                pending.ProductId,
-                pending.ExpectedCurrentPrice,
-                pending.ProposedNewPrice);
-
-            if (!result.Success)
-                return Conflict(new { message = result.Message });
-
-            return Ok(new { message = result.Message });
-        }
     }
 }

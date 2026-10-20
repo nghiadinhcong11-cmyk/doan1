@@ -35,7 +35,6 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchLoadError, setBranchLoadError] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
-  const [insightToast, setInsightToast] = useState<any | null>(null);
   const location = useLocation();
   const notificationCenter = useNotificationCenter(userRole === 'manager' ? 'manager' : 'admin');
   const pendingOrderCount = notificationCenter.pendingCount;
@@ -83,7 +82,6 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   // for sizing, but area must never remove an allowed admin/manager nav item.
   const managementNavItems: NavItem[] = [
     { id: 'dashboard', label: 'TỔNG QUAN', path: '/dashboard' },
-    { id: 'insights', label: 'CẢNH BÁO', path: '/business-insights' },
     { id: 'expenses', label: 'CHI PHÍ', path: '/expenses' },
     ...(userRole === 'admin' || userRole === 'manager' ? [{ id: 'inventory', label: 'KHO HÀNG', path: '/inventory' }] : []),
   ];
@@ -94,16 +92,6 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
     { id: 'invoices', label: 'HÓA ĐƠN', path: '/invoices' },
     { id: 'reservations', label: 'ĐẶT BÀN', path: '/reservations' },
   ];
-
-  useEffect(() => {
-    const onInsight = (event: Event) => {
-      const notification = (event as CustomEvent).detail;
-      setInsightToast(notification);
-      window.setTimeout(() => setInsightToast(null), 10000);
-    };
-    window.addEventListener('business-insight-created', onInsight);
-    return () => window.removeEventListener('business-insight-created', onInsight);
-  }, []);
 
   return (
     <nav className="bg-[#0070f4] text-white h-12 flex items-center justify-between px-4 shadow-md sticky top-0 z-50">
@@ -604,29 +592,6 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
         </div>
       )}
 
-      {/* BUSINESS INSIGHT TOAST */}
-      {insightToast && (
-        <div className="fixed bottom-6 right-6 z-[200] bg-blue-900 text-white p-5 rounded-2xl shadow-2xl flex items-center space-x-4 animate-in slide-in-from-right-10 duration-500 max-w-sm border-l-4 border-blue-400">
-           <div className="bg-blue-600 p-3 rounded-xl">
-              <BellRing size={24} className="animate-pulse" />
-           </div>
-           <div className="flex-1 min-w-0">
-              <p className="font-black uppercase text-[10px] text-blue-300 tracking-widest mb-1 italic">Cảnh báo kinh doanh mới</p>
-              <p className="text-sm font-bold truncate uppercase">{insightToast.title}</p>
-              <p className="text-[11px] opacity-70 line-clamp-2 italic">{insightToast.message}</p>
-              <Link
-                to="/business-insights"
-                onClick={() => setInsightToast(null)}
-                className="mt-3 inline-block bg-white text-blue-900 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-sm"
-              >
-                 XEM NHẬN ĐỊNH AI
-              </Link>
-           </div>
-           <button onClick={() => setInsightToast(null)} className="text-white/50 hover:text-white transition-colors self-start">
-              <X size={16} />
-           </button>
-        </div>
-      )}
     </nav>
   );
 };

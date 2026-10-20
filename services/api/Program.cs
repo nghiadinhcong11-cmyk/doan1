@@ -282,6 +282,7 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<ITableService, TableService>();
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IToppingService, ToppingService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IKitchenService, KitchenService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
@@ -314,6 +315,9 @@ builder.Services.AddScoped<IAiOrchestrator>(serviceProvider =>
         serviceProvider.GetRequiredService<IAiToolExecutionAuditSink>(),
         serviceProvider.GetRequiredService<AiCorrelationContext>()));
 builder.Services.AddScoped<AiAuthorization>();
+builder.Services.AddSingleton<IProductPriceConfirmationStore, ProductPriceConfirmationStore>();
+builder.Services.AddSingleton<IProductNameConfirmationStore, ProductNameConfirmationStore>();
+builder.Services.AddSingleton<ICatalogCreationConfirmationStore, CatalogCreationConfirmationStore>();
 
 // 3. Đăng ký AI Tool Registry
 builder.Services.AddScoped<AiToolRegistry>();
@@ -325,6 +329,10 @@ builder.Services.AddScoped<IAiTool, GetOrderListTool>();
 builder.Services.AddScoped<IAiTool, GetBestSellersTool>();
 builder.Services.AddScoped<IAiTool, GetRevenueComparisonTool>();
 builder.Services.AddScoped<IAiTool, GetBusinessSummaryTool>();
+builder.Services.AddScoped<IAiTool, UpdateProductPriceTool>();
+builder.Services.AddScoped<IAiTool, UpdateProductNameTool>();
+builder.Services.AddScoped<IAiTool, CreateProductTool>();
+builder.Services.AddScoped<IAiTool, CreateToppingTool>();
 
 // Employee Tools
 
@@ -409,6 +417,7 @@ builder.Services.AddCors(options =>
 
             policy.AllowAnyMethod()
                   .AllowAnyHeader()
+                  .WithExposedHeaders("X-Has-Next-Page")
                   .AllowCredentials(); // Bắt buộc cho SignalR
         });
 });

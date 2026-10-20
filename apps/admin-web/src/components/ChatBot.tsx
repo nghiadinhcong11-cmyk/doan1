@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Bot } from 'lucide-react';
 import { API_URL } from '../config';
 
-const ADMIN_WELCOME = 'Xin chào! Tôi là trợ lý ảo DOAN POS. Tôi có thể giúp gì cho bạn?';
+const ADMIN_WELCOME = 'Xin chào! Tôi là Trợ lý AI. Tôi có thể giúp gì cho bạn?';
 
 const readTokenContext = (token: string | null): string => {
   if (!token) return 'anonymous';
@@ -20,7 +20,7 @@ const getAdminContextKey = (): string =>
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([
-    { id: 1, text: "Xin chào! Tôi là trợ lý ảo DOAN POS. Tôi có thể giúp gì cho bạn?", isBot: true }
+    { id: 1, text: ADMIN_WELCOME, isBot: true }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -169,6 +169,13 @@ const ChatBot = () => {
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
+      // The branch selector is an Admin UI scope preference. The API still
+      // validates the authenticated Admin and applies the requested scope
+      // server-side; this is not treated as an authorization claim.
+      const selectedBranchId = localStorage.getItem('selectedBranchId');
+      if (selectedBranchId) {
+        headers['X-Branch-Id'] = selectedBranchId;
+      }
 
       const history = messages.slice(-6).map(m => ({ role: m.isBot ? 'assistant' : 'user', content: m.text }));
 
@@ -209,41 +216,53 @@ const ChatBot = () => {
     }
   };
 
-  const handlePriceConfirmation = async (messageId: number, token: string) => {
-    if (!token || confirmingMessageId !== null) return;
-
+  const handleConfirmation = async (messageId: number, confirmation: { token: string; type: string }) => {
+    const isPriceUpdate = confirmation.type === 'product-price';
+    const isProductNameUpdate = confirmation.type === 'product-name';
+    if (!confirmation.token || confirmingMessageId !== null) return;
     setConfirmingMessageId(messageId);
     try {
       const adminToken = localStorage.getItem('adminToken');
-      const response = await fetch(`${API_URL}/api/Ai/product-price-confirmation`, {
+      const endpoint = isPriceUpdate
+        ? 'product-price-confirmation'
+        : isProductNameUpdate ? 'product-name-confirmation' : 'catalog-creation-confirmation';
+      const response = await fetch(`${API_URL}/api/Ai/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {})
         },
-        body: JSON.stringify({ token })
+        body: JSON.stringify(isPriceUpdate || isProductNameUpdate ? { token: confirmation.token } : { token: confirmation.token, type: confirmation.type })
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: { message?: string } = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        console.error('Catalog confirmation returned a non-JSON response:', responseText);
+        data = { message: 'Backend gặp lỗi khi xác nhận tạo dữ liệu. Vui lòng kiểm tra log API và thử lại sau.' };
+      }
+      if (response.ok) {
+        window.dispatchEvent(new Event(isPriceUpdate || isProductNameUpdate ? 'product-price-updated' : 'catalog-item-created'));
+      }
       setMessages(prev => [
-        ...prev.map(message => message.id === messageId
-          ? { ...message, confirmation: undefined }
-          : message),
-        {
-          id: Date.now() + 1,
-          text: response.ok ? data.message : (data.message ?? 'Không thể xác nhận cập nhật giá.'),
-          isBot: true
-        }
+        ...prev.map(message => message.id === messageId ? { ...message, confirmation: undefined } : message),
+        { id: Date.now() + 1, text: response.ok ? data.message : (data.message ?? 'Không thể xác nhận cập nhật giá.'), isBot: true }
       ]);
     } catch (err: any) {
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        text: `Lỗi xác nhận: ${err.message}`,
-        isBot: true
-      }]);
+      setMessages(prev => [...prev, { id: Date.now() + 1, text: `Lỗi xác nhận: ${err.message}`, isBot: true }]);
     } finally {
       setConfirmingMessageId(null);
     }
   };
+
+  const handleCancellation = (messageId: number, confirmationType?: string) => {
+    setMessages(prev => [
+      ...prev.map(message => message.id === messageId ? { ...message, confirmation: undefined } : message),
+      { id: Date.now() + 1, text: 'Đã hủy cập nhật giá. Dữ liệu chưa thay đổi.', isBot: true }
+    ]);
+  };
+
 
   const isNearRight = position.x > window.innerWidth / 2;
   const isNearBottom = position.y > window.innerHeight / 2;
@@ -284,7 +303,7 @@ const ChatBot = () => {
               <Bot size={24} />
             </div>
             <div>
-              <p className="font-black text-sm uppercase tracking-tighter italic">DOAN Assistant</p>
+              <p className="font-black text-sm uppercase tracking-tighter italic">Trợ lý AI</p>
               <p className="text-[10px] opacity-80 font-bold flex items-center">
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full mr-1.5 animate-pulse"></span> Đang trực tuyến
               </p>
@@ -302,14 +321,24 @@ const ChatBot = () => {
                 }`}>
                   {msg.text}
                   {msg.confirmation && (
-                    <button
-                      type="button"
-                      disabled={confirmingMessageId !== null}
-                      onClick={() => handlePriceConfirmation(msg.id, msg.confirmation.token)}
-                      className="mt-3 w-full rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {confirmingMessageId === msg.id ? 'Đang xác nhận...' : 'Xác nhận cập nhật giá'}
-                    </button>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={confirmingMessageId !== null}
+                        onClick={() => handleConfirmation(msg.id, msg.confirmation)}
+                        className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {confirmingMessageId === msg.id ? 'Đang xác nhận...' : 'Xác nhận'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={confirmingMessageId !== null}
+                        onClick={() => handleCancellation(msg.id, msg.confirmation.type)}
+                        className="flex-1 rounded-xl bg-gray-200 px-3 py-2 text-[10px] font-bold text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Hủy
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

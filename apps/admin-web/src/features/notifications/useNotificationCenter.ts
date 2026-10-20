@@ -111,8 +111,10 @@ export const useNotificationCenter = (role: NotificationRole) => {
     };
     void refreshNotifications();
     void refreshPending();
-    const notificationTimer = window.setInterval(() => { if (!disposed && document.visibilityState === 'visible') void refreshNotifications(); }, 30000);
-    const pendingTimer = window.setInterval(() => { if (!disposed && document.visibilityState === 'visible') void refreshPending(); }, 30000);
+    // SignalR delivers new notifications immediately; polling is only a reconciliation
+    // fallback for missed events and is intentionally kept low-frequency to reduce API/DB traffic.
+    const notificationTimer = window.setInterval(() => { if (!disposed && document.visibilityState === 'visible') void refreshNotifications(); }, 60000);
+    const pendingTimer = window.setInterval(() => { if (!disposed && document.visibilityState === 'visible') void refreshPending(); }, 60000);
     const selectedBranch = role === 'admin' ? branchScope() : '';
     const connectionUrl = `${API_URL}/kitchenHub${selectedBranch ? `?branchId=${encodeURIComponent(selectedBranch)}` : ''}`;
     const connection = new signalR.HubConnectionBuilder().withUrl(connectionUrl, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
@@ -125,7 +127,6 @@ export const useNotificationCenter = (role: NotificationRole) => {
         setUnreadCount(count => count + 1);
         return [notification, ...previous].slice(0, 20);
       });
-      if (notification.type === 'BusinessInsight') window.dispatchEvent(new CustomEvent('business-insight-created', { detail: notification }));
     };
     const onPendingChanged = (payload?: { branchId?: string | null }) => {
       if (disposed) return;

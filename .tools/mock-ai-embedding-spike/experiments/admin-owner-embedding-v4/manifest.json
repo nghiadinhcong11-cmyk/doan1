@@ -1,0 +1,10 @@
+{
+  "experimentId": "admin-owner-embedding-v4",
+  "role": "admin",
+  "purpose": "natural-language decision-policy regression",
+  "parentBaseline": "admin-owner-embedding-v3",
+  "catalogChanged": false,
+  "policyChanged": true,
+  "datasets": { "reference": 6, "development": 10, "calibration": 10, "holdout": 10 },
+  "holdoutIncludes": ["UAT natural-language failures", "negation false-positive counterexample", "write/out-of-scope boundaries"]
+}

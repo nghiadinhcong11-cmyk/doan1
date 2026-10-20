@@ -112,6 +112,12 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try
             {
+                var existingProductIds = await _context.Products
+                    .AsNoTracking()
+                    .Select(product => product.Id)
+                    .ToListAsync();
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+
                 branch.Id = Guid.NewGuid();
                 branch.CreatedAt = DateTime.UtcNow;
 
@@ -127,7 +133,18 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
 
                 _context.Branches.Add(branch);
+                // A new branch starts with no sellable products. An explicit
+                // availability action is required before a catalog item can be
+                // shown in the customer/POS sellable menu.
+                _context.ProductBranchAvailabilities.AddRange(existingProductIds.Select(productId =>
+                    new ProductBranchAvailability
+                    {
+                        ProductId = productId,
+                        BranchId = branch.Id,
+                        Status = "TemporarilyUnavailable"
+                    }));
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
                 _dashboardService?.InvalidateSummaryCache();
                 return Ok(branch);
             }

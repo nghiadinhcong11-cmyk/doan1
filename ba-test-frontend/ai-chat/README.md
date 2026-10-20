@@ -1,51 +1,30 @@
-# Bộ test tay AI Chat — 104 case sau hợp nhất
+# Bộ test tay AI Chat — runtime E5 hiện tại
 
-Bộ này là checklist thủ công chính cho Mock AI, không phải runner và không gọi API tự động. Sau hợp nhất có 104 ID duy nhất:
+Bộ này là checklist manual UAT cho runtime hiện tại. Không dùng kết quả của checklist để suy ra quyền ngoài backend.
 
-- `OWN-AI-01..54`: chủ quán và các biến thể read/deny nhỏ cho manager, employee, cashier.
-- `CUS-AI-01..35`: customer đăng nhập.
-- `QR-AI-01..15`: khách QR/guest.
+## Phạm vi runtime
 
-Các ID kỹ thuật không cộng vào 104 case giao diện: `AI-01..AI-12` ở `../ky-thuat-runtime/README.md`. `FLOW-09`, `FLOW-14` và `REF-07` vẫn là case kỹ thuật/liên vai trò. Các ID cũ vẫn được giữ trong legacy index để truy vết, nhưng không còn là checklist AI hiện hành độc lập.
+| Vai trò | Endpoint | Điều kiện | Capability được phép |
+|---|---|---|---|
+| Admin/chủ quán | `POST /api/Ai/chat` | JWT role `admin`, `AI:AdminEmbeddingPilot:Enabled=true` | 6 intent đọc và `update_product_price` với xác nhận hai bước |
+| Customer đăng nhập | `POST /api/Ai/chat` | JWT role `customer`, `customerSessionType=registered`, `AI:CustomerGuestEmbeddingPilot:Enabled=true` | `MENU_QUERY`, `MY_ORDERS` |
+| Guest QR | `POST /api/Ai/guest-chat` | Guest QR session do server cấp, Development, `AI:CustomerGuestEmbeddingPilot:Enabled=true` | Chỉ `MENU_QUERY` |
+| Manager/Cashier/Employee/Kitchen | Không có đường AI hợp lệ | Backend phải từ chối | Không test như capability AI |
 
-## Ánh xạ hợp nhất
+`MockAiProvider`, `IAiProvider`, Mock fallback và Business Insights không phải runtime hiện tại. Admin đã có đúng một write tool là `update_product_price`; tool này bắt buộc xác nhận trước khi ghi. Nếu gặp tên provider cũ trong UI/log, ghi finding thay vì coi đó là runtime hiện tại.
 
-| ID cũ | ID chính hoặc vị trí mới | Lý do |
-|---|---|---|
-| ADM-12 | OWN-AI-01..54 | Đã phân rã theo intent và điều kiện, không nhân bản case cũ |
-| MGR-10 | OWN-AI-51 + AI-02 | Giữ branch scope ở kỹ thuật, bổ sung một biến thể UI role |
-| EMP-09 | OWN-AI-52, OWN-AI-54 + AI-01/02 | `get_my_shift` có positive path; quyền/ownership cần runtime |
-| CSH-11 | OWN-AI-53, OWN-AI-54 + AI-01 | Giữ read được phép và denial, không thêm write |
-| KIT-12 | OWN-AI-49 + AI-01/02 | Chuyển thành direct endpoint denial; UI kitchen không còn ChatBot |
-| CUS-10 | CUS-AI-01..35 | Bao phủ bằng các case customer tách ownership/session/error |
-| GST-09 | QR-AI-01..15 | Bao phủ guest scope và dữ liệu không thuộc guest |
-| GST-10 | AI-12 | Environment/provider gate cần API/runtime, không giả lập bằng chat |
-| GST-15 | QR-AI-07..13 + AI-01 | Guest denial được tách theo loại dữ liệu và quyền |
-| AI-01..AI-11 | AI-01..AI-12 | Giữ ở kỹ thuật vì cần API/log/nhiều phiên |
-| FLOW-09, FLOW-14, REF-07 | Tài liệu liên vai trò/kỹ thuật tương ứng | Không sao chép case UI |
+## Quy tắc test
 
-Write/confirmation vẫn là policy mở: các case chỉ kiểm tra từ chối an toàn của Mock hiện tại, không mô tả tool write đã đăng ký là chức năng chat dùng được.
+- Mọi case bắt đầu ở trạng thái `NOT RUN`; chỉ đổi thành `PASS`, `FAIL` hoặc `BLOCKED` sau khi có evidence.
+- Ghi endpoint, HTTP status, role/session, branch scope, response và tool thực sự chạy; che JWT, cookie, connection string và dữ liệu nhạy cảm.
+- `Flag OFF`, model/tokenizer/catalog lỗi hoặc guest session không hợp lệ phải fail-closed: không fallback provider và không chạy tool.
+- Không tự tạo order, sửa order, thanh toán, đặt bàn, cập nhật bếp hoặc gọi Business Insights qua chat. Đổi giá chỉ được test qua luồng `update_product_price` của Admin với xác nhận rõ ràng.
+- Dashboard/báo cáo POS thông thường không phải AI Chat.
 
-## Phạm vi
+## Chuẩn bị
 
-Case dựa trên intent/tool đang có trong source. Mock là bộ luật xác định, không phải mô hình ngôn ngữ tổng quát. `N/A — chưa hỗ trợ` là kết quả đúng đối với write intent hoặc capability chưa được chốt; không coi tool được đăng ký là tool có thể gọi từ chat.
-
-Các case cần Network, log, nhiều session hoặc kiểm tra resource phải chạy theo checklist kỹ thuật tương ứng, không chỉ dựa vào text hiển thị:
-
-- `AI-01..03`, `AI-04..11` trong `ba-test-frontend/ky-thuat-runtime/README.md`.
-- `FLOW-09`, `FLOW-14` trong `ba-test-frontend/lien-vai-tro/order-to-payment.md` khi chính sách write/confirmation được chốt.
-- `REF-07` trong `ba-test-frontend/chung/refresh-session.md` cho invalidation sau mutation.
-
-## Chuẩn bị an toàn
-
-- Dùng môi trường Development/Mock và dữ liệu kiểm thử riêng: owner, customer A/B, guest QR ở Branch A/B, sản phẩm active/inactive, order của A/B, dữ liệu có và không có doanh thu.
-- Không nhập password, JWT, connection string, dữ liệu khách thật hoặc token vào chat/screenshot/log.
-- Với owner, chuẩn bị branch A/B và tài khoản owner hợp lệ; branch selector phải được ghi lại trong kết quả.
-- Với customer, chuẩn bị customer A có order và customer B có dữ liệu riêng. Không dùng số điện thoại thật trong minh chứng.
-- Với QR, chuẩn bị session/token test có cart test; không xóa `guestToken`, QR session hoặc cart chỉ để reset chat.
+Chuẩn bị dữ liệu test riêng cho Admin, Customer A/B, menu có category và order của Customer A; chuẩn bị QR session hợp lệ và không hợp lệ. Không dùng database thật ngoài môi trường được phép. Người dùng tự khởi động môi trường test; tài liệu này không yêu cầu Codex khởi động server.
 
 ## Cách ghi kết quả
 
-Giữ trạng thái ban đầu `Chưa test`. Khi test, điền `Kết quả thực tế / minh chứng` bằng commit, role/branch/session loại nào, thời gian, request path/status đã che dữ liệu nhạy cảm, screenshot hoặc correlation ID nếu có. Ghi `AI-001..AI-004`, `SEC-005` hoặc finding liên quan khi phát hiện lệch.
-
-Không ghi PASS chỉ vì UI render được hoặc source có tool. Case API/log/ownership/confirmation phải có bằng chứng đúng loại. Nếu policy write chưa chốt, ghi `Blocked — cần chốt policy`, không tự coi một hành vi là đúng.
+Trong từng bảng, điền `Actual response`, `Actual intent/tool`, `Evidence` và `Status`. Với case bị chặn do thiếu dữ liệu hoặc chưa thể kiểm tra JWT/DB/SignalR, ghi `BLOCKED` và lý do cụ thể; không gọi đó là PASS.

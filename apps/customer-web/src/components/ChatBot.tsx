@@ -22,7 +22,9 @@ const getUsableCustomerToken = (): string | null => {
   }
 };
 
-const CUSTOMER_WELCOME = 'Xin chào! Tôi là trợ lý DOAN. Bạn có thể nhập câu hỏi bên dưới.';
+const getGuestToken = (): string | null => sessionStorage.getItem('guestToken');
+
+const CUSTOMER_WELCOME = 'Xin chào! Tôi là Trợ lý AI. Bạn có thể nhập câu hỏi bên dưới.';
 
 const readTokenContext = (token: string | null): string => {
   if (!token) return 'anonymous';
@@ -36,10 +38,7 @@ const readTokenContext = (token: string | null): string => {
 
 const getCustomerContextKey = (): string => [
   readTokenContext(localStorage.getItem('customerToken')),
-  sessionStorage.getItem('customerGuestMode') ?? '',
   sessionStorage.getItem('guestQrSession') ?? '',
-  sessionStorage.getItem('guestDirectSession') ?? '',
-  sessionStorage.getItem('guestDirectBranchId') ?? '',
   readTokenContext(sessionStorage.getItem('guestToken'))
 ].join('|');
 
@@ -191,15 +190,21 @@ const ChatBot = () => {
         content: m.text
       }));
 
-      const token = getUsableCustomerToken();
+      const guestSessionActive = sessionStorage.getItem('guestQrSession') === 'true';
+      const token = guestSessionActive ? getGuestToken() : getUsableCustomerToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
+      if (guestSessionActive) {
+        headers['X-Guest-Session'] = 'true';
+      }
 
-      const endpoint = token ? `${API_URL}/api/Ai/chat` : `${API_URL}/api/Ai/guest-chat`;
+      const endpoint = guestSessionActive
+        ? `${API_URL}/api/Ai/guest-chat`
+        : token ? `${API_URL}/api/Ai/chat` : `${API_URL}/api/Ai/guest-chat`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers,
@@ -242,7 +247,7 @@ const ChatBot = () => {
     >
       {/* Nút bong bóng Chat */}
       <button
-        aria-label={isOpen ? 'Đóng trợ lý DOAN' : 'Mở trợ lý DOAN'}
+        aria-label={isOpen ? 'Đóng Trợ lý AI' : 'Mở Trợ lý AI'}
         onMouseDown={onMouseDown}
         onTouchStart={onTouchStart}
         onClick={handleToggle}
@@ -271,7 +276,7 @@ const ChatBot = () => {
               <Bot size={24} />
             </div>
             <div>
-              <p className="font-black text-sm uppercase tracking-tighter italic">DOAN Assistant</p>
+              <p className="font-black text-sm uppercase tracking-tighter italic">Trợ lý AI</p>
               <p className="text-[10px] opacity-80 font-bold flex items-center">
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full mr-1.5 animate-pulse"></span> Đang trực tuyến
               </p>

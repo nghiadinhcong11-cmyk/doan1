@@ -4,7 +4,7 @@ Hệ thống quản lý bán hàng nhà hàng tập trung vào tính đơn giả
 
 ## Phạm vi dự án
 - **Tập trung**: Quản lý bán hàng đa chi nhánh, quản lý doanh thu, nhân sự, và theo dõi chi tiêu của chủ quán (Expenses). Nhân sự hiện tập trung vào hồ sơ, ca, lịch và chấm công.
-- **Tính năng nổi bật**: Tích hợp Kitchen Display System (KDS) qua SignalR và Trợ lý ảo Mock AI hỗ trợ điều hành trong môi trường local.
+- **Tính năng nổi bật**: Tích hợp Kitchen Display System (KDS) qua SignalR và trợ lý AI local dùng sentence embedding, được bảo vệ bởi feature flag, permission và branch isolation.
 
 ## Cấu trúc thư mục backend phân lớp
 - `apps/`: Chứa các ứng dụng frontend (React)

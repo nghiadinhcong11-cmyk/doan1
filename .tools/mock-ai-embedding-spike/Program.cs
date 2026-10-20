@@ -26,6 +26,15 @@ if (args.Contains("--v31-verification", StringComparer.OrdinalIgnoreCase))
 if (args.Contains("--v33-verification", StringComparer.OrdinalIgnoreCase))
     return await MockAiEmbeddingSpike.V3ExperimentRunner.RunAsync(args);
 
+if (args.Contains("--admin-embedding-eval", StringComparer.OrdinalIgnoreCase))
+    return await MockAiEmbeddingSpike.AdminEmbeddingResearchRunner.RunAsync(args);
+
+if (args.Contains("--customer-guest-embedding-eval", StringComparer.OrdinalIgnoreCase))
+    return await MockAiEmbeddingSpike.CustomerGuestEmbeddingResearchRunner.RunAsync(args);
+
+if (args.Contains("--guest-boundary-regression", StringComparer.OrdinalIgnoreCase))
+    return await MockAiEmbeddingSpike.CustomerGuestEmbeddingResearchRunner.RunGuestBoundaryRegressionAsync(args);
+
 if (args.Contains("--v31-policy-checks", StringComparer.OrdinalIgnoreCase))
     return await MockAiEmbeddingSpike.PolicyUnitChecks.RunAsync();
 

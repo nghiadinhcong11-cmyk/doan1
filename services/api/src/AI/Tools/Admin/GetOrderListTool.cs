@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Globalization;
 using System.Threading.Tasks;
 using RestaurantPOS.AI.Models;
 using RestaurantPOS.AI.Security;
@@ -16,7 +17,7 @@ namespace RestaurantPOS.AI.Tools.Admin
         private readonly IOrderService _orderService;
         public string Name => "get_order_list";
         public string Description => "Truy vấn danh sách đơn hàng chi tiết theo thời gian và trạng thái.";
-        public string[] AllowedRoles => new[] { "admin", "manager", "employee", "cashier", "kitchen" };
+        public string[] AllowedRoles => new[] { "admin" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetOrderListTool(IOrderService orderService)
@@ -58,14 +59,22 @@ namespace RestaurantPOS.AI.Tools.Admin
 
                 string? fromDate = AiToolValidator.GetString(arguments, "fromDate", required: false);
                 string? toDate = AiToolValidator.GetString(arguments, "toDate", required: false);
+                var fromDateUtc = ParseUtcBoundary(arguments, "fromDateUtc");
+                var toDateUtc = ParseUtcBoundary(arguments, "toDateUtc");
+                if (fromDateUtc.HasValue && toDateUtc.HasValue && fromDateUtc.Value >= toDateUtc.Value)
+                    return AiToolResult.CreateError("Khoảng thời gian UTC không hợp lệ.");
                 string? status = AiToolValidator.GetString(arguments, "status", required: false);
 
                 var filter = new OrderQueryFilter
                 {
                     FromDate = fromDate,
                     ToDate = toDate,
+                    FromDateUtc = fromDateUtc,
+                    ToDateUtc = toDateUtc,
                     Status = status,
-                    BranchId = userContext.BranchId
+                    // Admin order queries are chain-wide, including when the JWT
+                    // also carries a branch claim for other application flows.
+                    BranchId = null
                 };
 
                 // Admin có thể xem toàn hệ thống nếu branchId trong context là null
@@ -85,6 +94,15 @@ namespace RestaurantPOS.AI.Tools.Admin
             {
                 return AiToolResult.CreateInternalError(ex);
             }
+        }
+
+        private static DateTime? ParseUtcBoundary(JsonElement arguments, string propertyName)
+        {
+            var value = AiToolValidator.GetString(arguments, propertyName, required: false);
+            return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)
+                ? parsed.UtcDateTime
+                : null;
         }
 
         private static object CreateRoleScopedResult(Order order, string role)

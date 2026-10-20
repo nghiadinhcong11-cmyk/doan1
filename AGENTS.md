@@ -61,7 +61,7 @@ Do not perform large refactors unless explicitly requested.
 
 ## AI
 
-* Deterministic Mock AI provider
+* Local E5 sentence-embedding AI pilots with fail-closed runtime boundaries
 * AI tool registry
 * AiPermissionService
 
@@ -1443,9 +1443,9 @@ Network failures and API quota failures are different categories.
 
 ---
 
-# 61. AI provider boundary
+# 61. AI runtime boundary
 
-The current runtime uses `MockAiProvider` through `IAiProvider`. It is deterministic and does not call an external model. Preserve the orchestrator, tool registry, permission and confirmation boundaries; do not add a provider fallback or describe Mock AI as a live model integration.
+The current runtime uses local E5 sentence-embedding pilots (`AdminEmbeddingPilot` and `CustomerGuestEmbeddingPilot`) behind environment and feature flags. It does not call an external model/provider. Missing or invalid model, tokenizer, or catalog artifacts must fail closed. Preserve the orchestrator, tool registry, permission, confirmation, branch-isolation, and application-service boundaries; do not add an implicit fallback provider or describe the embedding pilots as a live external AI integration.
 
 ---
 

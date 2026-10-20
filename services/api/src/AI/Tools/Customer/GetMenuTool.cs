@@ -17,7 +17,7 @@ namespace RestaurantPOS.AI.Tools.Customer
         private readonly IProductService _productService;
         public string Name => "customer_get_menu";
         public string Description => "Xem thực đơn của nhà hàng (tên món, giá bán, kích cỡ và topping đi kèm).";
-        public string[] AllowedRoles => new[] { "admin", "manager", "employee", "cashier", "kitchen", "customer" };
+        public string[] AllowedRoles => new[] { "admin", "customer" };
         public ToolRiskLevel RiskLevel => ToolRiskLevel.Read;
 
         public GetMenuTool(IProductService productService)
@@ -43,15 +43,23 @@ namespace RestaurantPOS.AI.Tools.Customer
         {
             try
             {
+                if (userContext.IsGuest && (!userContext.HasVerifiedGuestSession || !userContext.BranchId.HasValue))
+                    return AiToolResult.CreateError("Không xác định được chi nhánh của phiên khách.");
+
                 string? category = AiToolValidator.GetString(arguments, "category", required: false);
                 if (string.IsNullOrEmpty(category)) category = null;
 
-                var products = await _productService.GetAllProductsAsync(category, userContext.BranchId);
+                // Both authenticated Customers and verified Guest QR sessions see
+                // the shared active catalog. Guest branch context remains
+                // authoritative for ordering, not for menu visibility.
+                var products = await _productService.GetAllProductsAsync(category);
 
-                if (!products.Any()) return AiToolResult.CreateSuccess("Hiện tại thực đơn chưa có món nào khả dụng.");
+                if (!products.Any()) return AiToolResult.CreateSuccess("Thực đơn chung hiện không có món phù hợp.");
 
                 var sb = new StringBuilder();
-                sb.AppendLine("THỰC ĐƠN NHÀ HÀNG:");
+                sb.AppendLine("THỰC ĐƠN CHUNG CỦA NHÀ HÀNG (món có thể khác nhau theo chi nhánh):");
+                var categories = products.Select(p => p.Category).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToArray();
+                if (categories.Length > 0) sb.AppendLine($"Danh mục: {string.Join(", ", categories)}");
 
                 foreach (var p in products)
                 {

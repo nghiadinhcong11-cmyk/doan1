@@ -4,6 +4,8 @@ import { Utensils, User, QrCode, ClipboardList } from 'lucide-react';
 
 const BottomNav = () => {
   const location = useLocation();
+  const qrToken = new URLSearchParams(window.location.search).get('qr') || sessionStorage.getItem('guestQrToken');
+  const qrGuestSession = sessionStorage.getItem('guestQrSession') === 'true';
 
   const navItems = [
     { path: '/', label: 'Thực đơn', icon: <Utensils size={20} /> },
@@ -17,7 +19,9 @@ const BottomNav = () => {
        {navItems.map((item) => (
          <Link
             key={item.path}
-            to={item.path}
+            to={qrGuestSession && qrToken && item.path !== '/scan'
+              ? `${item.path}?qr=${encodeURIComponent(qrToken)}`
+              : item.path}
             className={`flex min-w-[4.5rem] min-h-12 touch-manipulation flex-col items-center justify-center space-y-0.5 rounded-2xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 ${
                location.pathname === item.path ? 'text-orange-600 scale-105' : 'text-gray-400 hover:text-gray-600'
             }`}

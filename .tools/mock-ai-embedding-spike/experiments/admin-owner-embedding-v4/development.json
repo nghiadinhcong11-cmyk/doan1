@@ -1,0 +1,12 @@
+[
+ {"id":"V4-DEV-REV","text":"thang nay ban duoc bao nhieu tien","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","toolName":"get_revenue","expectedSlots":{"period":"this_month"},"source":"policy-regression","dataType":"development"},
+ {"id":"V4-DEV-SUM","text":"xem cac chi so cua hom qua","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"yesterday"},"source":"policy-regression","dataType":"development"},
+ {"id":"V4-DEV-RANK","text":"hang mon ban chay thang nay","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"this_month"},"source":"policy-regression","dataType":"development"},
+ {"id":"V4-DEV-COUNT","text":"hom qua co bao nhieu don","expectedIntent":"ORDER_COUNT","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"yesterday"},"source":"policy-regression","dataType":"development"},
+ {"id":"V4-DEV-NEG","text":"dung xem doanh thu hom nay","expectedIntent":"NEGATED_REQUEST","expectedDecision":"CLARIFY","toolName":null,"expectedSlots":{"period":"today"},"source":"boundary","dataType":"development"},
+ {"id":"V4-DEV-LEAD","text":"mon nao dung dau hom nay","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"today"},"source":"negation-counterexample","dataType":"development"},
+ {"id":"V4-DEV-CMP","text":"doanh thu hom nay tang hay giam so voi hom qua","expectedIntent":"REVENUE_COMPARISON","expectedDecision":"ACCEPT","toolName":"get_revenue_comparison","expectedSlots":{"currentPeriod":"today","comparisonPeriod":"yesterday"},"source":"boundary","dataType":"development"},
+ {"id":"V4-DEV-MULTI","text":"xem doanh thu va so don hom nay","expectedIntent":"MULTI_INTENT","expectedDecision":"CLARIFY","toolName":null,"expectedSlots":{"period":"today"},"source":"boundary","dataType":"development"},
+ {"id":"V4-DEV-WRITE","text":"cap nhat gia mon pho thanh 50000","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","toolName":null,"expectedSlots":{},"source":"write-boundary","dataType":"development"},
+ {"id":"V4-DEV-STATUS","text":"cac don hoan thanh tuan truoc","expectedIntent":"ORDER_STATUS","expectedDecision":"ACCEPT","toolName":"get_order_list","expectedSlots":{"period":"last_week","status":"completed"},"source":"policy-regression","dataType":"development"}
+]

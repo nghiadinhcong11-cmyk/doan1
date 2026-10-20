@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
-import { ShoppingBag, ChevronRight, Star, CheckCircle2, X, Gift, Percent } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { ShoppingBag, ChevronRight, Star, CheckCircle2, X, Gift, Percent, MapPin } from 'lucide-react';
 import { API_URL } from '../config';
 import Feedback, { FeedbackTone } from '../components/ui/Feedback';
 import CustomerCategoryTabs from '../features/digital-menu/components/CustomerCategoryTabs';
@@ -131,6 +132,7 @@ const DebugMenuPanel = ({
 };
 
 const DigitalMenu = () => {
+  const location = useLocation();
   type QrBootstrapState = 'idle' | 'loading' | 'success' | 'error';
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>(['Tất cả']);
@@ -152,6 +154,9 @@ const DigitalMenu = () => {
   const [productCountBeforeFilter, setProductCountBeforeFilter] = useState<number | null>(null);
   const [productCountAfterFilter, setProductCountAfterFilter] = useState<number | null>(null);
   const requestInFlight = useRef(false);
+  const initialLoadStarted = useRef(false);
+  const qrBootstrapStartedFor = useRef<string | null>(null);
+  const directGuestSessionRequest = useRef<Promise<void> | null>(null);
 
   // States cho Loyalty
   const [currentLoyaltyPoints, setCurrentLoyaltyPoints] = useState<number>(0);
@@ -169,18 +174,35 @@ const DigitalMenu = () => {
   const [customizingQuantity, setCustomizingQuantity] = useState(1);
 
   // Lấy tableId từ URL ?tableId=...
-  const urlParams = new URLSearchParams(window.location.search);
+  const urlParams = new URLSearchParams(location.search);
   const qrToken = urlParams.get('qr');
   const debugMenu = urlParams.get('debugMenu') === '1';
 
   useEffect(() => {
-    const savedBranchId = sessionStorage.getItem('guestDirectBranchId') || localStorage.getItem('selectedBranchId') || undefined;
+    if (initialLoadStarted.current) return;
+    initialLoadStarted.current = true;
+
     if (!qrToken) {
-      void fetchProducts(savedBranchId);
+      void fetchProducts();
+      /* if (false) {
+        // sellableOnly requires an authoritative branch. Do not issue a
+        // predictable 400 request before the customer selects one.
+        setLoading(false);
+        setFeedbackTone('warning');
+        setFeedbackMessage('Vui lòng chọn chi nhánh để xem thực đơn.');
+      } */
     }
-    fetchBranches();
+    if (!qrToken) fetchBranches();
     fetchPromotions();
-    loadCustomerInfo();
+    if (!qrToken) {
+      loadCustomerInfo();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePriceUpdated = () => void fetchProducts();
+    window.addEventListener('product-price-updated', handlePriceUpdated);
+    return () => window.removeEventListener('product-price-updated', handlePriceUpdated);
   }, []);
 
   const loadCustomerInfo = async () => {
@@ -235,6 +257,12 @@ const DigitalMenu = () => {
 
   const fetchProducts = async (branchId?: string) => {
     if (requestInFlight.current) return;
+    if (false && !branchId) {
+      setLoading(false);
+      setFeedbackTone('warning');
+      setFeedbackMessage('Vui lòng chọn chi nhánh để xem thực đơn.');
+      return;
+    }
     requestInFlight.current = true;
     try {
       setLoading(true);
@@ -245,7 +273,10 @@ const DigitalMenu = () => {
       const phase = getQrDiagnosticPhase(qrToken);
 
       // Load products independently so a topping endpoint failure does not hide the main menu.
-      const branchQuery = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+      // Customer/Guest menu is the shared catalog; branch context is needed
+      // for ordering, not for viewing products and prices.
+      const menuQuery = new URLSearchParams({ isActive: 'true' });
+      const branchQuery = `?${menuQuery.toString()}`;
       const [productResult, toppingResult] = await Promise.allSettled([
         fetchWithDiagnostics('/api/Product', `${API_URL}/api/Product${branchQuery}`, undefined, phase),
         fetchWithDiagnostics('/api/Topping', `${API_URL}/api/Topping`, undefined, phase)
@@ -324,8 +355,7 @@ const DigitalMenu = () => {
         isStandaloneTopping: true // Đánh dấu đây là topping bán lẻ
       }));
 
-      const sellableProducts = productsData.filter((product: any) =>
-        product.isActive !== false && (!product.availabilityStatus || product.availabilityStatus === 'Available'));
+      const sellableProducts = productsData.filter((product: any) => product.isActive !== false);
       const allItems = [...sellableProducts, ...toppingProducts];
       setProducts(allItems);
       setProductCountAfterFilter(sellableProducts.length);
@@ -378,6 +408,8 @@ const DigitalMenu = () => {
 
   const fetchTableInfo = async () => {
     if (!qrToken) return;
+    if (qrBootstrapStartedFor.current === qrToken) return;
+    qrBootstrapStartedFor.current = qrToken;
     setQrBootstrapState('loading');
     try {
       const phase = getQrDiagnosticPhase(qrToken);
@@ -395,6 +427,7 @@ const DigitalMenu = () => {
         sessionStorage.removeItem('guestDirectBranchId');
         sessionStorage.setItem('guestToken', bootstrap.token);
         sessionStorage.setItem('guestQrSession', 'true');
+        sessionStorage.setItem('guestQrToken', qrToken);
         setTableInfo({
           id: bootstrap.table.id || '',
           name: bootstrap.table.name,
@@ -414,15 +447,17 @@ const DigitalMenu = () => {
       }
     } catch (err) {
       console.error(err);
+      qrBootstrapStartedFor.current = null;
       sessionStorage.removeItem('guestToken');
       sessionStorage.removeItem('guestQrSession');
+      sessionStorage.removeItem('guestQrToken');
       setQrBootstrapState('error');
       setTableInfo(null);
       setSelectedBranch(null);
     }
   };
 
-  const ensureDirectGuestSession = async (branch: { id: string }) => {
+  const requestDirectGuestSession = async (branch: { id: string }) => {
     if (sessionStorage.getItem('guestDirectSession') === 'true' &&
       sessionStorage.getItem('guestDirectBranchId') === branch.id &&
       sessionStorage.getItem('guestToken')) {
@@ -446,9 +481,41 @@ const DigitalMenu = () => {
     sessionStorage.setItem('guestDirectBranchId', payload.branch.id);
   };
 
-  const handleBranchSelect = (branch: any) => {
+  const ensureDirectGuestSession = async (branch: { id: string }) => {
+    if (directGuestSessionRequest.current) {
+      return directGuestSessionRequest.current;
+    }
+    const request = requestDirectGuestSession(branch);
+    directGuestSessionRequest.current = request;
+    try {
+      await request;
+    } finally {
+      if (directGuestSessionRequest.current === request) {
+        directGuestSessionRequest.current = null;
+      }
+    }
+  };
+
+  const handleBranchSelect = async (branch: any) => {
+    if (!branch?.id) return;
+
     setSelectedBranch(branch);
-    void fetchProducts(branch?.id);
+    setFeedbackMessage('');
+    try {
+      // A direct guest receives the same server-issued branch context used by
+      // QR guests before the menu and AI requests are made. Registered
+      // customers keep their existing account token and branch selection.
+      if (!qrToken && localStorage.getItem('customerToken')) {
+        // This is only a UI preference. The API re-validates the branch before
+        // placing it in the authenticated AI context.
+        localStorage.setItem('selectedBranchId', branch.id);
+      }
+      await fetchProducts(branch.id);
+    } catch (error) {
+      setFeedbackTone('error');
+      setFeedbackMessage(error instanceof Error ? error.message : 'Không thể xác định chi nhánh phục vụ.');
+      setLoading(false);
+    }
   };
 
   const addToCart = (product: Product) => {
@@ -758,6 +825,27 @@ const DigitalMenu = () => {
         </div>
       )}
 
+      {false && !qrToken && !selectedBranch && branches.length > 0 && (
+        <section className="mx-4 mt-4 rounded-3xl border border-blue-100 bg-blue-50 p-5" aria-label="Chọn chi nhánh xem thực đơn">
+          <div className="mb-3 flex items-center gap-2 text-blue-800">
+            <MapPin size={18} aria-hidden="true" />
+            <h2 className="text-sm font-black">Chọn chi nhánh để xem thực đơn</h2>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {branches.map(branch => (
+              <button
+                key={branch.id}
+                type="button"
+                onClick={() => void handleBranchSelect(branch)}
+                className="min-h-11 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-left text-xs font-black text-slate-700 transition hover:border-blue-500 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                {branch.name}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {qrToken && qrBootstrapState === 'loading' && (
         <div className="mx-4 mt-4">
           <Feedback tone="info">Đang xác định bàn và chi nhánh từ mã QR...</Feedback>
@@ -785,7 +873,7 @@ const DigitalMenu = () => {
         cart={cart}
         activeCategory={activeCategory}
         loading={loading}
-        onRefresh={() => void fetchProducts(selectedBranch?.id)}
+        onRefresh={() => void fetchProducts()}
         onAddProduct={addToCart}
         onRemoveProduct={removeFromCart}
         onDecreaseProduct={handleDecreaseProduct}

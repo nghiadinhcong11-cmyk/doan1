@@ -18,6 +18,9 @@ namespace RestaurantPOS.AI.Services
         };
 
         private readonly AiAuthorization _authorization;
+        private static readonly IReadOnlySet<string> AdminTools =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "get_revenue", "get_business_summary", "get_revenue_comparison", "get_best_sellers", "get_order_list", "customer_get_menu", "update_product_price", "update_product_name", "create_product", "create_topping" };
 
         public AiPermissionService(AiAuthorization authorization)
         {
@@ -29,22 +32,30 @@ namespace RestaurantPOS.AI.Services
         /// </summary>
         public async Task<bool> CanExecuteAsync(IAiTool tool, AiUserContext context)
         {
-            if (!RoleNames.IsKnownRole(context.Role))
+            if ((tool.RiskLevel != ToolRiskLevel.Read && tool.RiskLevel != ToolRiskLevel.Write) ||
+                (tool.RiskLevel == ToolRiskLevel.Write && context.Role != RoleNames.Admin) ||
+                (context.Role != RoleNames.Admin && context.Role != RoleNames.Customer))
             {
                 return false;
             }
 
             if (context.IsGuest)
             {
-                return tool.RiskLevel == ToolRiskLevel.Read &&
+                return context.HasVerifiedGuestSession && context.BranchId.HasValue &&
+                       tool.RiskLevel == ToolRiskLevel.Read &&
+                       _authorization.IsRoleAllowed(tool, context) &&
                        string.Equals(tool.Name, "customer_get_menu", StringComparison.OrdinalIgnoreCase);
             }
 
             if (string.Equals(context.Role, "customer", StringComparison.OrdinalIgnoreCase) &&
-                !AuthenticatedCustomerTools.Contains(tool.Name))
+                (!context.CustomerId.HasValue || context.CustomerId == Guid.Empty ||
+                 !AuthenticatedCustomerTools.Contains(tool.Name) || tool.RiskLevel != ToolRiskLevel.Read))
             {
                 return false;
             }
+
+            if (string.Equals(context.Role, RoleNames.Admin, StringComparison.OrdinalIgnoreCase) &&
+                !AdminTools.Contains(tool.Name)) return false;
 
             // Every branch-scoped staff role must remain scoped. Null is never a
             // valid global scope for staff AI queries.

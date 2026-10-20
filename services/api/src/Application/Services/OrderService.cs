@@ -79,13 +79,21 @@ namespace RestaurantPOS.Application.Services
                         (o.CustomerName != null && o.CustomerName.Contains(filter.CustomerPhone)));
             }
 
-            if (!string.IsNullOrEmpty(filter.FromDate) && DateTime.TryParse(filter.FromDate, out var fDate))
+            if (filter.FromDateUtc.HasValue)
+            {
+                query = query.Where(o => o.CreatedAt >= filter.FromDateUtc.Value);
+            }
+            else if (!string.IsNullOrEmpty(filter.FromDate) && DateTime.TryParse(filter.FromDate, out var fDate))
             {
                 var from = DateTime.SpecifyKind(fDate.Date, DateTimeKind.Utc);
                 query = query.Where(o => o.CreatedAt >= from);
             }
 
-            if (!string.IsNullOrEmpty(filter.ToDate) && DateTime.TryParse(filter.ToDate, out var tDate))
+            if (filter.ToDateUtc.HasValue)
+            {
+                query = query.Where(o => o.CreatedAt < filter.ToDateUtc.Value);
+            }
+            else if (!string.IsNullOrEmpty(filter.ToDate) && DateTime.TryParse(filter.ToDate, out var tDate))
             {
                 var to = DateTime.SpecifyKind(tDate.Date.AddDays(1), DateTimeKind.Utc);
                 query = query.Where(o => o.CreatedAt < to);
@@ -122,12 +130,92 @@ namespace RestaurantPOS.Application.Services
             return orders;
         }
 
+        public async Task<List<PendingOrderSummaryDto>> GetPendingOrderSummariesAsync(Guid? branchId)
+        {
+            var query = _context.Orders
+                .AsNoTracking()
+                .Where(order => order.Status == "Đang xử lý" || order.Status == "Đổi quà");
+
+            if (branchId.HasValue)
+            {
+                query = query.Where(order => order.BranchId == branchId.Value);
+            }
+
+            return await query
+                .OrderByDescending(order => order.CreatedAt)
+                .Select(order => new PendingOrderSummaryDto
+                {
+                    Id = order.Id,
+                    Status = order.Status,
+                    CreatedBy = order.CreatedBy,
+                    TableName = order.TableName,
+                    CustomerName = order.CustomerName,
+                    CustomerPhone = order.CustomerPhone,
+                    TotalAmount = order.TotalAmount,
+                    CreatedAt = order.CreatedAt,
+                    Details = order.Details
+                        .Select(detail => new PendingOrderSummaryDetailDto
+                        {
+                            ProductName = detail.ProductName,
+                            Quantity = detail.Quantity,
+                            UnitPrice = detail.UnitPrice,
+                            Options = detail.Options
+                        })
+                        .ToList()
+                })
+                .ToListAsync();
+        }
+
+        public async Task<StaffOverviewOrderCountsDto> GetStaffOverviewOrderCountsAsync(Guid branchId)
+        {
+            var todayUtc = DateTime.UtcNow.Date;
+            var tomorrowUtc = todayUtc.AddDays(1);
+            var branchOrders = _context.Orders
+                .AsNoTracking()
+                .Where(order => order.BranchId == branchId);
+
+            var pendingCount = await branchOrders.CountAsync(order =>
+                (order.Status == "Đang xử lý" && (order.CreatedBy == null || order.CreatedBy == "")) ||
+                order.Status == "Đổi quà");
+            var activeCount = await branchOrders.CountAsync(order =>
+                order.Status == "Đang xử lý" && order.CreatedBy != null && order.CreatedBy != "");
+            var completedTodayCount = await branchOrders.CountAsync(order =>
+                order.Status == "Hoàn thành" &&
+                order.CreatedAt >= todayUtc &&
+                order.CreatedAt < tomorrowUtc);
+
+            return new StaffOverviewOrderCountsDto
+            {
+                PendingCount = pendingCount,
+                ActiveCount = activeCount,
+                CompletedTodayCount = completedTodayCount
+            };
+        }
+
+        public async Task<List<CustomerOrderSummaryDto>> GetCustomerOrderSummariesAsync(string customerPhone)
+        {
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(order => order.CustomerPhone == customerPhone)
+                .OrderByDescending(order => order.CreatedAt)
+                .Select(order => new CustomerOrderSummaryDto
+                {
+                    Id = order.Id,
+                    InvoiceCode = order.InvoiceCode,
+                    CreatedAt = order.CreatedAt,
+                    PaymentAt = order.PaymentAt,
+                    Status = order.Status,
+                    TotalAmount = order.TotalAmount
+                })
+                .ToListAsync();
+        }
+
         public async Task<Order?> GetOrderByIdAsync(Guid id)
         {
             return await _context.Orders.Include(o => o.Details).FirstOrDefaultAsync(o => o.Id == id);
         }
 
-        public async Task<Order> CreateOrUpdateOrderAsync(Order order)
+        public async Task<Order> CreateOrUpdateOrderAsync(Order order, bool deferAvailabilityValidation = false)
         {
             const int MAX_QUANTITY = 500;
 
@@ -141,6 +229,11 @@ namespace RestaurantPOS.Application.Services
             {
                 throw new ArgumentException($"Số lượng món không được vượt quá {MAX_QUANTITY}.");
             }
+
+            // Shared menu visibility and order acceptance are separate
+            // boundaries. An order must contain products available at its branch.
+            if (!deferAvailabilityValidation)
+                await ValidateOrderProductAvailabilityAsync(order);
 
             // Logic: Nếu bàn đã có đơn "Đang xử lý", ta cập nhật đơn đó thay vì tạo mới
             if (order.Id != Guid.Empty || (order.TableName != "Mang về" && !string.IsNullOrEmpty(order.TableName)))
@@ -376,6 +469,57 @@ namespace RestaurantPOS.Application.Services
             order.TotalAmount = taxableBase + vatAmount - order.Discount;
         }
 
+        private async Task ValidateOrderProductAvailabilityAsync(Order order)
+        {
+            var productIds = order.Details?
+                .Where(detail => detail.ProductId.HasValue)
+                .Select(detail => detail.ProductId!.Value)
+                .Distinct()
+                .ToArray() ?? Array.Empty<Guid>();
+
+            if (productIds.Length == 0)
+                throw new ArgumentException("Order must contain products.");
+
+            var availableProductCount = await _context.Products
+                .Where(product => productIds.Contains(product.Id) &&
+                    product.IsActive &&
+                    _context.ProductBranchAvailabilities.Any(availability =>
+                        availability.ProductId == product.Id &&
+                        availability.BranchId == order.BranchId &&
+                        availability.Branch != null &&
+                        availability.Branch.IsActive &&
+                        availability.Status == "Available"))
+                .CountAsync();
+
+            if (availableProductCount != productIds.Length)
+                throw new ArgumentException("One or more products are inactive or unavailable at the selected branch.");
+        }
+
+        private async Task<bool> AreOrderProductsAvailableAsync(Order order)
+        {
+            var productIds = order.Details?
+                .Where(detail => detail.ProductId.HasValue)
+                .Select(detail => detail.ProductId!.Value)
+                .Distinct()
+                .ToArray() ?? Array.Empty<Guid>();
+
+            if (productIds.Length == 0)
+                return false;
+
+            var availableProductCount = await _context.Products
+                .Where(product => productIds.Contains(product.Id) &&
+                    product.IsActive &&
+                    _context.ProductBranchAvailabilities.Any(availability =>
+                        availability.ProductId == product.Id &&
+                        availability.BranchId == order.BranchId &&
+                        availability.Branch != null &&
+                        availability.Branch.IsActive &&
+                        availability.Status == "Available"))
+                .CountAsync();
+
+            return availableProductCount == productIds.Length;
+        }
+
         private static decimal GetNonNegativeDecimalSetting(
             IReadOnlyDictionary<string, string> settings,
             params string[] keys)
@@ -413,7 +557,10 @@ namespace RestaurantPOS.Application.Services
             {
                 await using var transaction = await _context.Database.BeginTransactionAsync();
 
-                var current = await _context.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id);
+                var current = await _context.Orders
+                    .AsNoTracking()
+                    .Include(o => o.Details)
+                    .FirstOrDefaultAsync(o => o.Id == id);
                 if (current == null)
                     return (WebOrderAcceptResult.NotFound, (Order?)null);
 
@@ -426,6 +573,9 @@ namespace RestaurantPOS.Application.Services
                 // A Web Order is pending and has not yet been claimed by a staff user.
                 if (current.Status != "Đang xử lý" || !string.IsNullOrEmpty(current.CreatedBy))
                     return (WebOrderAcceptResult.Conflict, current);
+
+                if (!await AreOrderProductsAvailableAsync(current))
+                    return (WebOrderAcceptResult.UnavailableProducts, current);
 
                 RestaurantTable? targetTable = null;
                 if (tableId.HasValue)

@@ -1,0 +1,19 @@
+[
+  { "id": "V2-CAL-M-01", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Danh mục đồ uống của quán gồm những gì?", "category": "do_uong", "caseType": "accepted" },
+  { "id": "V2-CAL-M-02", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Xem danh mục món ăn.", "category": "mon_an", "caseType": "accepted" },
+  { "id": "V2-CAL-M-03", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Hãy cho tôi xem thực đơn hiện có.", "category": null, "caseType": "accepted" },
+  { "id": "V2-CAL-M-04", "role": "guest", "intent": null, "tool": null, "text": "Có những món nào trong danh mục này?", "category": null, "caseType": "clarify" },
+  { "id": "V2-CAL-O-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Các đơn tôi đã đặt gần đây đâu rồi?", "category": null, "caseType": "accepted" },
+  { "id": "V2-CAL-O-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Trạng thái đơn hàng của tôi.", "category": null, "caseType": "accepted" },
+  { "id": "V2-CAL-S-01", "role": "guest", "intent": null, "tool": null, "text": "Guest muốn xem đơn của khách khác.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-CAL-S-02", "role": "customer", "intent": null, "tool": null, "text": "Cho tôi xem đơn của khách khác.", "category": null, "caseType": "unauthorized" },
+  { "id": "V2-CAL-S-03", "role": "guest", "intent": null, "tool": null, "text": "Sửa giá món trong menu.", "category": null, "caseType": "write" },
+  { "id": "V2-CAL-S-04", "role": "customer", "intent": null, "tool": null, "text": "Cập nhật tên món.", "category": null, "caseType": "write" },
+  { "id": "V2-CAL-N-01", "role": "customer", "intent": null, "tool": null, "text": "Không xem doanh thu hôm nay.", "category": null, "caseType": "negation" },
+  { "id": "V2-CAL-N-02", "role": "guest", "intent": null, "tool": null, "text": "Đừng lấy đơn cá nhân, chỉ xem menu thôi.", "category": null, "caseType": "negation" },
+  { "id": "V2-CAL-X-01", "role": "customer", "intent": null, "tool": null, "text": "Xem món ăn và các đơn của tôi.", "category": null, "caseType": "multi_intent" },
+  { "id": "V2-CAL-X-02", "role": "guest", "intent": null, "tool": null, "text": "Mở menu và cho biết doanh thu.", "category": null, "caseType": "multi_intent" },
+  { "id": "V2-CAL-U-01", "role": "customer", "intent": null, "tool": null, "text": "Quán còn bao nhiêu món trong kho?", "category": null, "caseType": "unsupported" },
+  { "id": "V2-CAL-U-02", "role": "customer", "intent": null, "tool": null, "text": "Xem thực đơn theo giá thấp hơn 50000.", "category": null, "caseType": "unsupported" },
+  { "id": "V2-CAL-OOD-01", "role": "customer", "intent": null, "tool": null, "text": "Tạo một báo cáo nhân sự mới.", "category": null, "caseType": "ood" }
+]

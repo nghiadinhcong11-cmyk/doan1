@@ -42,7 +42,12 @@ const ToppingManagement = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { fetchToppings(); }, []);
+  useEffect(() => {
+    void fetchToppings();
+    const handleCatalogChanged = () => void fetchToppings();
+    window.addEventListener('catalog-item-created', handleCatalogChanged);
+    return () => window.removeEventListener('catalog-item-created', handleCatalogChanged);
+  }, []);
 
   const fetchToppings = async () => {
     try {

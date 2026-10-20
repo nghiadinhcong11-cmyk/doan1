@@ -1,0 +1,11 @@
+[
+  { "id": "V2-REF-MENU-01", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho tôi xem thực đơn và giá các món đang bán.", "category": null, "caseType": "accepted" },
+  { "id": "V2-REF-MENU-02", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Quán có những đồ uống nào?", "category": "do_uong", "caseType": "accepted" },
+  { "id": "V2-REF-MENU-03", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Có món khai vị nào trong thực đơn?", "category": "khai_vi", "caseType": "accepted" },
+  { "id": "V2-REF-MENU-04", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho xem các món chính.", "category": "mon_chinh", "caseType": "accepted" },
+  { "id": "V2-REF-MENU-05", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Hôm nay còn món nào có thể bán?", "category": null, "caseType": "accepted" },
+  { "id": "V2-REF-ORD-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Cho tôi xem các đơn hàng của tôi.", "category": null, "caseType": "accepted" },
+  { "id": "V2-REF-ORD-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Đơn gần đây của tôi đang ở trạng thái gì?", "category": null, "caseType": "accepted" },
+  { "id": "V2-REF-ORD-03", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Lịch sử những đơn tôi đã đặt.", "category": null, "caseType": "accepted" },
+  { "id": "V2-REF-ORD-04", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Đơn của tôi đâu rồi?", "category": null, "caseType": "accepted" }
+]

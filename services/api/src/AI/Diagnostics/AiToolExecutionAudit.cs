@@ -50,6 +50,9 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
     {
         "get_revenue",
         "update_product_price",
+        "update_product_name",
+        "create_product",
+        "create_topping",
         "get_active_staff",
         "get_order_list",
         "get_best_sellers",

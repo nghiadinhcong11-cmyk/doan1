@@ -1,0 +1,10 @@
+[
+  { "id": "REF-MENU-01", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho tôi xem thực đơn và giá các món đang bán.", "category": null, "caseType": "accepted" },
+  { "id": "REF-MENU-02", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Quán hiện có những món ăn, đồ uống nào?", "category": null, "caseType": "accepted" },
+  { "id": "REF-MENU-03", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Xem menu đồ uống và giá từng món.", "category": "Đồ uống", "caseType": "accepted" },
+  { "id": "REF-MENU-04", "role": "customer|guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Các món ăn đang có thể bán hôm nay là gì?", "category": "Món ăn", "caseType": "accepted" },
+  { "id": "REF-ORDERS-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Cho tôi xem các đơn hàng của mình.", "category": null, "caseType": "accepted" },
+  { "id": "REF-ORDERS-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Đơn gần đây của tôi đang ở trạng thái nào?", "category": null, "caseType": "accepted" },
+  { "id": "REF-ORDERS-03", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Lịch sử mua hàng của tài khoản này.", "category": null, "caseType": "accepted" },
+  { "id": "REF-ORDERS-04", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Tra cứu những đơn tôi đã đặt.", "category": null, "caseType": "accepted" }
+]

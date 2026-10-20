@@ -1,0 +1,12 @@
+[
+ {"id":"V4-CAL-REV","text":"trong thang nay cua hang thu ve bao nhieu tien","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","toolName":"get_revenue","expectedSlots":{"period":"this_month"},"source":"calibration","dataType":"calibration"},
+ {"id":"V4-CAL-SUM","text":"cho xem KPI cua hom qua","expectedIntent":"BUSINESS_SUMMARY","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"yesterday"},"source":"calibration","dataType":"calibration"},
+ {"id":"V4-CAL-RANK","text":"top 5 mon ban chay thang nay","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"this_month","limit":"5"},"source":"calibration","dataType":"calibration"},
+ {"id":"V4-CAL-COUNT","text":"so luong don hom qua","expectedIntent":"ORDER_COUNT","expectedDecision":"ACCEPT","toolName":"get_business_summary","expectedSlots":{"period":"yesterday"},"source":"calibration","dataType":"calibration"},
+ {"id":"V4-CAL-NEG","text":"khong can xem doanh thu hom nay","expectedIntent":"NEGATED_REQUEST","expectedDecision":"CLARIFY","toolName":null,"expectedSlots":{"period":"today"},"source":"boundary","dataType":"calibration"},
+ {"id":"V4-CAL-LEAD","text":"hom qua mon nao dung dau doanh so","expectedIntent":"PRODUCT_RANKING","expectedDecision":"ACCEPT","toolName":"get_best_sellers","expectedSlots":{"period":"yesterday"},"source":"negation-counterexample","dataType":"calibration"},
+ {"id":"V4-CAL-SINGLE","text":"doanh so thang nay","expectedIntent":"REVENUE_QUERY","expectedDecision":"ACCEPT","toolName":"get_revenue","expectedSlots":{"period":"this_month"},"source":"calibration","dataType":"calibration"},
+ {"id":"V4-CAL-MISSING","text":"doanh thu hien tai the nao","expectedIntent":"REVENUE_QUERY","expectedDecision":"CLARIFY","toolName":null,"expectedSlots":{},"source":"missing-period","dataType":"calibration"},
+ {"id":"V4-CAL-OOD","text":"kiem tra ton kho nguyen lieu","expectedIntent":"OUT_OF_SCOPE","expectedDecision":"UNSUPPORTED","toolName":null,"expectedSlots":{},"source":"boundary","dataType":"calibration"},
+ {"id":"V4-CAL-MULTI","text":"xem doanh thu roi kiem tra so don hom nay","expectedIntent":"MULTI_INTENT","expectedDecision":"CLARIFY","toolName":null,"expectedSlots":{"period":"today"},"source":"boundary","dataType":"calibration"}
+]

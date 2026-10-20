@@ -34,7 +34,10 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// <summary>Láº¥y danh sĂ¡ch khĂ¡ch hĂ ng, cĂ³ thá»ƒ lá»c theo tá»« khĂ³a.</summary>
         [HttpGet]
         [Authorize(Roles = "admin,manager,employee,cashier")]
-        public async Task<IActionResult> GetCustomers([FromQuery] string? search)
+        public async Task<IActionResult> GetCustomers(
+            [FromQuery] string? search,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize)
         {
             var query = _context.Customers.AsNoTracking().AsQueryable();
 
@@ -43,9 +46,75 @@ namespace RestaurantPOS.WebAPI.Controllers
                 query = query.Where(c => c.FullName.Contains(search) || c.PhoneNumber.Contains(search));
             }
 
-            var customers = await query.OrderByDescending(c => c.TotalSpending).ToListAsync();
+            var pagedRequest = page.HasValue || pageSize.HasValue;
+            var requestedPage = Math.Max(page ?? 1, 1);
+            var requestedPageSize = Math.Clamp(pageSize ?? 50, 1, 100);
 
-            return Ok(customers.Select(c => MapForCaller(c)));
+            if (IsManagementStaff())
+            {
+                // Project only the fields used by the staff response. This avoids
+                // loading password hashes and unrelated columns from Supabase.
+                IQueryable<Customer> orderedQuery = query.OrderByDescending(c => c.TotalSpending);
+                if (pagedRequest)
+                {
+                    orderedQuery = orderedQuery
+                        .Skip((requestedPage - 1) * requestedPageSize)
+                        .Take(requestedPageSize + 1);
+                }
+
+                var customers = await orderedQuery
+                    .Select(c => new CustomerResponseDto
+                    {
+                        Id = c.Id,
+                        FullName = c.FullName,
+                        PhoneNumber = c.PhoneNumber,
+                        Email = c.Email,
+                        Address = c.Address,
+                        Gender = c.Gender,
+                        Birthday = c.Birthday,
+                        LoyaltyPoints = c.LoyaltyPoints,
+                        TotalSpending = c.TotalSpending,
+                        TotalOrders = c.TotalOrders,
+                        CreatedAt = c.CreatedAt,
+                        CustomerGroup = c.CustomerGroup
+                    })
+                    .ToListAsync();
+
+                if (pagedRequest)
+                {
+                    Response.Headers["X-Has-Next-Page"] = (customers.Count > requestedPageSize).ToString().ToLowerInvariant();
+                    customers = customers.Take(requestedPageSize).ToList();
+                }
+
+                return Ok(customers);
+            }
+
+            IQueryable<Customer> minimalOrderedQuery = query.OrderByDescending(c => c.TotalSpending);
+            if (pagedRequest)
+            {
+                minimalOrderedQuery = minimalOrderedQuery
+                    .Skip((requestedPage - 1) * requestedPageSize)
+                    .Take(requestedPageSize + 1);
+            }
+
+            var minimalCustomers = await minimalOrderedQuery
+                .Select(c => new
+                {
+                    c.Id,
+                    c.FullName,
+                    c.PhoneNumber,
+                    c.LoyaltyPoints,
+                    c.CustomerGroup
+                })
+                .ToListAsync();
+
+            if (pagedRequest)
+            {
+                Response.Headers["X-Has-Next-Page"] = (minimalCustomers.Count > requestedPageSize).ToString().ToLowerInvariant();
+                minimalCustomers = minimalCustomers.Take(requestedPageSize).ToList();
+            }
+
+            return Ok(minimalCustomers);
         }
 
         /// <summary>Kiá»ƒm tra sá»± tá»“n táº¡i cá»§a khĂ¡ch hĂ ng (CĂ´ng khai - Phá»¥c vá»¥ chĂ o má»«ng/Ä‘Äƒng nháº­p).</summary>

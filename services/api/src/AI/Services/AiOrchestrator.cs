@@ -1,460 +1,204 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using RestaurantPOS.AI.Models;
-using RestaurantPOS.AI.Tools;
-using RestaurantPOS.AI.Security;
 using RestaurantPOS.AI.Diagnostics;
-using System.Linq;
+using RestaurantPOS.AI.Models;
+using RestaurantPOS.AI.Security;
+using RestaurantPOS.AI.Tools;
 using RestaurantPOS.Application.Common.Security;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
 
-namespace RestaurantPOS.AI.Services
+namespace RestaurantPOS.AI.Services;
+
+// Chat has one execution path: an enabled E5 pilot may select a registered, authorized tool.
+public sealed class AiOrchestrator : IAiOrchestrator
 {
-    public class AiOrchestrator : IAiOrchestrator
+    private readonly AiToolRegistry _registry;
+    private readonly AiPermissionService _permission;
+    private readonly AdminEmbeddingPilot _adminPilot;
+    private readonly CustomerGuestEmbeddingPilot _customerGuestPilot;
+    private readonly IAiToolExecutionAuditSink? _audit;
+    private readonly AiCorrelationContext? _correlation;
+    private readonly ILogger<AiOrchestrator>? _logger;
+
+    public AiOrchestrator(AiToolRegistry registry, AiPermissionService permission,
+        AdminEmbeddingPilot adminPilot, CustomerGuestEmbeddingPilot customerGuestPilot,
+        ILogger<AiOrchestrator>? logger = null, IAiToolExecutionAuditSink? audit = null,
+        AiCorrelationContext? correlation = null)
     {
-        private const string AuthContextPhase = "AUTH_CONTEXT";
-        private const string BusinessContextPhase = "BUSINESS_CONTEXT";
-        private const string PromptBuildPhase = "PROMPT_BUILD";
-        private const string ToolRegistryPhase = "TOOL_REGISTRY";
-        private const string ProviderRequestPhase = "AI_REQUEST";
-        private const string ToolExecutionPhase = "TOOL_EXECUTION";
-        private const string ResponseProcessingPhase = "RESPONSE_PROCESSING";
-        private static readonly IReadOnlySet<string> GuestToolAllowlist =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "customer_get_menu"
-            };
+        _registry = registry;
+        _permission = permission;
+        _adminPilot = adminPilot;
+        _customerGuestPilot = customerGuestPilot;
+        _logger = logger;
+        _audit = audit;
+        _correlation = correlation;
+    }
 
-        private readonly IAiProvider _aiProvider;
-        private readonly AiContextService _contextService;
-        private readonly AiToolRegistry _toolRegistry;
-        private readonly AiPermissionService _permissionService;
-        private readonly PromptBuilder _promptBuilder;
-        private readonly AiCorrelationContext? _correlationContext;
-        private readonly ILogger<AiOrchestrator>? _logger;
-        private readonly IAiToolExecutionAuditSink? _toolAudit;
-        private readonly ManagerEmbeddingPilot _embeddingPilot;
+    public Task<AiResponse> ProcessAsync(AiRequest request, AiUserContext context, CancellationToken token = default) =>
+        ProcessInternalAsync(request, context, token);
 
-        [ActivatorUtilitiesConstructor]
-        public AiOrchestrator(
-            IAiProvider aiProvider,
-            AiContextService contextService,
-            AiToolRegistry toolRegistry,
-            AiPermissionService permissionService,
-            PromptBuilder promptBuilder,
-            ManagerEmbeddingPilot embeddingPilot,
-            ILogger<AiOrchestrator>? logger = null,
-            IAiToolExecutionAuditSink? toolAudit = null,
-            AiCorrelationContext? correlationContext = null)
+    public Task<AiResponse> ProcessReadOnlyAsync(AiRequest request, AiUserContext context, CancellationToken token = default) =>
+        ProcessInternalAsync(request, context, token);
+
+    public Task<AiResponse> ProcessGuestReadOnlyAsync(AiRequest request, CancellationToken token = default) =>
+        Task.FromResult(new AiResponse { Success = false, Error = "Verified QR session is required." });
+
+    public Task<AiResponse> ProcessGuestReadOnlyAsync(AiRequest request, AiUserContext context, CancellationToken token = default) =>
+        ProcessInternalAsync(request, context, token);
+
+    public async Task<AiResponse> ConfirmProductPriceAsync(string token, AiUserContext userContext, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(token) || userContext.Role != RoleNames.Admin || userContext.UserId == Guid.Empty)
+            return new AiResponse { Success = false, Error = "Xác nhận không hợp lệ hoặc không được phép." };
+
+        var tool = _registry.GetTool("update_product_price");
+        if (tool is not IProductPriceConfirmationTool confirmationTool ||
+            !await _permission.CanExecuteAsync(tool, userContext))
+            return new AiResponse { Success = false, Error = "AI tool is not authorized." };
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await confirmationTool.ConfirmAsync(token, userContext);
+        return result.Success
+            ? new AiResponse { Success = true, Message = result.Data }
+            : new AiResponse { Success = false, Error = result.Error ?? "Không thể cập nhật giá sản phẩm." };
+    }
+
+    public async Task<AiResponse> ConfirmCatalogCreationAsync(string token, string type, AiUserContext userContext, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(token) || userContext.Role != RoleNames.Admin || userContext.UserId == Guid.Empty)
+            return new AiResponse { Success = false, Error = "Xác nhận không hợp lệ hoặc không được phép." };
+        var toolName = type.Equals("topping-create", StringComparison.OrdinalIgnoreCase) ? "create_topping" : "create_product";
+        var tool = _registry.GetTool(toolName);
+        if (tool is not ICatalogCreationConfirmationTool confirmationTool || !await _permission.CanExecuteAsync(tool, userContext))
+            return new AiResponse { Success = false, Error = "AI tool is not authorized." };
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await confirmationTool.ConfirmAsync(token, userContext);
+        return result.Success ? new AiResponse { Success = true, Message = result.Data } : new AiResponse { Success = false, Error = result.Error ?? "Không thể tạo dữ liệu catalog." };
+    }
+
+    public async Task<AiResponse> ConfirmProductNameAsync(string token, AiUserContext userContext, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(token) || userContext.Role != RoleNames.Admin || userContext.UserId == Guid.Empty)
+            return new AiResponse { Success = false, Error = "Xác nhận không hợp lệ hoặc không được phép." };
+        var tool = _registry.GetTool("update_product_name");
+        if (tool is not IProductNameConfirmationTool confirmationTool || !await _permission.CanExecuteAsync(tool, userContext))
+            return new AiResponse { Success = false, Error = "AI tool is not authorized." };
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await confirmationTool.ConfirmAsync(token, userContext);
+        return result.Success ? new AiResponse { Success = true, Message = result.Data } : new AiResponse { Success = false, Error = result.Error ?? "Không thể đổi tên sản phẩm." };
+    }
+
+    private async Task<AiResponse> ProcessInternalAsync(AiRequest request, AiUserContext context, CancellationToken token)
+    {
+        var correlationId = _correlation?.CorrelationId ?? Guid.Empty;
+        if (correlationId == Guid.Empty) correlationId = Guid.NewGuid();
+        var stopwatch = Stopwatch.StartNew();
+        var phase = "AUTH_CONTEXT";
+        try
         {
-            _aiProvider = aiProvider;
-            _contextService = contextService;
-            _toolRegistry = toolRegistry;
-            _permissionService = permissionService;
-            _promptBuilder = promptBuilder;
-            _embeddingPilot = embeddingPilot;
-            _correlationContext = correlationContext;
-            _logger = logger;
-            _toolAudit = toolAudit;
-        }
+            if (request is null || string.IsNullOrWhiteSpace(request.Message) ||
+                (!context.IsGuest && context.Role != RoleNames.Admin && context.Role != RoleNames.Customer) ||
+                (context.IsGuest && (context.Role != RoleNames.Customer || !context.HasVerifiedGuestSession || !context.BranchId.HasValue)) ||
+                (!context.IsGuest && context.Role == RoleNames.Customer && (!context.CustomerId.HasValue || context.CustomerId == Guid.Empty)))
+                return new AiResponse { Success = false, Error = "AI access is not authorized for this identity." };
 
-        public Task<AiResponse> ProcessAsync(
-            AiRequest request,
-            AiUserContext userContext,
-            CancellationToken cancellationToken = default) =>
-            ProcessInternalAsync(request, userContext, readOnlyMode: false, cancellationToken);
-
-        public Task<AiResponse> ProcessReadOnlyAsync(
-            AiRequest request,
-            AiUserContext userContext,
-            CancellationToken cancellationToken = default) =>
-            ProcessInternalAsync(request, userContext, readOnlyMode: true, cancellationToken);
-
-        public Task<AiResponse> ProcessGuestReadOnlyAsync(
-            AiRequest request,
-            CancellationToken cancellationToken = default) =>
-            ProcessInternalAsync(
-                request,
-                new AiUserContext
+            phase = "EMBEDDING_DECISION";
+            if (context.Role == RoleNames.Admin)
+            {
+                if (!_adminPilot.IsEnabled)
+                    return new AiResponse { Success = false, Error = "Admin AI is disabled." };
+                var decision = await _adminPilot.DecideAsync(request.Message, context, token);
+                _logger?.LogInformation("AI_E5_DECISION CorrelationId={CorrelationId} Role=admin Decision={Decision} Reason={Reason} Intent={Intent} Tool={Tool}",
+                    correlationId, decision.Decision, decision.Reason, decision.AcceptedIntent, decision.ProposedTool);
+                if (decision.Decision == "CLARIFY")
                 {
-                    Role = RoleNames.Customer,
-                    IsGuest = true,
-                    UserName = "Khách vãng lai"
-                },
-                readOnlyMode: true,
-                cancellationToken: cancellationToken,
-                allowedToolNames: GuestToolAllowlist);
+                    if (decision.Boundary == "TEMPORAL_SCOPE")
+                        return new AiResponse { Success = true, Message = "Bạn muốn xem kỳ nào: hôm nay, tuần này, tháng này hay năm nay?" };
+                    if (decision.Boundary == "COMPARISON_SCOPE")
+                        return new AiResponse { Success = true, Message = "Bạn muốn so sánh khoảng thời gian nào, ví dụ hôm nay với hôm qua hoặc tháng này với tháng trước?" };
+                    if (decision.Boundary == "ORDER_STATUS_SCOPE")
+                        return new AiResponse { Success = true, Message = "Bạn muốn xem đơn đang xử lý, đã hoàn thành hay đã hủy trong khoảng thời gian nào?" };
+                    if (decision.Boundary == "CATALOG_CREATION_SCOPE")
+                        return new AiResponse { Success = true, Message = "Vui lòng nhập đủ thông tin: tên, giá, loại và nhóm. Ví dụ: Tạo món Bạc xỉu giá 30000, loại đồ uống, nhóm Cà phê." };
+                    if (decision.Boundary == "NAME_UPDATE_SCOPE")
+                        return new AiResponse { Success = true, Message = "Vui lòng nhập tên món hiện tại và tên mới, ví dụ: Đổi món Bạc xỉu TEST thành Bạc xỉu." };
+                    if (decision.Boundary == "PRICE_UPDATE_SCOPE")
+                        return new AiResponse { Success = true, Message = "Vui lòng nhập tên món và giá mới, ví dụ: Đổi giá món Phở thành 50000." };
+                    var message = decision.Boundary == "BRANCH_SELECTION"
+                        ? "Vui lòng nói rõ muốn xem cơ sở hiện tại hay toàn bộ các cơ sở. Việc chọn một cơ sở theo tên chưa được hỗ trợ trong câu hỏi AI."
+                        : "Vui lòng làm rõ kỳ thời gian, trạng thái đơn hoặc nội dung cần xem.";
+                    return new AiResponse { Success = true, Message = message };
+                }
+                if (decision.Decision != "ACCEPT")
+                    return new AiResponse { Success = true, Message = "Yêu cầu nằm ngoài phạm vi AI Admin." };
+                return await ExecuteAsync(new AiPilotToolDecision(decision.Decision, decision.Reason,
+                    decision.AcceptedIntent, decision.ProposedTool, decision.Arguments, decision.Period,
+                    decision.TopScore, decision.Margin), context, correlationId, stopwatch, true, token);
+            }
 
-        private async Task<AiResponse> ProcessInternalAsync(
-            AiRequest request,
-            AiUserContext userContext,
-            bool readOnlyMode,
-            CancellationToken cancellationToken,
-            IReadOnlySet<string>? allowedToolNames = null)
+            if (!_customerGuestPilot.IsEnabled)
+                return new AiResponse { Success = false, Error = "Customer/Guest AI is disabled." };
+            var customerDecision = await _customerGuestPilot.DecideAsync(request.Message, context, token);
+            _logger?.LogInformation("AI_E5_DECISION CorrelationId={CorrelationId} Role={Role} Decision={Decision} Reason={Reason} Intent={Intent} Tool={Tool}",
+                correlationId, context.IsGuest ? "guest" : "customer", customerDecision.Decision,
+                customerDecision.Reason, customerDecision.Intent, customerDecision.ProposedTool);
+            if (customerDecision.Decision == "CLARIFY")
+                return new AiResponse { Success = true, Message = "Vui lòng nói rõ hơn yêu cầu về thực đơn hoặc đơn hàng của bạn." };
+            if (customerDecision.Decision == "REJECT")
+                return new AiResponse { Success = true, Message = context.IsGuest
+                    ? "Phiên khách chỉ được phép xem thực đơn của chi nhánh hiện tại."
+                    : "Bạn không có quyền truy cập thông tin này." };
+            if (customerDecision.Decision != "ACCEPT")
+                return new AiResponse { Success = true, Message = "Yêu cầu này chưa được hỗ trợ trong trợ lý Customer/Guest." };
+            return await ExecuteAsync(new AiPilotToolDecision(customerDecision.Decision, customerDecision.Reason,
+                customerDecision.Intent, customerDecision.ProposedTool, customerDecision.Arguments,
+                "unknown", customerDecision.TopScore, customerDecision.Margin), context, correlationId,
+                stopwatch, false, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            var correlationId = _correlationContext?.CorrelationId ?? Guid.Empty;
-            if (correlationId == Guid.Empty) correlationId = Guid.NewGuid();
-            var stopwatch = Stopwatch.StartNew();
-            var currentPhase = AuthContextPhase;
-
-            try
-            {
-                if (!RoleNames.IsKnownRole(userContext.Role))
-                {
-                    LogSafeFailure(AiFailureCodes.ToolPermissionDenied, currentPhase, correlationId, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                    return new AiResponse { Success = false, Error = "Bạn không có quyền sử dụng AI Assistant." };
-                }
-
-                if (RoleNames.IsBranchScopedStaffRole(userContext.Role) && !userContext.BranchId.HasValue)
-                {
-                    currentPhase = BusinessContextPhase;
-                    LogSafeFailure(AiFailureCodes.OrchestrationFailed, currentPhase, correlationId, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                    return new AiResponse { Success = false, Error = "Không xác định được chi nhánh của tài khoản." };
-                }
-
-                // Build trusted business context and role prompt.
-                currentPhase = BusinessContextPhase;
-                var contextData = await _contextService.GetContextAsync(userContext);
-                currentPhase = PromptBuildPhase;
-                var systemInstruction = _promptBuilder.BuildSystemInstruction(userContext, contextData);
-
-                // 2. Lấy danh sách Tool được phép cho Role này
-                currentPhase = ToolRegistryPhase;
-                var toolsDef = _toolRegistry.GetToolsDefinition(userContext.Role, readOnlyMode, allowedToolNames);
-
-                if (_embeddingPilot.IsEnabled && string.Equals(userContext.Role, RoleNames.Manager, StringComparison.OrdinalIgnoreCase))
-                {
-                    ManagerEmbeddingPilotResult pilot;
-                    try
-                    {
-                        pilot = await _embeddingPilot.DecideAsync(request.Message, userContext, cancellationToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError(ex, "Embedding pilot failed closed.");
-                        return new AiResponse { Success = false, Error = "Semantic pilot is unavailable; request was not executed." };
-                    }
-
-                    if (pilot.Decision == "CLARIFY")
-                    {
-                        _logger?.LogInformation("AI_EMBEDDING_PILOT_DECISION AI_CORRELATION_ID={CorrelationId} AI_DECISION=CLARIFY AI_PERIOD={Period} AI_REASON={Reason} AI_DURATION_MS={DurationMilliseconds}", correlationId, pilot.Period, pilot.Reason, stopwatch.ElapsedMilliseconds);
-                        return new AiResponse { Success = true, Message = "Vui lòng làm rõ kỳ báo cáo hoặc nội dung cần xem." };
-                    }
-                    if (pilot.Decision == "UNSUPPORTED")
-                    {
-                        _logger?.LogInformation("AI_EMBEDDING_PILOT_DECISION AI_CORRELATION_ID={CorrelationId} AI_DECISION=UNSUPPORTED AI_PERIOD={Period} AI_REASON={Reason} AI_DURATION_MS={DurationMilliseconds}", correlationId, pilot.Period, pilot.Reason, stopwatch.ElapsedMilliseconds);
-                        return new AiResponse { Success = true, Message = "Yêu cầu nằm ngoài phạm vi semantic pilot." };
-                    }
-                    _logger?.LogInformation("AI_EMBEDDING_PILOT_DECISION AI_CORRELATION_ID={CorrelationId} AI_DECISION=ACCEPT AI_INTENT={Intent} AI_TOOL_NAME={ToolName} AI_PERIOD={Period} AI_REASON={Reason} AI_DURATION_MS={DurationMilliseconds}", correlationId, pilot.Intent, pilot.ToolName, pilot.Period, pilot.Reason, stopwatch.ElapsedMilliseconds);
-                    return await ExecutePilotToolAsync(pilot, userContext, readOnlyMode, cancellationToken, correlationId, stopwatch);
-                }
-
-                // 3. Chuẩn bị request cho Mock AI (Lượt 1) bao gồm lịch sử hội thoại
-                var contentsList = new System.Collections.Generic.List<object>();
-                if (request.History != null && request.History.Count > 0)
-                {
-                    foreach (var h in request.History.Where(h => !string.IsNullOrWhiteSpace(h.Content)))
-                    {
-                        // Client history is untrusted context. Never let a client-supplied
-                        // role impersonate a trusted model turn.
-                        contentsList.Add(new
-                        {
-                            role = "user",
-                            parts = new object[]
-                            {
-                                new { text = $"Untrusted conversation history:\n{h.Content}" }
-                            }
-                        });
-                    }
-                }
-                contentsList.Add(new { role = "user", parts = new object[] { new { text = request.Message } } });
-
-                var requestBody = new
-                {
-                    contents = contentsList.ToArray(),
-                    system_instruction = new { parts = new object[] { new { text = systemInstruction } } },
-                    tools = toolsDef.Length > 0 ? toolsDef : null,
-                    generationConfig = new { temperature = 0.2, maxOutputTokens = 1024 }
-                };
-
-                // 4. Lượt hội thoại với Mock AI (Hỗ trợ Sequential Tool Calling)
-                int iterations = 0;
-                const int MAX_ITERATIONS = 5;
-                var currentContents = new System.Collections.Generic.List<object>(contentsList);
-                while (iterations < MAX_ITERATIONS)
-                {
-                    var providerRequest = new
-                    {
-                        contents = currentContents.ToArray(),
-                        system_instruction = new { parts = new object[] { new { text = systemInstruction } } },
-                        tools = toolsDef.Length > 0 ? toolsDef : null,
-                        generationConfig = new { temperature = 0.2, maxOutputTokens = 1024 }
-                    };
-
-                    currentPhase = ProviderRequestPhase;
-                    var providerResponse = await _aiProvider.GenerateContentAsync(providerRequest, cancellationToken);
-
-                    currentPhase = ResponseProcessingPhase;
-                    using var doc = JsonDocument.Parse(providerResponse);
-                    if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
-                    {
-                        LogSafeFailure(AiFailureCodes.InvalidResponse, "ai_response", correlationId);
-                        return new AiResponse { Success = false, Error = "AI không trả về kết quả hợp lệ." };
-                    }
-
-                    var candidate = candidates[0];
-                    var content = candidate.GetProperty("content");
-                    var parts = content.GetProperty("parts");
-
-                    // Lưu phản hồi của model vào history cho lượt tiếp theo
-                    var modelParts = new System.Collections.Generic.List<object>();
-                    bool hasFunctionCall = false;
-
-                    foreach (var part in parts.EnumerateArray())
-                    {
-                        if (part.TryGetProperty("functionCall", out var call))
-                        {
-                            hasFunctionCall = true;
-                            var functionName = call.GetProperty("name").GetString() ?? "";
-                            // Preserve the complete function call, including its id and any
-                            // model metadata required to correlate the function response.
-                            modelParts.Add(new { functionCall = call.Clone() });
-                        }
-                        else if (part.TryGetProperty("text", out var text))
-                        {
-                            modelParts.Add(new { text = text.GetString() });
-                        }
-                    }
-
-                    currentContents.Add(new { role = "model", parts = modelParts.ToArray() });
-
-                    if (!hasFunctionCall)
-                    {
-                        // Nếu không có function call, trả về kết quả text cuối cùng
-                        string? finalText = null;
-                        foreach (var part in parts.EnumerateArray())
-                        {
-                            if (part.TryGetProperty("text", out var text))
-                            {
-                                finalText = text.GetString();
-                                break;
-                            }
-                        }
-                        return new AiResponse { Success = true, Message = finalText ?? "" };
-                    }
-
-                    // Xử lý các function call trong lượt này
-                    var functionResponses = new System.Collections.Generic.List<object>();
-                    foreach (var part in parts.EnumerateArray())
-                    {
-                        if (part.TryGetProperty("functionCall", out var call))
-                        {
-                            var functionName = call.GetProperty("name").GetString() ?? "";
-                            var args = call.TryGetProperty("args", out var arguments) ? arguments.Clone() : default;
-
-                            currentPhase = ToolRegistryPhase;
-                            var tool = _toolRegistry.GetTool(functionName);
-                            _toolAudit?.Record(
-                                correlationId,
-                                functionName,
-                                userContext,
-                                tool?.RiskLevel,
-                                "SELECTED",
-                                "SELECTED",
-                                readOnlyMode,
-                                stopwatch.ElapsedMilliseconds,
-                                tool == null ? "TOOL_NOT_FOUND" : "NONE");
-                            AiToolResult toolResult;
-
-                            if (tool == null)
-                            {
-                                _toolAudit?.Record(correlationId, functionName, userContext, null, "DENIED", "DENIED_TOOL_NOT_FOUND", readOnlyMode, stopwatch.ElapsedMilliseconds, "TOOL_NOT_FOUND");
-                                toolResult = AiToolResult.CreateError($"Tool '{functionName}' không tồn tại.");
-                            }
-                            else if (allowedToolNames is not null && !allowedToolNames.Contains(tool.Name))
-                            {
-                                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_GUEST_ALLOWLIST", readOnlyMode, stopwatch.ElapsedMilliseconds, "GUEST_TOOL_BLOCKED");
-                                toolResult = AiToolResult.CreateError("Tool này không được phép cho khách vãng lai.");
-                            }
-                            else if (readOnlyMode && tool.RiskLevel != ToolRiskLevel.Read)
-                            {
-                                // Defense in depth: the read-only registry filter is not the only gate.
-                                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_READ_ONLY", readOnlyMode, stopwatch.ElapsedMilliseconds, "READ_ONLY_BLOCKED");
-                                LogSafeFailure(AiFailureCodes.ReadOnlyPolicyBlocked, ToolExecutionPhase, correlationId, toolName: functionName, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                                toolResult = AiToolResult.CreateError("Tool này không được phép trong chế độ chỉ đọc.");
-                            }
-                            else if (!await _permissionService.CanExecuteAsync(tool, userContext))
-                            {
-                                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_PERMISSION", readOnlyMode, stopwatch.ElapsedMilliseconds, "PERMISSION_DENIED");
-                                LogSafeFailure(AiFailureCodes.ToolPermissionDenied, ToolExecutionPhase, correlationId, toolName: functionName, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                                toolResult = AiToolResult.CreateError("Bạn không có quyền thực hiện thao tác này.");
-                            }
-                            else
-                            {
-                                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "AUTHORIZED", "AUTHORIZED", readOnlyMode, stopwatch.ElapsedMilliseconds, "NONE");
-                                currentPhase = ToolExecutionPhase;
-                                try
-                                {
-                                    toolResult = await tool.ExecuteAsync(args, userContext);
-                                }
-                                catch
-                                {
-                                    _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "FAILED", "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, "TOOL_EXCEPTION");
-                                    throw;
-                                }
-                            }
-
-                            if (toolResult.InternalException != null)
-                            {
-                                _toolAudit?.Record(correlationId, tool?.Name ?? functionName, userContext, tool?.RiskLevel, "FAILED", "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, "TOOL_EXCEPTION");
-                                LogSafeFailure(AiFailureCodes.ToolExecutionFailed, ToolExecutionPhase, correlationId, toolName: functionName, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                            }
-                            else if (tool != null && toolResult.Success)
-                            {
-                                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "EXECUTED", "EXECUTED", readOnlyMode, stopwatch.ElapsedMilliseconds, "NONE");
-                            }
-                            else if (tool != null)
-                            {
-                                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "FAILED", "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, "TOOL_RESULT_ERROR");
-                            }
-
-                            currentPhase = ResponseProcessingPhase;
-                            // Stop immediately at the server-trusted confirmation boundary.
-                            // The model must not be able to self-confirm in the same turn.
-                            if (toolResult.Confirmation != null)
-                            {
-                                return new AiResponse
-                                {
-                                    Success = true,
-                                    Message = toolResult.Data,
-                                    Confirmation = toolResult.Confirmation
-                                };
-                            }
-
-                            // Preserve tool failure as an AI failure instead of letting Mock
-                            // format the error as a successful text response.
-                            if (!toolResult.Success)
-                            {
-                                return new AiResponse
-                                {
-                                    Success = false,
-                                    Error = toolResult.Error ?? "Không thể hoàn tất yêu cầu AI lúc này."
-                                };
-                            }
-
-                            var functionResponse = new Dictionary<string, object?>
-                            {
-                                ["name"] = functionName,
-                                ["response"] = new { content = toolResult.Success ? toolResult.Data : toolResult.Error }
-                            };
-
-                            if (call.TryGetProperty("id", out var callId)
-                                && callId.ValueKind == JsonValueKind.String
-                                && !string.IsNullOrWhiteSpace(callId.GetString()))
-                            {
-                                functionResponse["id"] = callId.GetString();
-                            }
-
-                            functionResponses.Add(new { functionResponse });
-                        }
-                    }
-
-                    // The Mock AI contract expects a function response as a user turn. Sending role=function
-                    // causes the follow-up Generate Content request to be rejected after a tool call.
-                    currentContents.Add(new { role = "user", parts = functionResponses.ToArray() });
-                    iterations++;
-                }
-
-                LogSafeFailure(AiFailureCodes.OrchestrationFailed, "tool_iteration_limit", correlationId);
-                return new AiResponse { Success = false, Error = "Đã vượt quá giới hạn lượt gọi Tool (Sequential Tool Calling)." };
-            }
-            catch (JsonException)
-            {
-                LogSafeFailure(AiFailureCodes.InvalidResponse, currentPhase, correlationId, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                return new AiResponse
-                {
-                    Success = false,
-                    Error = "AI request could not be processed."
-                };
-            }
-            catch (Exception)
-            {
-                LogSafeFailure(AiFailureCodes.OrchestrationFailed, currentPhase, correlationId, elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
-                return new AiResponse
-                {
-                    Success = false,
-                    Error = "AI request could not be processed."
-                };
-            }
+            return new AiResponse { Success = false, Error = "AI request was cancelled." };
         }
-
-        private async Task<AiResponse> ExecutePilotToolAsync(
-            ManagerEmbeddingPilotResult pilot,
-            AiUserContext userContext,
-            bool readOnlyMode,
-            CancellationToken cancellationToken,
-            Guid correlationId,
-            Stopwatch stopwatch)
+        catch (Exception ex)
         {
-            if (pilot.ToolName is null || pilot.Intent is null)
-                return new AiResponse { Success = false, Error = "Semantic pilot returned an invalid decision." };
-            var tool = _toolRegistry.GetTool(pilot.ToolName);
-            var period = pilot.Period;
-            _toolAudit?.Record(correlationId, pilot.ToolName, userContext, tool?.RiskLevel, "SELECTED", "SELECTED", readOnlyMode, stopwatch.ElapsedMilliseconds, tool is null ? "TOOL_NOT_FOUND" : "NONE", period);
-            if (tool is null || !string.Equals(tool.Name, pilot.ToolName, StringComparison.OrdinalIgnoreCase))
-                return new AiResponse { Success = false, Error = "Semantic pilot tool is unavailable." };
-            if (readOnlyMode && tool.RiskLevel != ToolRiskLevel.Read)
-            {
-                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_READ_ONLY", readOnlyMode, stopwatch.ElapsedMilliseconds, "READ_ONLY_BLOCKED", period);
-                return new AiResponse { Success = false, Error = "Semantic pilot tool is not read-only." };
-            }
-            if (!await _permissionService.CanExecuteAsync(tool, userContext))
-            {
-                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "DENIED", "DENIED_PERMISSION", readOnlyMode, stopwatch.ElapsedMilliseconds, "PERMISSION_DENIED", period);
-                return new AiResponse { Success = false, Error = "Bạn không có quyền thực hiện thao tác này." };
-            }
-            _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "AUTHORIZED", "AUTHORIZED", readOnlyMode, stopwatch.ElapsedMilliseconds, "NONE", period);
-            cancellationToken.ThrowIfCancellationRequested();
-            AiToolResult result;
-            try
-            {
-                result = await tool.ExecuteAsync(pilot.Arguments, userContext);
-            }
-            catch
-            {
-                _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, "FAILED", "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, "TOOL_EXCEPTION", period);
-                throw;
-            }
-            _toolAudit?.Record(correlationId, tool.Name, userContext, tool.RiskLevel, result.Success ? "EXECUTED" : "FAILED", result.Success ? "EXECUTED" : "FAILED", readOnlyMode, stopwatch.ElapsedMilliseconds, result.Success ? "NONE" : "TOOL_RESULT_ERROR", period);
-            if (!result.Success)
-                return new AiResponse { Success = false, Error = result.Error ?? "Không thể hoàn tất yêu cầu." };
-            if (result.Confirmation is not null)
-                return new AiResponse { Success = true, Message = result.Data, Confirmation = result.Confirmation };
-            return new AiResponse { Success = true, Message = result.Data };
+            _logger?.LogError(ex, "AI_E5_FAILURE CorrelationId={CorrelationId} Phase={Phase} ToolExecuted=NO", correlationId, phase);
+            return new AiResponse { Success = false, Error = "Semantic AI is unavailable; request was not executed." };
         }
+    }
 
-        private void LogSafeFailure(
-            string code,
-            string phase,
-            Guid correlationId,
-            long? elapsedMilliseconds = null,
-            string? toolName = null,
-            string? failureSubphase = null)
+    private async Task<AiResponse> ExecuteAsync(AiPilotToolDecision decision, AiUserContext context,
+        Guid correlationId, Stopwatch stopwatch, bool admin, CancellationToken token)
+    {
+        if (decision.ToolName is null || decision.Intent is null)
+            return new AiResponse { Success = false, Error = "Semantic pilot returned an invalid decision." };
+        var tool = _registry.GetTool(decision.ToolName);
+        var readOnly = tool?.RiskLevel == ToolRiskLevel.Read;
+        _audit?.Record(correlationId, decision.ToolName, context, tool?.RiskLevel, "SELECTED", "SELECTED",
+            readOnly, stopwatch.ElapsedMilliseconds, tool is null ? "TOOL_NOT_FOUND" : "NONE", decision.Period);
+        if (tool is null ||
+            !await _permission.CanExecuteAsync(tool, context))
         {
-            _logger?.LogWarning(
-                "AI_FAILURE_CODE={FailureCode} AI_PHASE={Phase} AI_SUBPHASE={Subphase} AI_CORRELATION_ID={CorrelationId} TOOL_EXECUTED={ToolExecuted} AI_DURATION_MS={DurationMilliseconds} AI_TOOL_NAME={ToolName}",
-                code,
-                phase,
-                failureSubphase ?? "UNKNOWN",
-                correlationId,
-                toolName == null ? "NO" : "YES",
-                elapsedMilliseconds,
-                toolName);
+            _audit?.Record(correlationId, decision.ToolName, context, tool?.RiskLevel, "DENIED", "DENIED_PERMISSION",
+                readOnly, stopwatch.ElapsedMilliseconds, "PERMISSION_DENIED", decision.Period);
+            return new AiResponse { Success = false, Error = "AI tool is not authorized." };
         }
+        token.ThrowIfCancellationRequested();
+        _audit?.Record(correlationId, tool.Name, context, tool.RiskLevel, "AUTHORIZED", "AUTHORIZED",
+            readOnly, stopwatch.ElapsedMilliseconds, "NONE", decision.Period);
+        var result = await tool.ExecuteAsync(decision.Arguments, context);
+        _audit?.Record(correlationId, tool.Name, context, tool.RiskLevel, result.Success ? "EXECUTED" : "FAILED",
+            result.Success ? "EXECUTED" : "FAILED", readOnly, stopwatch.ElapsedMilliseconds,
+            result.Success ? "NONE" : "TOOL_RESULT_ERROR", decision.Period);
+        if (result.Confirmation is not null)
+            return new AiResponse { Success = true, Message = result.Data, Confirmation = result.Confirmation };
+        if (!result.Success) return new AiResponse { Success = false, Error = result.Error ?? "AI tool failed." };
+        bool formatted;
+        string message;
+        string? error;
+        if (admin)
+            formatted = AdminAiResponseFormatter.TryFormat(decision.Intent, tool.Name, result.Data, out message, out error);
+        else
+            formatted = CustomerGuestAiResponseFormatter.TryFormat(decision.Intent, tool.Name, result.Data, out message, out error);
+        return formatted
+            ? new AiResponse { Success = true, Message = message }
+            : new AiResponse { Success = false, Error = error ?? "AI result could not be formatted." };
     }
 }

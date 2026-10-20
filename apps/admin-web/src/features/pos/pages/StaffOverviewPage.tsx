@@ -2,11 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClipboardList, ChevronDown, ChevronRight, Loader2, RefreshCw, Utensils } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { API_URL } from '../../../config';
-import { classifyOrder } from '../../orders/orderClassification';
 
 interface StaffTable { id: string; name: string; areaId?: string; areaName?: string; status?: string; }
 interface StaffArea { id: string; name: string; displayOrder?: number; branchId?: string; }
-interface StaffOrder { id: string; status?: string; createdBy?: string | null; tableName?: string | null; }
+interface StaffOverviewOrderCounts { pendingCount: number; activeCount: number; completedTodayCount: number; }
 
 const StaffOverviewPage = () => {
   const branchName = localStorage.getItem('selectedBranchName') || 'Chi nhánh được phân công';
@@ -14,9 +13,7 @@ const StaffOverviewPage = () => {
   const [tables, setTables] = useState<StaffTable[]>([]);
   const [areas, setAreas] = useState<StaffArea[]>([]);
   const [collapsedAreas, setCollapsedAreas] = useState<Record<string, boolean>>({});
-  const [pendingOrders, setPendingOrders] = useState<StaffOrder[]>([]);
-  const [activeOrders, setActiveOrders] = useState<StaffOrder[]>([]);
-  const [completedToday, setCompletedToday] = useState<StaffOrder[]>([]);
+  const [orderCounts, setOrderCounts] = useState<StaffOverviewOrderCounts>({ pendingCount: 0, activeCount: 0, completedTodayCount: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(false);
@@ -32,30 +29,21 @@ const StaffOverviewPage = () => {
     abortControllerRef.current = controller;
     setError(null);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const [tableResponse, areaResponse, pendingResponse, completedResponse] = await Promise.all([
+      const [tableResponse, areaResponse, orderCountsResponse] = await Promise.all([
         fetch(`${API_URL}/api/Table?isActive=true&branchId=${encodeURIComponent(branchId)}`, { signal: controller.signal }),
         fetch(`${API_URL}/api/Area?branchId=${encodeURIComponent(branchId)}`, { signal: controller.signal }),
-        fetch(`${API_URL}/api/Order?status=Đang xử lý,Đổi quà&branchId=${encodeURIComponent(branchId)}`, { signal: controller.signal }),
-        fetch(`${API_URL}/api/Order?status=Hoàn thành&branchId=${encodeURIComponent(branchId)}&fromDate=${today}&toDate=${today}`, { signal: controller.signal })
+        fetch(`${API_URL}/api/Order/staff-overview-counts?branchId=${encodeURIComponent(branchId)}`, { signal: controller.signal })
       ]);
-      if (![tableResponse, areaResponse, pendingResponse, completedResponse].every(response => response.ok)) throw new Error('Không thể tải dữ liệu phục vụ.');
-      const [tablesData, areasData, pendingData, completedData] = await Promise.all([
+      if (![tableResponse, areaResponse, orderCountsResponse].every(response => response.ok)) throw new Error('Không thể tải dữ liệu phục vụ.');
+      const [tablesData, areasData, countsData] = await Promise.all([
         tableResponse.json(),
         areaResponse.json(),
-        pendingResponse.json(),
-        completedResponse.json()
+        orderCountsResponse.json()
       ]);
       if (!mountedRef.current) return;
       setTables(tablesData);
       setAreas(areasData);
-      setPendingOrders(Array.isArray(pendingData)
-        ? pendingData.filter((order: StaffOrder) => classifyOrder(order).isAwaitingStaffAction)
-        : []);
-      setActiveOrders(Array.isArray(pendingData)
-        ? pendingData.filter((order: StaffOrder) => classifyOrder(order).isAccepted)
-        : []);
-      setCompletedToday(completedData);
+      setOrderCounts(countsData);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       if (!mountedRef.current) return;
@@ -76,7 +64,7 @@ const StaffOverviewPage = () => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
-    const timer = window.setInterval(refreshIfVisible, 15000);
+    const timer = window.setInterval(refreshIfVisible, 30000);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       mountedRef.current = false;
@@ -102,14 +90,14 @@ const StaffOverviewPage = () => {
     ['Tổng số bàn', tables.length, 'text-blue-700 bg-blue-50'],
     ['Bàn trống', empty, 'text-emerald-700 bg-emerald-50'],
     ['Đang có khách', occupied, 'text-orange-700 bg-orange-50'],
-    ['Đơn chờ xử lý', pendingOrders.length, 'text-amber-700 bg-amber-50'],
-    ['Đơn đang phục vụ', activeOrders.length, 'text-indigo-700 bg-indigo-50'],
-    ['Hoàn thành hôm nay', completedToday.length, 'text-green-700 bg-green-50']
+    ['Đơn chờ xử lý', orderCounts.pendingCount, 'text-amber-700 bg-amber-50'],
+    ['Đơn đang phục vụ', orderCounts.activeCount, 'text-indigo-700 bg-indigo-50'],
+    ['Hoàn thành hôm nay', orderCounts.completedTodayCount, 'text-green-700 bg-green-50']
   ];
 
   if (loading) return <div className="flex min-h-full items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
   return <div className="min-h-full bg-slate-50 p-4 text-slate-800 md:p-7">
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-black tracking-tight">Tổng quan phục vụ</h1><p className="mt-1 text-sm text-slate-500">{branchName} · Số liệu cập nhật tự động mỗi 15 giây</p></div><button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-50"><RefreshCw size={15}/> Làm mới</button></div>
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-black tracking-tight">Tổng quan phục vụ</h1><p className="mt-1 text-sm text-slate-500">{branchName} · Số liệu cập nhật tự động mỗi 30 giây</p></div><button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-50"><RefreshCw size={15}/> Làm mới</button></div>
     {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{cards.map(([label, value, style]) => <div key={label} className={`rounded-2xl p-4 ${style}`}><p className="text-xs font-bold uppercase tracking-wide opacity-80">{label}</p><p className="mt-2 text-3xl font-black">{value}</p></div>)}</div>
     <div className="mt-6"><Link to="/staff/sales" className="flex items-center gap-4 rounded-2xl bg-blue-600 p-5 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700"><ClipboardList size={28}/><span><b className="block text-lg">Bán hàng / Gọi món</b><small>Chọn bàn, thêm món và gửi bếp</small></span></Link></div>

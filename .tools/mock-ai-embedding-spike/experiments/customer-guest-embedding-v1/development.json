@@ -1,0 +1,14 @@
+[
+  { "id": "DEV-C-MENU-01", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Mình muốn biết hôm nay quán có bán món gì và bao nhiêu tiền.", "category": null, "caseType": "accepted" },
+  { "id": "DEV-C-MENU-02", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Cho mình danh sách nước uống đang phục vụ.", "category": "Đồ uống", "caseType": "accepted" },
+  { "id": "DEV-C-MENU-03", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "mon an nao dang co the ban?", "category": "Món ăn", "caseType": "accepted" },
+  { "id": "DEV-C-ORD-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Mình muốn xem lại đơn của mình.", "category": null, "caseType": "accepted" },
+  { "id": "DEV-C-ORD-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "hom qua toi dat nhung don nao?", "category": null, "caseType": "accepted" },
+  { "id": "DEV-C-ORD-03", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Kiểm tra trạng thái các đơn gần đây của tôi.", "category": null, "caseType": "accepted" },
+  { "id": "DEV-G-MENU-01", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Xin xem thực đơn của chi nhánh này.", "category": null, "caseType": "accepted" },
+  { "id": "DEV-G-MENU-02", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "xem gia do an trong menu", "category": "Món ăn", "caseType": "accepted" },
+  { "id": "DEV-G-MENU-03", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Quán có bán đồ uống gì?", "category": "Đồ uống", "caseType": "accepted" },
+  { "id": "DEV-G-OOD-01", "role": "guest", "intent": null, "tool": null, "text": "Cho tôi xem doanh thu hôm nay.", "category": null, "caseType": "unauthorized" },
+  { "id": "DEV-G-OOD-02", "role": "guest", "intent": null, "tool": null, "text": "Xem đơn hàng cá nhân của tôi.", "category": null, "caseType": "unauthorized" },
+  { "id": "DEV-G-WRITE-01", "role": "guest", "intent": null, "tool": null, "text": "Đổi giá món phở thành 50000.", "category": null, "caseType": "write" }
+]

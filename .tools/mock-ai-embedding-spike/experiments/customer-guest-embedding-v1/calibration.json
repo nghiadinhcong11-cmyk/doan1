@@ -1,0 +1,10 @@
+[
+  { "id": "CAL-C-MENU-01", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Có thể cho tôi bảng giá món ăn không?", "category": "Món ăn", "caseType": "accepted" },
+  { "id": "CAL-C-MENU-02", "role": "customer", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "xem danh sach do uong dang ban", "category": "Đồ uống", "caseType": "accepted" },
+  { "id": "CAL-C-ORD-01", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Các đơn mà tôi đã đặt gần đây.", "category": null, "caseType": "accepted" },
+  { "id": "CAL-C-ORD-02", "role": "customer", "intent": "MY_ORDERS", "tool": "get_my_orders", "text": "Tôi muốn tra trạng thái đơn của chính mình.", "category": null, "caseType": "accepted" },
+  { "id": "CAL-G-NEG-01", "role": "guest", "intent": null, "tool": null, "text": "Đừng xem đơn của tôi, chỉ cho xem menu.", "category": null, "caseType": "negation" },
+  { "id": "CAL-G-MULTI-01", "role": "guest", "intent": null, "tool": null, "text": "Xem menu và cho biết doanh thu hôm nay.", "category": null, "caseType": "multi_intent" },
+  { "id": "CAL-G-MENU-01", "role": "guest", "intent": "MENU_QUERY", "tool": "customer_get_menu", "text": "Nhà hàng còn những món nào có thể phục vụ?", "category": null, "caseType": "accepted" },
+  { "id": "CAL-C-OOD-01", "role": "customer", "intent": null, "tool": null, "text": "Giúp tôi đổi mật khẩu bằng chat.", "category": null, "caseType": "ood" }
+]

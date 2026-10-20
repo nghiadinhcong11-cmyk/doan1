@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import * as signalR from '@microsoft/signalr';
+import React, { useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Utensils, User, Camera, Calendar, LogOut, ChevronDown, Store, ShieldCheck, Clock, ChevronRight, Bell, BellRing, Loader2, Receipt } from 'lucide-react';
 import { API_URL } from '../config';
-import { fetchPendingWebOrderCount, fetchPendingWebOrderNotifications, PENDING_ORDER_CHANGED_EVENT } from '../features/notifications/pendingOrderQuery';
+import { fetchPendingWebOrderCount, fetchPendingWebOrderNotifications } from '../features/notifications/pendingOrderQuery';
 import { useNotificationCenter } from '../features/notifications/useNotificationCenter';
 import NotificationBell from '../features/notifications/NotificationBell';
 
@@ -54,75 +53,6 @@ const CashierNavbar: React.FC<CashierNavbarProps> = ({ onLogout, userName, userR
       pendingNotificationsRequestInFlight.current = false;
     }
   };
-
-  useEffect(() => {
-    return;
-    let disposed = false;
-    fetchPersistentNotifications();
-    void fetchPendingOrderNotificationsForDisplay();
-    const refreshIfVisible = (refresh: () => void) => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    const interval = setInterval(() => refreshIfVisible(fetchPersistentNotifications), 30000); // 30s cập nhật 1 lần
-    const pendingNotificationInterval = setInterval(() => refreshIfVisible(fetchPendingOrderNotificationsForDisplay), 30000);
-    refreshPendingOrderCount();
-    const pendingInterval = setInterval(() => refreshIfVisible(refreshPendingOrderCount), 30000);
-    const connection = new signalR.HubConnectionBuilder().withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
-    const onNotification = (notification: any) => {
-      if (disposed) return;
-      setNotifications(prev => [notification, ...prev.filter(item => item.id !== notification.id)].slice(0, 100));
-    };
-    connection.on('NotificationCreated', onNotification);
-    const onPendingOrderChanged = () => {
-      if (disposed) return;
-      void refreshPendingOrderCount();
-      void fetchPendingOrderNotificationsForDisplay();
-    };
-    connection.on('PendingOrderChanged', onPendingOrderChanged);
-    connection.onreconnected(() => {
-      if (disposed) return;
-      if (document.visibilityState !== 'visible') return;
-      void fetchPersistentNotifications();
-      void fetchPendingOrderNotificationsForDisplay();
-      void refreshPendingOrderCount();
-    });
-    void connection.start().catch(error => {
-      if (!disposed) console.warn('Notification hub connection failed to start.', error);
-    });
-
-    // Lắng nghe sự kiện yêu cầu cập nhật thông báo ngay lập tức
-    const handleRefresh = () => {
-      if (disposed) return;
-      void fetchPersistentNotifications();
-      void fetchPendingOrderNotificationsForDisplay();
-    };
-    window.addEventListener('refresh-notifications', handleRefresh);
-    window.addEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
-    const handleVisibilityChange = () => {
-      if (disposed) return;
-      if (document.visibilityState === 'visible') {
-        void fetchPersistentNotifications();
-        void fetchPendingOrderNotificationsForDisplay();
-        void refreshPendingOrderCount();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      disposed = true;
-      clearInterval(interval);
-      clearInterval(pendingNotificationInterval);
-      clearInterval(pendingInterval);
-      connection.off('NotificationCreated', onNotification);
-      connection.off('PendingOrderChanged', onPendingOrderChanged);
-      window.removeEventListener('refresh-notifications', handleRefresh);
-      window.removeEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingOrderChanged);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      void connection.stop().catch(error => {
-        console.warn('Notification hub cleanup failed.', error);
-      });
-    };
-  }, []);
 
   const displayedNotifications = [...pendingOrderNotifications, ...notifications]
     .filter((notification, index, all) => all.findIndex(item => item.id === notification.id) === index);

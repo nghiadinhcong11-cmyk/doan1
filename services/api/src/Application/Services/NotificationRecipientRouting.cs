@@ -35,12 +35,6 @@ public static class NotificationRecipientRouting
                 BranchRoleGroup(notification.BranchId.Value, notification.TargetRole)
             };
 
-            // Preserve the existing BusinessInsight admin visibility rule.
-            if (string.Equals(notification.Type, "BusinessInsight", StringComparison.Ordinal))
-            {
-                groups.Add("role:admin");
-            }
-
             return groups;
         }
 

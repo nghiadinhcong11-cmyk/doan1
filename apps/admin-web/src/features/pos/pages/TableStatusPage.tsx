@@ -68,7 +68,7 @@ const TableStatusPage = () => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') refreshTables(true);
     };
-    const interval = setInterval(() => refreshTables(false), 20000); // 20s cập nhật 1 lần
+    const interval = setInterval(() => refreshTables(false), 30000); // SignalR/event flow handles immediate changes; polling is reconciliation.
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       clearInterval(interval);

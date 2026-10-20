@@ -135,6 +135,40 @@ namespace RestaurantPOS.WebAPI.Controllers
                 : Ok(orders);
         }
 
+        /// <summary>Returns only the fields needed by the staff pending-order notification preview.</summary>
+        [HttpGet("pending-summary")]
+        [Authorize(Roles = "admin,manager,cashier,employee")]
+        public async Task<IActionResult> GetPendingOrderSummary([FromQuery] Guid? branchId)
+        {
+            if (!TryResolveBranch(branchId, out var effectiveBranchId))
+                return Forbid();
+
+            return Ok(await _orderService.GetPendingOrderSummariesAsync(effectiveBranchId));
+        }
+
+        /// <summary>Returns only order counts used by the staff overview cards.</summary>
+        [HttpGet("staff-overview-counts")]
+        [Authorize(Roles = "admin,manager,employee,cashier")]
+        public async Task<IActionResult> GetStaffOverviewCounts([FromQuery] Guid? branchId)
+        {
+            if (!TryResolveBranch(branchId, out var effectiveBranchId) || !effectiveBranchId.HasValue)
+                return Forbid();
+
+            return Ok(await _orderService.GetStaffOverviewOrderCountsAsync(effectiveBranchId.Value));
+        }
+
+        /// <summary>Returns the authenticated customer's order history without line-item details.</summary>
+        [HttpGet("customer-summary")]
+        [Authorize(Roles = "customer")]
+        public async Task<IActionResult> GetCustomerOrderSummary()
+        {
+            var customerPhone = User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(customerPhone))
+                return Forbid();
+
+            return Ok(await _orderService.GetCustomerOrderSummariesAsync(customerPhone.Trim()));
+        }
+
         /// <summary>
         /// Tạo mới hoặc cập nhật thông tin đơn hàng POS
         /// </summary>
@@ -305,7 +339,8 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (_context != null && toppingIds.Count > 0 && await _context.Toppings.CountAsync(t => toppingIds.Contains(t.Id)) != toppingIds.Count)
                     return BadRequest("One or more toppings do not exist.");
 
-                var result = await _orderService.CreateOrUpdateOrderAsync(order);
+                var deferAvailabilityValidation = guestMarker || IsCustomer();
+                var result = await _orderService.CreateOrUpdateOrderAsync(order, deferAvailabilityValidation);
                 if (string.Equals(result.Status, "Đang xử lý", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(result.CreatedBy))
                     await NotifyPendingOrderChangedAsync(result.BranchId);
                 return Ok(result);
@@ -350,6 +385,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 WebOrderAcceptResult.NotFound => NotFound(),
                 WebOrderAcceptResult.Forbidden => Forbid(),
                 WebOrderAcceptResult.InvalidTable => BadRequest(new { success = false, message = "Bàn không tồn tại hoặc không hoạt động." }),
+                WebOrderAcceptResult.UnavailableProducts => Conflict(new { success = false, message = "Một hoặc nhiều món không còn khả dụng tại chi nhánh. Vui lòng điều chỉnh đơn trước khi tiếp nhận." }),
                 _ => Conflict(new { success = false, message = "Đơn này đã được nhân viên khác tiếp nhận hoặc không còn chờ xử lý." })
             };
         }

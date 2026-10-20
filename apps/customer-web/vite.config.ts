@@ -3,17 +3,16 @@ import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const httpsDir = path.resolve(__dirname, '../../.https')
-const keyPath = process.env.VITE_HTTPS_KEY_PATH || path.join(httpsDir, 'pos-key.pem')
-const certPath = process.env.VITE_HTTPS_CERT_PATH || path.join(httpsDir, 'pos-cert.pem')
+const keyPath = process.env.VITE_HTTPS_KEY_PATH
+const certPath = process.env.VITE_HTTPS_CERT_PATH
 const lanMode = Boolean(process.env.DOAN_DEV_LAN_HOST)
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
   const httpsEnabled = command === 'serve' && process.env.VITE_HTTPS !== 'false'
-  const hasCertificate = fs.existsSync(keyPath) && fs.existsSync(certPath)
+  const hasCertificate = Boolean(keyPath && certPath) && fs.existsSync(keyPath) && fs.existsSync(certPath)
 
-  if (httpsEnabled && !hasCertificate) {
-    throw new Error(`Customer Web HTTPS certificate is missing: ${certPath}`)
+  if (httpsEnabled && (!keyPath || !certPath || !hasCertificate)) {
+    throw new Error('Customer Web HTTPS PEM paths are missing or invalid. Run scripts/setup-https.ps1 first.')
   }
 
   return {

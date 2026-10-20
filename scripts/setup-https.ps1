@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$LanHost,
+  [string[]]$LanHost,
   [switch]$Localhost,
   [switch]$ValidateOnly
 )
@@ -53,6 +53,17 @@ function Read-SelectedHost {
   throw 'INVALID_LAN_HOST: enter one listed address or a hostname/IP containing only letters, digits, dot and hyphen.'
 }
 
+function Get-HostValues([string[]]$Values) {
+  $hosts = [System.Collections.Generic.List[string]]::new()
+  foreach ($value in @($Values)) {
+    foreach ($part in ($value -split ',')) {
+      $trimmed = $part.Trim()
+      if (-not [string]::IsNullOrWhiteSpace($trimmed)) { $hosts.Add($trimmed) }
+    }
+  }
+  return @($hosts | Sort-Object -Unique)
+}
+
 function Get-CertificateText([string]$OpenSsl, [string]$CertificatePath) {
   return Invoke-External $OpenSsl @('x509', '-in', $CertificatePath, '-noout', '-text')
 }
@@ -60,16 +71,6 @@ function Get-CertificateText([string]$OpenSsl, [string]$CertificatePath) {
 function Test-CertificateCoversHost([string]$Text, [string]$HostValue) {
   if ($HostValue -match '^\d+(\.\d+){3}$') { return $Text -match [regex]::Escape("IP Address:$HostValue") }
   return $Text -match [regex]::Escape("DNS:$HostValue")
-}
-
-function Get-PublicKeyHash([string]$OpenSsl, [string]$Path, [switch]$PrivateKey) {
-  if ($PrivateKey) { $publicKey = & $OpenSsl pkey -in $Path -pubout 2>$null }
-  else { $publicKey = & $OpenSsl x509 -in $Path -noout -pubkey 2>$null }
-  if ($LASTEXITCODE -ne 0) { return $null }
-  # Compare the canonical public-key PEM text. This avoids piping binary DER
-  # through PowerShell's native-command text conversion.
-  $bytes = [System.Text.Encoding]::UTF8.GetBytes((($publicKey -join "`n").Trim()))
-  return ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))).ToLowerInvariant()
 }
 
 function Test-CertificatePair([string]$OpenSsl, [string]$CertificatePath, [string]$KeyPath, [string]$CaPath, [string[]]$RequiredHosts) {
@@ -106,12 +107,53 @@ $caRoot = (Invoke-External $mkcert @('-CAROOT')).Trim()
 $caPath = Join-Path $caRoot 'rootCA.pem'
 if (-not (Test-Path -LiteralPath $caPath)) { throw "MKCERT_CA_NOT_FOUND: current mkcert CA was not found at $caPath. Trust setup must be performed manually." }
 
-if ($Localhost -and -not [string]::IsNullOrWhiteSpace($LanHost)) { throw 'INVALID_MODE: do not combine -Localhost with -LanHost.' }
-if (-not $Localhost -and [string]::IsNullOrWhiteSpace($LanHost)) { $LanHost = $env:DOAN_DEV_LAN_HOST }
-if (-not $Localhost -and [string]::IsNullOrWhiteSpace($LanHost)) { $LanHost = Read-SelectedHost }
-if (-not $Localhost -and -not (Test-HostValue $LanHost)) { throw 'INVALID_LAN_HOST: host must contain only letters, digits, dot and hyphen, without scheme, port or path.' }
+if ($Localhost -and @($LanHost).Count -gt 0) { throw 'INVALID_MODE: do not combine -Localhost with -LanHost.' }
 
-$requestedHosts = if ($Localhost) { @('localhost', '127.0.0.1') } else { @('localhost', '127.0.0.1', $LanHost) }
+$runtimeLanHost = $null
+if (-not $Localhost) {
+  if (@($LanHost).Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($env:DOAN_DEV_LAN_HOST)) {
+    $LanHost = @($env:DOAN_DEV_LAN_HOST)
+  }
+  if (@($LanHost).Count -eq 0) { $LanHost = @(Read-SelectedHost) }
+  $runtimeLanHost = ((@($LanHost)[0] -split ',')[0]).Trim()
+  $LanHost = @(Get-HostValues $LanHost)
+  if (-not (Test-HostValue $runtimeLanHost)) { throw 'INVALID_LAN_HOST: host must contain only letters, digits, dot and hyphen, without scheme, port or path.' }
+  foreach ($hostValue in @($LanHost)) {
+    $parsedIp = $null
+    if (-not [System.Net.IPAddress]::TryParse($hostValue, [ref]$parsedIp) -or $parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+      throw "INVALID_LAN_IP: '$hostValue' must be an IPv4 address."
+    }
+  }
+}
+
+$hostsFile = Join-Path $certDirectory 'lan-hosts.txt'
+$savedHosts = @(
+  if (Test-Path -LiteralPath $hostsFile) {
+    Get-Content -LiteralPath $hostsFile |
+      ForEach-Object { $_.Trim() } |
+      Where-Object { $_ -and $_ -notmatch '^#' }
+  }
+)
+$savedHosts = @(Get-HostValues $savedHosts)
+foreach ($savedHost in $savedHosts) {
+  $parsedIp = $null
+  if (-not [System.Net.IPAddress]::TryParse($savedHost, [ref]$parsedIp) -or $parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+    throw "INVALID_SAVED_LAN_IP: $savedHost"
+  }
+}
+
+$knownLanHosts = @()
+$requestedHosts = if ($Localhost) {
+  @('localhost', '127.0.0.1')
+}
+else {
+  $knownLanHosts = @($savedHosts + $LanHost) | Sort-Object -Unique
+  @('localhost', '127.0.0.1') + @($knownLanHosts)
+}
+$requestedHosts = @($requestedHosts | Sort-Object -Unique)
+Write-Host 'Required HTTPS hosts:'
+$requestedHosts | ForEach-Object { Write-Host "  - $_" }
+
 $existingValid = Test-CertificatePair $openssl $certificatePath $keyPath $caPath $requestedHosts
 if ($existingValid) {
   Write-Host "Reusing verified mkcert leaf: $certificatePath"
@@ -127,7 +169,7 @@ if ($existingValid) {
     if (-not (Test-CertificatePair $openssl $tempCert $tempKey $caPath $requestedHosts)) { throw 'GENERATED_CERTIFICATE_INVALID: generated leaf failed SAN, expiry, issuer or key-match validation.' }
     Move-Item -LiteralPath $tempCert -Destination $certificatePath -Force
     Move-Item -LiteralPath $tempKey -Destination $keyPath -Force
-    Write-Host "Created verified mkcert leaf covering: $($requestedHosts -join ', ')"
+    Write-Host "Created verified multi-LAN mkcert leaf covering: $($requestedHosts -join ', ')"
   } finally {
     Remove-Item -LiteralPath $tempCert, $tempKey -Force -ErrorAction SilentlyContinue
   }
@@ -135,8 +177,12 @@ if ($existingValid) {
 
 if (-not (Test-CertificatePair $openssl $certificatePath $keyPath $caPath $requestedHosts)) { throw 'CERTIFICATE_FINAL_VALIDATION_FAILED: refusing to export runtime configuration.' }
 
-$expectedApiUrl = if ($Localhost) { 'https://localhost:5000' } else { "https://${LanHost}:5000" }
-$expectedCustomerUrl = if ($Localhost) { 'https://localhost:5174' } else { "https://${LanHost}:5174" }
+if (-not $Localhost -and -not $ValidateOnly) {
+  $knownLanHosts | Set-Content -LiteralPath $hostsFile -Encoding utf8
+}
+
+$expectedApiUrl = if ($Localhost) { 'https://localhost:5000' } else { "https://${runtimeLanHost}:5000" }
+$expectedCustomerUrl = if ($Localhost) { 'https://localhost:5174' } else { "https://${runtimeLanHost}:5174" }
 if (-not [string]::IsNullOrWhiteSpace($env:VITE_API_URL) -and $env:VITE_API_URL -ne $expectedApiUrl) {
   throw "ENV_OVERRIDE_CONFLICT: VITE_API_URL is already '$($env:VITE_API_URL)' but this mode requires '$expectedApiUrl'. Clear the stale variable and rerun."
 }
@@ -144,7 +190,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:VITE_CUSTOMER_WEB_URL) -and $env:VITE
   throw "ENV_OVERRIDE_CONFLICT: VITE_CUSTOMER_WEB_URL is already '$($env:VITE_CUSTOMER_WEB_URL)' but this mode requires '$expectedCustomerUrl'. Clear the stale variable and rerun."
 }
 
-$env:DOAN_DEV_LAN_HOST = if ($Localhost) { '' } else { $LanHost }
+$env:DOAN_DEV_LAN_HOST = if ($Localhost) { '' } else { $runtimeLanHost }
 $env:HTTPS_PEM_CERT_PATH = (Resolve-Path -LiteralPath $certificatePath).Path
 $env:HTTPS_PEM_KEY_PATH = (Resolve-Path -LiteralPath $keyPath).Path
 $env:VITE_HTTPS_CERT_PATH = $env:HTTPS_PEM_CERT_PATH
@@ -152,13 +198,12 @@ $env:VITE_HTTPS_KEY_PATH = $env:HTTPS_PEM_KEY_PATH
 $env:VITE_HTTPS = 'true'
 $env:VITE_API_URL = $expectedApiUrl
 $env:VITE_CUSTOMER_WEB_URL = $expectedCustomerUrl
-$env:HTTPS_CERT_PATH = ''
-$env:HTTPS_CERT_PASSWORD = ''
 
 Write-Host 'HTTPS configuration verified in the current PowerShell process.'
 Write-Host ("Mode: {0}" -f $(if ($Localhost) { 'localhost' } else { 'LAN' }))
 Write-Host "Certificate: $certificatePath"
+if (-not $Localhost) { Write-Host ("LAN SAN hosts: {0}" -f ((@($requestedHosts | Where-Object { $_ -notin @('localhost', '127.0.0.1') })) -join ', ')) }
 Write-Host ("API:      {0}" -f $env:VITE_API_URL)
-Write-Host ("Admin:    {0}" -f $(if ($Localhost) { 'https://localhost:5173' } else { "https://${LanHost}:5173" }))
+Write-Host ("Admin:    {0}" -f $(if ($Localhost) { 'https://localhost:5173' } else { "https://${runtimeLanHost}:5173" }))
 Write-Host ("Customer: {0}" -f $env:VITE_CUSTOMER_WEB_URL)
 Write-Host 'Trust requirement: install only the public mkcert root CA on each device; never copy a private key.'

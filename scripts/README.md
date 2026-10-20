@@ -6,7 +6,7 @@ Thư mục này chỉ chứa công cụ phát triển, kiểm tra cấu hình v�
 
 | Công cụ | Mục đích | Tác động |
 | --- | --- | --- |
-| [`setup-https.ps1`](setup-https.ps1) | Tạo hoặc cập nhật chứng chỉ HTTPS development trong `.https`; hỗ trợ SAN LAN khi `DOAN_DEV_LAN_HOST` được đặt. | Ghi `.https` và có thể ghi chứng chỉ LAN theo cấu hình; không ghi database. Chỉ dùng development. |
+| [`setup-https.ps1`](setup-https.ps1) | Tạo hoặc cập nhật một chứng chỉ PEM HTTPS development multi-LAN trong `certs/`; danh sách IP được lưu trong `certs/lan-hosts.txt`. | Ghi `certs/` và danh sách IP LAN; không ghi database. Chỉ dùng development. |
 | `npm run codegen:file` | Sinh `packages/shared/types/api.ts` từ OpenAPI snapshot. | Ghi source được sinh; cần Node/npm. |
 | `npm run codegen:check` | So sánh type sinh ra với snapshot mà không giữ file tạm. | Ghi file generated tạm rồi xóa khi pass; không gọi API. |
 | [`diagnostics/StartManualTestBackend.ps1`](diagnostics/StartManualTestBackend.ps1) | Khởi động API development đã build cho checklist thủ công với `AI__ProviderMode=Mock`, target `Test`, migration tự động tắt và runtime attestation. | Khởi động process, đọc database qua API startup nếu ứng dụng yêu cầu; có thể ghi attestation cục bộ. Không chạy production. Không dùng nếu chưa xác minh target database. |
@@ -53,22 +53,18 @@ Không chạy các lệnh `--apply`, migration hoặc seed trong phiên audit n�
 - CORS, branch isolation, role readiness và đối soát doanh thu được kiểm tra trong checklist; không còn static test runner riêng cho các nội dung này.
 - Tài liệu trong `bao-cao/` có thể chứa lệnh hoặc đường dẫn lịch sử. Nếu một báo cáo cũ nhắc tới launcher/preflight đã retired, không phục hồi hoặc chạy lại lệnh đó; dùng tool hiện hành ở README này.
 - Không có script hiện hành nào gửi request tới provider AI bên ngoài. Mock AI được cấu hình ở runtime của API và launcher test hiện hành chỉ đặt `AI__ProviderMode=Mock`.
-## Launcher HTTPS/LAN
+## Multi-LAN HTTPS/LAN
 
-`start-dev.ps1` la launcher van hanh duy nhat cho development local/LAN. No goi `setup-https.ps1` trong cung process, truyen certificate URL va `DOAN_DEV_LAN_HOST` cho ca backend, Admin Web va Customer Web, ep `DatabaseSafety__AllowAutomaticMigration=false`, kiem tra port va chi dung cac PID do no tao.
-
-```powershell
-powershell -File .\scripts\start-dev.ps1 -Mode Localhost
-powershell -File .\scripts\start-dev.ps1 -Mode Lan -LanHost <ip-hoac-hostname>
-powershell -File .\scripts\start-dev.ps1 -Stop
-```
-
-Neu khong biet IP, co the chay setup rieng de hien danh sach adapter va chon ro:
+`setup-https.ps1` tao mot PEM certificate trong `certs/` va luu cac IPv4 LAN da dang ky trong `certs/lan-hosts.txt`.
 
 ```powershell
-powershell -File .\scripts\setup-https.ps1
+Set-Location D:\Dev\doan
+$lanHost = '172.18.41.58'
+. .\scripts\setup-https.ps1 -LanHost $lanHost
+
+# Terminal Admin/Customer dung cung $lanHost va them -ValidateOnly.
 ```
 
-Script setup chi su dung CA mkcert hien tai va bao loi neu mkcert/CA thieu; nguoi van hanh phai cai mkcert va trust CA bang quy trinh duoc phe duyet. Khong dua private key vao frontend/public hoac thiet bi dien thoai.
+IP moi duoc dang ky o lan chay setup dau tien. IP da dang ky se dung lai certificate neu certificate con hop le. Script khong cai mkcert va khong sao chep private key sang client.
 
-Khi chay API/Admin/Customer trong ba terminal rieng, chay setup khong co `-ValidateOnly` mot lan o terminal chuan bi. Hai terminal con lai dung cung `-LanHost` voi `-ValidateOnly`; che do nay chi validate va export environment, khong tao/thay certificate. Dung dot-sourcing de environment con hieu luc trong terminal hien tai.
+Khi chay ba terminal rieng, Terminal API chay khong co `-ValidateOnly`; hai terminal web chay voi `-ValidateOnly`. Dung dot-sourcing de giu environment trong terminal hien tai.

@@ -9,10 +9,8 @@ using RestaurantPOS.AI.Services;
 using RestaurantPOS.AI.Diagnostics;
 using RestaurantPOS.AI.Tools;
 using RestaurantPOS.AI.Tools.Admin;
-using RestaurantPOS.AI.Tools.Employee;
 using RestaurantPOS.AI.Tools.Customer;
 using RestaurantPOS.AI.Security;
-using RestaurantPOS.AI.Prompts;
 using RestaurantPOS.WebAPI.Hubs;
 using RestaurantPOS.WebAPI.Middleware;
 using RestaurantPOS.WebAPI.Configuration;
@@ -288,10 +286,6 @@ builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IKitchenService, KitchenService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IDashboardCacheInvalidator>(sp => sp.GetRequiredService<IDashboardService>());
-builder.Services.AddScoped<IFinancialAnalysisService, FinancialAnalysisService>();
-builder.Services.AddScoped<IProactiveInsightService, ProactiveInsightService>();
-builder.Services.AddScoped<IInsightExplanationService, InsightExplanationService>();
-builder.Services.AddConfiguredBackgroundJobs(builder.Configuration);
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IKitchenNotifier, KitchenNotifier>();
 builder.Services.AddScoped<IJwtService, JwtService>();
@@ -304,33 +298,22 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IPasswordHasher<Employee>, PasswordHasher<Employee>>();
 builder.Services.AddScoped<IPasswordHasher<Customer>, PasswordHasher<Customer>>();
 
-// 1. AI runs through the deterministic local Mock implementation. No external
-// provider client or outbound AI HTTP client is registered.
-builder.Services.AddScoped<IAiProvider, MockAiProvider>();
-
 // 2. Đăng ký các AI Core Services
-builder.Services.AddScoped<AiContextService>();
 builder.Services.AddScoped<AiCorrelationContext>();
 builder.Services.AddScoped<AiPermissionService>();
-builder.Services.AddSingleton<ManagerEmbeddingPilot>();
+builder.Services.AddSingleton<AdminEmbeddingPilot>();
+builder.Services.AddSingleton<CustomerGuestEmbeddingPilot>();
 builder.Services.AddSingleton<IAiToolExecutionAuditSink, AiToolExecutionAuditSink>();
-builder.Services.AddSingleton<AiLiveReadOnlyPolicy>();
-// Register the single Mock AI implementation explicitly so startup cannot
-// silently select or fall back to an external provider.
 builder.Services.AddScoped<IAiOrchestrator>(serviceProvider =>
     new AiOrchestrator(
-        serviceProvider.GetRequiredService<IAiProvider>(),
-        serviceProvider.GetRequiredService<AiContextService>(),
         serviceProvider.GetRequiredService<AiToolRegistry>(),
         serviceProvider.GetRequiredService<AiPermissionService>(),
-        serviceProvider.GetRequiredService<PromptBuilder>(),
-        serviceProvider.GetRequiredService<ManagerEmbeddingPilot>(),
+        serviceProvider.GetRequiredService<AdminEmbeddingPilot>(),
+        serviceProvider.GetRequiredService<CustomerGuestEmbeddingPilot>(),
         serviceProvider.GetRequiredService<ILogger<AiOrchestrator>>(),
         serviceProvider.GetRequiredService<IAiToolExecutionAuditSink>(),
         serviceProvider.GetRequiredService<AiCorrelationContext>()));
-builder.Services.AddScoped<PromptBuilder>();
 builder.Services.AddScoped<AiAuthorization>();
-builder.Services.AddSingleton<IProductPriceConfirmationStore, ProductPriceConfirmationStore>();
 
 // 3. Đăng ký AI Tool Registry
 builder.Services.AddScoped<AiToolRegistry>();
@@ -338,23 +321,16 @@ builder.Services.AddScoped<AiToolRegistry>();
 // 4. Đăng ký TẤT CẢ các AI Tools
 // Admin Tools
 builder.Services.AddScoped<IAiTool, GetRevenueTool>();
-builder.Services.AddScoped<IAiTool, UpdateProductPriceTool>();
-builder.Services.AddScoped<IAiTool, GetActiveStaffTool>();
 builder.Services.AddScoped<IAiTool, GetOrderListTool>();
 builder.Services.AddScoped<IAiTool, GetBestSellersTool>();
 builder.Services.AddScoped<IAiTool, GetRevenueComparisonTool>();
 builder.Services.AddScoped<IAiTool, GetBusinessSummaryTool>();
-builder.Services.AddScoped<IAiTool, GetFinancialAnalysisTool>();
 
 // Employee Tools
-builder.Services.AddScoped<IAiTool, GetTableSummaryTool>();
-builder.Services.AddScoped<IAiTool, GetMyShiftTool>();
-builder.Services.AddScoped<IAiTool, UpdateOrderStatusTool>();
 
 // Customer Tools
 builder.Services.AddScoped<IAiTool, GetMenuTool>();
 builder.Services.AddScoped<IAiTool, GetMyOrderTool>();
-builder.Services.AddScoped<IAiTool, CreateBookingTool>();
 
 Console.WriteLine("BACKEND_STARTUP_PHASE=PERSISTENCE_CONFIGURATION");
 // Cấu hình kết nối PostgreSQL (Supabase). Never fall back to localhost or a
@@ -440,73 +416,38 @@ builder.Services.AddCors(options =>
 Console.WriteLine("BACKEND_STARTUP_PHASE=HTTPS_CONFIGURATION");
 var configuredPemCertificatePath = builder.Configuration["HTTPS_PEM_CERT_PATH"];
 var configuredPemKeyPath = builder.Configuration["HTTPS_PEM_KEY_PATH"];
-System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCertificate = null;
-var configuredHttpsCertificatePath = builder.Configuration["HTTPS_CERT_PATH"];
-var defaultHttpsCertificatePath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".https", "pos-cert.pfx"));
-var httpsCertificatePath = string.IsNullOrWhiteSpace(configuredHttpsCertificatePath)
-    ? defaultHttpsCertificatePath
-    : configuredHttpsCertificatePath;
-var passwordFile = Path.Combine(Path.GetDirectoryName(httpsCertificatePath)!, "cert-password.txt");
-var httpsCertificatePassword = File.Exists(passwordFile) ? File.ReadAllText(passwordFile).Trim() : (builder.Configuration["HTTPS_CERT_PASSWORD"] ?? "pos-dev-cert");
-var httpsCertificateExists = File.Exists(httpsCertificatePath);
 Console.WriteLine($"HTTPS environment: {builder.Environment.EnvironmentName}");
 Console.WriteLine($"ASPNETCORE_URLS configured: {!string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"])}");
-if (builder.Environment.IsDevelopment() &&
-    !string.IsNullOrWhiteSpace(configuredPemCertificatePath) &&
-    !string.IsNullOrWhiteSpace(configuredPemKeyPath))
+if (string.IsNullOrWhiteSpace(configuredPemCertificatePath) || string.IsNullOrWhiteSpace(configuredPemKeyPath))
 {
-    Console.WriteLine($"HTTPS certificate path: {configuredPemCertificatePath}");
-    var pemCertificateExists = File.Exists(configuredPemCertificatePath);
-    var pemKeyExists = File.Exists(configuredPemKeyPath);
-    Console.WriteLine($"HTTPS certificate exists: {pemCertificateExists}");
-    if (!pemCertificateExists || !pemKeyExists)
-    {
-        Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=NO");
-        throw new InvalidOperationException("Development PEM HTTPS certificate or private key is missing.");
-    }
-
-    try
-    {
-        httpsCertificate = DevelopmentHttpsCertificateLoader.LoadPersistedPkcs12FromPem(
-            configuredPemCertificatePath,
-            configuredPemKeyPath);
-    }
-    catch (Exception exception)
-    {
-        Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=HTTPS_CONFIGURATION BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)} BACKEND_HTTPS_CERTIFICATE_VALID=NO");
-        throw;
-    }
-}
-else
-{
-    Console.WriteLine($"HTTPS certificate path: {httpsCertificatePath}");
-    Console.WriteLine($"HTTPS certificate exists: {httpsCertificateExists}");
-    if (!httpsCertificateExists)
-    {
-        Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=NO");
-        throw new InvalidOperationException("HTTPS certificate not found. Run .\\scripts\\setup-https.ps1 in this PowerShell session before starting the API.");
-    }
-
-    try
-    {
-        using var certificate = new System.Security.Cryptography.X509Certificates.X509Certificate2(
-            httpsCertificatePath,
-            httpsCertificatePassword,
-            System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.EphemeralKeySet);
-
-        if (!certificate.HasPrivateKey)
-            throw new InvalidOperationException("The HTTPS certificate does not contain a private key.");
-
-        Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=YES");
-    }
-    catch (Exception exception)
-    {
-        Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=HTTPS_CONFIGURATION BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)} BACKEND_HTTPS_CERTIFICATE_VALID=NO");
-        throw;
-    }
+    Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+    throw new InvalidOperationException("HTTPS PEM paths are missing. Run .\\scripts\\setup-https.ps1 in this PowerShell session before starting the API.");
 }
 
-if (httpsCertificate is not null && !httpsCertificate.HasPrivateKey)
+Console.WriteLine($"HTTPS certificate path: {configuredPemCertificatePath}");
+var pemCertificateExists = File.Exists(configuredPemCertificatePath);
+var pemKeyExists = File.Exists(configuredPemKeyPath);
+Console.WriteLine($"HTTPS certificate exists: {pemCertificateExists}");
+if (!pemCertificateExists || !pemKeyExists)
+{
+    Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+    throw new InvalidOperationException("HTTPS PEM certificate or private key is missing.");
+}
+
+System.Security.Cryptography.X509Certificates.X509Certificate2 httpsCertificate;
+try
+{
+    httpsCertificate = DevelopmentHttpsCertificateLoader.LoadPersistedPkcs12FromPem(
+        configuredPemCertificatePath,
+        configuredPemKeyPath);
+}
+catch (Exception exception)
+{
+    Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=HTTPS_CONFIGURATION BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)} BACKEND_HTTPS_CERTIFICATE_VALID=NO");
+    throw;
+}
+
+if (!httpsCertificate.HasPrivateKey)
     throw new InvalidOperationException("The Development PEM certificate does not contain a private key.");
 
 Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=YES");
@@ -514,10 +455,7 @@ Console.WriteLine("BACKEND_HTTPS_CERTIFICATE_VALID=YES");
 builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(5000, listenOptions =>
     {
-        if (httpsCertificate is not null)
-            listenOptions.UseHttps(httpsCertificate);
-        else
-            listenOptions.UseHttps(httpsCertificatePath, httpsCertificatePassword);
+        listenOptions.UseHttps(httpsCertificate);
     }));
 
 Console.WriteLine("BACKEND_STARTUP_PHASE=DI_BUILD");
@@ -531,30 +469,6 @@ catch (Exception exception)
     WriteSafeDependencyFailureDiagnostics(exception);
     Console.WriteLine($"BACKEND_STARTUP_FAILURE_PHASE=DI_BUILD BACKEND_EXCEPTION_TYPE={GetSafeStartupExceptionType(exception)}");
     throw;
-}
-
-if (builder.Configuration.GetValue<bool>("AdminE2E:RuntimeAttestation:Enabled"))
-{
-    // This is a separate Development TEST path for read-only browser acceptance.
-    // SupabaseProjectTargetGuard.Validate above has already validated the exact
-    // effective connection target before any READY evidence can be written.
-    var attestationWritten = RuntimeAttestationWriter.TryWriteTestAdminE2E(
-        builder.Configuration,
-        app.Environment,
-        builder.Configuration["AdminE2E:RuntimeAttestation:AttestationPath"],
-        builder.Configuration["AdminE2E:RuntimeAttestation:LaunchCorrelationId"],
-        SupabaseProjectTargetGuard.TestProjectRef,
-        out var attestationFailureCode);
-    Console.WriteLine($"BACKEND_TEST_RUNTIME_ATTESTATION={(attestationWritten ? "READY" : "BLOCKED")} BACKEND_TEST_RUNTIME_ATTESTATION_FAILURE={attestationFailureCode}");
-    if (!attestationWritten)
-        throw new InvalidOperationException("TEST runtime safety attestation failed.");
-}
-else if (builder.Configuration.GetValue<bool>("AI:LiveReadOnlyE2E:Enabled"))
-{
-    // The previous live-read-only E2E path was coupled to the retired legacy
-    // Supabase project. Do not let an old environment override select it.
-    throw new InvalidOperationException(
-        "The legacy live-read-only AI startup path is retired; use the explicit TEST Admin E2E launcher.");
 }
 
 // Database schema/data mutation is an explicit Development-only opt-in.

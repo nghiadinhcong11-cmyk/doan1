@@ -45,7 +45,7 @@ Hệ thống triển khai mô hình phân quyền dựa trên vai trò (Role-Bas
 
 ## Chạy local HTTP/HTTPS
 
-- Chuẩn bị chứng chỉ bằng `.\scripts\setup-https.ps1` trong PowerShell; script dùng chứng chỉ local trong `.https`.
+- Chuẩn bị chứng chỉ bằng `.\scripts\setup-https.ps1` trong PowerShell; script dùng một cặp PEM multi-LAN trong `certs/`.
 - Chạy API tại `https://localhost:5000`, Admin Web tại `https://localhost:5173` và Customer Web tại `https://localhost:5174`. API và SignalR đều dùng cùng base URL API; SignalR chạy tại `/kitchenHub`.
 - LAN là chế độ opt-in: đặt `DOAN_DEV_LAN_HOST` đúng hostname/IP có trong SAN của `certs/doan-pos-lan.pem`, chạy lại script setup rồi khởi động các app trong cùng session. Không dùng IP cũ hardcode trong cấu hình.
 - Production không dùng chứng chỉ tự ký này; TLS phải do hosting hoặc reverse proxy production cung cấp. `VITE_HTTPS=false` chỉ là override local có chủ đích và không thay đổi API HTTPS.
@@ -53,42 +53,36 @@ Hệ thống triển khai mô hình phân quyền dựa trên vai trò (Role-Bas
 ## Kiểm thử hiện hành
 
 Repository dùng build/typecheck và OpenAPI codegen để kiểm tra tính hợp lệ của source/config. Bộ test tự động xUnit, Node source-contract và Playwright đã được gỡ theo quyết định chuyển sang kiểm thử thủ công; checklist hiện hành nằm tại [`ba-test-frontend/README.md`](ba-test-frontend/README.md). Không chạy `dotnet test`, Playwright hoặc Node test runner sau khi đợt dọn này hoàn tất.
-## Quy trinh HTTPS/LAN development
+## Multi-LAN HTTPS development
 
-Dung launcher thong nhat de giu chung certificate va environment cho API, Admin va Customer:
+Dung mot PEM certificate duy nhat trong `certs/`. Danh sach IPv4 LAN da dang ky duoc luu trong `certs/lan-hosts.txt`.
 
 ```powershell
-# May tinh, khong can LAN
-powershell -File .\scripts\start-dev.ps1 -Mode Localhost
-
-# LAN: chon ro IP/hostname; khong tu chon adapter dau tien
-powershell -File .\scripts\start-dev.ps1 -Mode Lan -LanHost 192.168.x.x
-
-# Dung lai cac process do launcher da tao
-powershell -File .\scripts\start-dev.ps1 -Stop
+$lanHost = '172.18.41.58'
+. .\scripts\setup-https.ps1 -LanHost $lanHost
 ```
 
-`setup-https.ps1` duoc launcher dot-source trong cung PowerShell process. Script su dung CA mkcert hien tai, kiem tra SAN, expiry, issuer, chain va certificate/key match; neu leaf hien tai khong phu host moi thi tao leaf tam, kiem tra xong moi thay file dich. Script khong cai mkcert, khong chay `mkcert -install` va khong thay trust store.
+`setup-https.ps1` duoc dot-source trong terminal API. IP moi se duoc them vao danh sach va cap lai leaf certificate bao gom toan bo IP da dang ky; IP da dang ky se duoc tai su dung neu certificate con hop le.
 
 Sau khi doi Wi-Fi/IP: chay lai launcher voi host moi, trust public root CA tren dien thoai neu thiet bi chua trust, roi tao/in lai QR vi QR cu van chua host cu. Khong bao gio chuyen private key server hoac CA private key sang dien thoai. Dung cung CA thi cap leaf moi khong tu dong doi yeu cau trust CA; neu CA doi/het han hoac chinh sach mobile doi thi phai trust lai theo chinh sach thiet bi.
 
 Firewall, client isolation, VPN va routing la dieu kien mang rieng; cung Wi-Fi khong dam bao dien thoai truy cap duoc may tinh. API/Admin/Customer van giu ba cong 5000/5173/5174 va khong dung CORS wildcard.
 
-`StartManualTestBackend.ps1` van la launcher test doc lap co runtime attestation va target database test; khong dung no thay cho `start-dev.ps1` khi can khoi dong ca ba process.
+`StartManualTestBackend.ps1` van la launcher test doc lap co runtime attestation va target database test; khong dung no de khoi dong POS development hang ngay.
 
-Neu `VITE_API_URL` hoac `VITE_CUSTOMER_WEB_URL` trong shell dang tro toi host cu, setup se dung lai se bao `ENV_OVERRIDE_CONFLICT`; xoa bien stale trong session roi chay lai. Khong de override cu am tham ghi de host moi.
+Neu `VITE_API_URL`, `VITE_CUSTOMER_WEB_URL` hoac `DOAN_DEV_LAN_HOST` trong shell dang tro toi host cu, xoa cac bien nay truoc khi dot-source setup.
 
 ### Chay ba terminal PowerShell rieng cung LAN
 
 `setup-https.ps1` la setup-only: no chi kiem tra/chuan bi certificate va export environment, khong khoi dong ung dung. Trong PowerShell, dung dot-sourcing (`. .\scripts\setup-https.ps1`) de bien moi truong duoc giu trong chinh terminal; goi bang `&` se khong truyen bien nguoc ve parent shell.
 
-Thay `192.168.11.172` bang IP LAN hien tai. Chay block 1 truoc mot lan de tao/tai cap leaf neu can; chi sau khi block 1 thanh cong moi chay block 2 va 3. Hai block sau dung `-ValidateOnly`, khong ghi lai certificate.
+Thay gia tri `$lanHost` bang IP LAN hien tai. Chay block 1 truoc mot lan de dang ky/cap lai leaf neu can; chi sau khi block 1 thanh cong moi chay block 2 va 3. Hai block sau dung `-ValidateOnly`, khong ghi lai certificate.
 
 **Terminal 1 — setup va API**
 
 ```powershell
 Set-Location D:\Dev\doan
-$lanHost = '192.168.11.172' # thay bang IP LAN hien tai
+$lanHost = '172.18.41.58' # thay bang IP LAN hien tai
 try {
     . .\scripts\setup-https.ps1 -LanHost $lanHost
 } catch {
@@ -104,7 +98,7 @@ dotnet run --project .\services\api\RestaurantPOS.api.csproj --no-launch-profile
 
 ```powershell
 Set-Location D:\Dev\doan
-$lanHost = '192.168.11.172' # phai trung IP o Terminal 1
+$lanHost = '172.18.41.58' # phai trung IP o Terminal 1
 try {
     . .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
 } catch {
@@ -118,7 +112,7 @@ npm run dev --prefix .\apps\admin-web
 
 ```powershell
 Set-Location D:\Dev\doan
-$lanHost = '192.168.11.172' # phai trung IP o Terminal 1
+$lanHost = '172.18.41.58' # phai trung IP o Terminal 1
 try {
     . .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
 } catch {
@@ -128,6 +122,6 @@ try {
 npm run dev --prefix .\apps\customer-web
 ```
 
-URL LAN: API `https://192.168.11.172:5000`, Admin `https://192.168.11.172:5173`, Customer `https://192.168.11.172:5174`. Nhan Ctrl+C trong tung terminal de dung process cua terminal do. Backend van can `ConnectionStrings__DefaultConnection`/User Secrets va `Jwt__Secret` hop le; setup HTTPS khong tao hoac in cac secret nay.
+URL LAN: API `https://172.18.41.58:5000`, Admin `https://172.18.41.58:5173`, Customer `https://172.18.41.58:5174`. Khi doi IP, thay `$lanHost` trong ca ba terminal. Backend van can `ConnectionStrings__DefaultConnection`/User Secrets va `Jwt__Secret` hop le; setup HTTPS khong tao hoac in cac secret nay.
 
 Khi doi Wi-Fi/IP, dung Ctrl+C ca ba process, chay lai block 1 voi IP moi, sau do chay lai block 2 va 3 voi cung IP. QR da in voi IP cu khong tu cap nhat. Neu IP moi chua co trong SAN, block 1 se cap leaf bang CA mkcert hien tai; hai block `-ValidateOnly` phai chay sau do. Neu CA mkcert doi hoac thiet bi chua trust CA, xu ly trust public root CA theo chinh sach thiet bi; khong chuyen private key sang dien thoai.

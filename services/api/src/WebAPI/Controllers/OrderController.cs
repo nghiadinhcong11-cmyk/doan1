@@ -224,9 +224,21 @@ namespace RestaurantPOS.WebAPI.Controllers
                     order.TableName = table?.Name ?? "Mang về";
                     order.BranchId = guestContext.BranchId;
                     order.BranchName = branch.Name;
-                    order.CustomerName = table is null ? "Khách vãng lai" : "Khách tại bàn";
-                    order.CustomerId = null;
-                    order.CustomerPhone = null;
+                    var isRegisteredQrCustomer = string.Equals(
+                        User.FindFirst("customerAuthMethod")?.Value,
+                        "registeredQr",
+                        StringComparison.OrdinalIgnoreCase);
+                    Customer? registeredQrCustomer = null;
+                    if (isRegisteredQrCustomer &&
+                        Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var registeredQrCustomerId))
+                    {
+                        registeredQrCustomer = await _context.Customers.AsNoTracking()
+                            .FirstOrDefaultAsync(customer => customer.Id == registeredQrCustomerId && customer.IsActive);
+                    }
+
+                    order.CustomerName = registeredQrCustomer?.FullName ?? (table is null ? "Khách vãng lai" : "Khách tại bàn");
+                    order.CustomerId = registeredQrCustomer?.Id;
+                    order.CustomerPhone = registeredQrCustomer?.PhoneNumber;
                     order.CustomerEmail = null;
                     _logger?.LogInformation("Resolved guest order context: branchPresent={BranchPresent}, tablePresent={TablePresent}", true, table is not null);
                 }

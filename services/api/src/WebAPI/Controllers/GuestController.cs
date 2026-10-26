@@ -6,6 +6,7 @@ using RestaurantPOS.Application.Common.Interfaces;
 using RestaurantPOS.Application.Common.Security;
 using RestaurantPOS.Domain.Entities;
 using RestaurantPOS.Infrastructure.Persistence;
+using System.Security.Claims;
 
 namespace RestaurantPOS.WebAPI.Controllers;
 
@@ -56,14 +57,27 @@ public sealed class GuestController : ControllerBase
         if (matchingTableCount != 1)
             return NotFound(new { message = "Mã QR không hợp lệ." });
 
+        // If a registered customer is already signed in, preserve that identity
+        // while adding the server-validated QR table context to the short-lived
+        // session token. This lets QR orders earn loyalty points without trusting
+        // customer identity fields from the browser payload.
+        Customer? registeredCustomer = null;
+        if (User.IsInRole("customer") &&
+            Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var customerId))
+        {
+            registeredCustomer = await _context.Customers.AsNoTracking()
+                .FirstOrDefaultAsync(customer => customer.Id == customerId && customer.IsActive);
+        }
+
         var token = _jwtService.GenerateToken(
-            Guid.NewGuid(),
-            "guest",
-            "Khách tại bàn",
+            registeredCustomer?.Id ?? Guid.NewGuid(),
+            registeredCustomer?.PhoneNumber ?? "guest",
+            registeredCustomer?.FullName ?? "Khách tại bàn",
             "customer",
             table.BranchId,
             customerSessionType: "guest",
-            tableId: table.Id);
+            tableId: table.Id,
+            customerAuthMethod: registeredCustomer is null ? null : "registeredQr");
 
         return Ok(new
         {

@@ -35,7 +35,13 @@ if (!customerFetchInstalled && typeof window !== 'undefined') {
       path.startsWith('/api/Customer/exists/') ||
       path === '/api/Auth/customer-token';
     const useGuestSession = sessionStorage.getItem('guestQrSession') === 'true';
-    const token = useGuestSession ? sessionStorage.getItem('guestToken') : localStorage.getItem('customerToken');
+    const registeredCustomerToken = localStorage.getItem('customerToken');
+    // QR bootstrap may optionally upgrade a registered customer token with the
+    // server-validated table context. All later QR requests use that upgraded
+    // guest token, which preserves the registered customer identity claim.
+    const token = isGuestBootstrap && registeredCustomerToken
+      ? registeredCustomerToken
+      : (useGuestSession ? sessionStorage.getItem('guestToken') : registeredCustomerToken);
     // Product remains a public endpoint for branch selection, but a QR guest
     // must send the signed session so the API can reject a mismatched branchId.
     const isGuestProductRead = useGuestSession && path === '/api/Product';

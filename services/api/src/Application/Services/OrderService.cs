@@ -279,6 +279,12 @@ namespace RestaurantPOS.Application.Services
 
                 if (existingOrder != null)
                 {
+                    // A registered/guest customer submits only the new QR round after
+                    // the first round has been accepted. POS edits submit the full
+                    // current cart, so they must keep the replacement/max behavior.
+                    var isCustomerFollowUp = deferAvailabilityValidation &&
+                        !string.IsNullOrWhiteSpace(existingOrder.CreatedBy);
+
                     // 1. Cập nhật thông tin đơn hàng chính (Chỉ những trường vận hành an toàn)
                     // Tuyệt đối không cập nhật Status, PaidAmount, PaymentMethod, Discount từ client payload
                     // để tránh gian lận tài chính. Những trường này phải đi qua flow thanh toán riêng.
@@ -298,21 +304,24 @@ namespace RestaurantPOS.Application.Services
                     if (order.Details != null)
                     {
                         // Tìm các món bị xóa (Chỉ món chưa gửi bếp mới được xóa thực sự)
-                        var removedItems = existingOrder.Details
-                            .Where(old => !order.Details.Any(newD =>
-                                (newD.ProductId == old.ProductId && newD.ToppingId == old.ToppingId && newD.Options == old.Options)))
-                            .ToList();
-
-                        foreach (var item in removedItems)
+                        if (!isCustomerFollowUp)
                         {
-                            if (item.SentQuantity == 0)
+                            var removedItems = existingOrder.Details
+                                .Where(old => !order.Details.Any(newD =>
+                                    (newD.ProductId == old.ProductId && newD.ToppingId == old.ToppingId && newD.Options == old.Options)))
+                                .ToList();
+
+                            foreach (var item in removedItems)
                             {
-                                existingOrder.Details.Remove(item);
-                                _context.OrderDetails.Remove(item);
-                            }
-                            else
-                            {
-                                item.Quantity = item.SentQuantity; // Giữ lại phần đã gửi
+                                if (item.SentQuantity == 0)
+                                {
+                                    existingOrder.Details.Remove(item);
+                                    _context.OrderDetails.Remove(item);
+                                }
+                                else
+                                {
+                                    item.Quantity = item.SentQuantity; // Giữ lại phần đã gửi
+                                }
                             }
                         }
 
@@ -325,7 +334,9 @@ namespace RestaurantPOS.Application.Services
 
                             if (existingDetail != null)
                             {
-                                existingDetail.Quantity = Math.Max(newDetail.Quantity, existingDetail.SentQuantity);
+                                existingDetail.Quantity = isCustomerFollowUp
+                                    ? existingDetail.Quantity + newDetail.Quantity
+                                    : Math.Max(newDetail.Quantity, existingDetail.SentQuantity);
                             }
                             else
                             {

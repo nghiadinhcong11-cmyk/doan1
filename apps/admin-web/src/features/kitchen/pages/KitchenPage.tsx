@@ -23,6 +23,7 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
   const [products, setProducts] = useState<KitchenProduct[]>([]);
   const [branches, setBranches] = useState<KitchenBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('selectedBranchId') || '');
+  const [branchReady, setBranchReady] = useState(() => userRole !== 'admin' || Boolean(localStorage.getItem('selectedBranchId')));
   const lastSyncRef = useRef(0);
   const connectedRef = useRef(false);
   const activeRequestsInFlightRef = useRef(false);
@@ -35,11 +36,17 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
       setBranches(branchList);
       const savedId = localStorage.getItem('selectedBranchId');
       const selected = branchList.find(branch => branch.id === savedId) || branchList[0];
-      if (selected && selected.id !== savedId) {
+      if (selected) {
         localStorage.setItem('selectedBranchId', selected.id);
         setSelectedBranchId(selected.id);
+        setBranchReady(true);
       }
-    }).catch(() => setBranches([]));
+    }).catch(() => {
+      setBranches([]);
+      // Keep a previously selected branch usable if the branch-list request
+      // temporarily fails; never fall back to an all-branch kitchen query.
+      setBranchReady(Boolean(localStorage.getItem('selectedBranchId')));
+    });
   }, [userRole]);
 
   const handleBranchChange = (branchId: string) => {
@@ -48,8 +55,6 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
     setRequests([]);
     setProducts([]);
     setLoading(true);
-    requestActiveRequestsRefresh(false, true);
-    void fetchProducts();
     window.dispatchEvent(new Event('branch:changed'));
   };
 
@@ -58,7 +63,8 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
     activeRequestsInFlightRef.current = true;
     try {
       if (!silent) setRefreshing(true);
-      const branchId = localStorage.getItem('selectedBranchId');
+      const branchId = selectedBranchId || localStorage.getItem('selectedBranchId');
+      if (!branchId) return;
       const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
       const response = await fetch(`${API_URL}/api/Order/kitchen/active-requests${query}`);
       if (!response.ok) throw new Error('Không thể tải danh sách bếp.');
@@ -97,7 +103,8 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
 
   const fetchProducts = useCallback(async (isOwnerActive: () => boolean = () => true) => {
     try {
-      const branchId = localStorage.getItem('selectedBranchId');
+      const branchId = selectedBranchId || localStorage.getItem('selectedBranchId');
+      if (!branchId) return;
       const query = new URLSearchParams({ isActive: 'true' });
       if (branchId) query.set('branchId', branchId);
       const data = await getCachedJson<KitchenProduct[]>(`${API_URL}/api/Product?${query.toString()}`);
@@ -121,13 +128,17 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
   };
 
   useEffect(() => {
+    if (!branchReady) return;
     let disposed = false;
+    const branchQuery = selectedBranchId ? `?branchId=${encodeURIComponent(selectedBranchId)}` : '';
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${API_URL}/kitchenHub`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' })
+      .withUrl(`${API_URL}/kitchenHub${branchQuery}`, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' })
       .withAutomaticReconnect([0, 2000, 5000, 10000]).build();
     const onNew = (payload: OrderRequest) => {
       if (disposed) return;
       if (!payload?.id || !ACTIVE_STATUSES.includes(payload.status)) return;
+      const payloadBranchId = (payload as OrderRequest & { branchId?: string }).branchId;
+      if (selectedBranchId && payloadBranchId && payloadBranchId !== selectedBranchId) return;
       setRequests(prev => prev.some(item => item.id === payload.id) ? prev.map(item => item.id === payload.id ? { ...item, ...payload } : item) : [...prev, payload]);
       void new Audio('/kitchen-order.mp3').play().catch(() => undefined);
     };
@@ -184,7 +195,7 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
       connection.off('ProductAvailabilityChanged', onAvailabilityChanged);
       void connection.stop().catch(err => console.warn('Kitchen hub cleanup failed.', err));
     };
-  }, [fetchActiveRequests, fetchProducts, requestActiveRequestsRefresh]);
+  }, [branchReady, selectedBranchId, fetchActiveRequests, fetchProducts, requestActiveRequestsRefresh]);
 
   const updateStatus = async (request: OrderRequest, status: RequestStatus) => {
     if (busyIds.has(request.id)) return;
@@ -208,7 +219,7 @@ const KitchenPage = ({ userRole }: { userRole?: 'admin' | 'manager' }) => {
     <section className="mb-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-black text-slate-900">Trạng thái món</h2><p className="text-xs text-slate-400">Cập nhật món đang bán để khách không đặt nhầm.</p></div><button onClick={() => void fetchProducts()} className="text-xs font-bold text-blue-600">Làm mới</button></div><div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{products.map(product => { const status = product.availabilityStatus || 'Available'; return <div key={product.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3"><div className="min-w-0"><p className="truncate text-sm font-bold">{product.name}</p><p className={`text-[10px] font-black uppercase ${status === 'Available' ? 'text-emerald-600' : status === 'OutOfStock' ? 'text-rose-600' : 'text-amber-600'}`}>{status === 'Available' ? 'Đang bán' : status === 'OutOfStock' ? 'Hết món' : 'Tạm hết'}</p></div><select value={status} onChange={e => void updateAvailability(product, e.target.value)} className="rounded-2xl border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold"><option value="Available">Đang bán</option><option value="TemporarilyUnavailable">Tạm hết</option><option value="OutOfStock">Hết món</option></select></div>; })}</div></section>
     <section className="mb-7 grid grid-cols-3 gap-3 md:max-w-xl">{[['Đơn mới', stats.pending, 'text-rose-600'], ['Đang làm', stats.preparing, 'text-amber-600'], ['Sẵn sàng', stats.ready, 'text-emerald-600']].map(([label, count, color]) => <div key={label as string} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p><p className={`mt-1 text-2xl font-black ${color}`}>{count}</p></div>)}</section>
     {requests.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-20 text-center"><Utensils size={52} className="mx-auto mb-4 text-slate-200" /><p className="font-bold text-slate-500">Bếp đang trống</p><p className="mt-1 text-sm text-slate-400">Đơn mới sẽ tự động xuất hiện ở đây.</p></div> : <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{requests.map(request => { const [label, color] = meta(request.status); const busy = busyIds.has(request.id); return <article key={request.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl"><div className={`border-b p-5 ${color}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-xl font-black" title={request.tableName}>{request.tableName}</h2><p className="mt-1 text-[10px] font-bold uppercase tracking-widest opacity-70">Đợt gọi #{request.requestNumber}</p></div><StatusBadge tone={statusTone(request.status)}>{label}</StatusBadge></div><div className="mt-4 flex items-center gap-1 text-xs font-semibold opacity-75"><Clock aria-hidden="true" size={13} /> {new Date(request.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div></div><div className="flex-1 space-y-4 p-5">{request.items.map((item, index) => <div key={`${request.id}-${index}`} className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-words font-bold leading-tight text-slate-800">{item.productName}</p>{item.options && <p className="mt-1 break-words rounded-2xl bg-orange-50 px-2 py-1 text-xs font-medium italic text-orange-700">{item.options}</p>}</div><span className="shrink-0 rounded-2xl bg-slate-100 px-2.5 py-1 font-black text-orange-600" aria-label={`Số lượng ${item.quantity}`}>×{item.quantity}</span></div>)}</div><div className="flex gap-2 border-t border-slate-100 bg-slate-50 p-4">{request.status === 'Pending' && <button type="button" disabled={busy} onClick={() => void updateStatus(request, 'Preparing')} className="touch-manipulation flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-xs font-black text-white shadow-lg transition hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60" aria-label={`Bắt đầu chế biến đợt gọi ${request.requestNumber}`}>{busy ? <Loader2 aria-hidden="true" className="animate-spin" size={16} /> : <PlayCircle aria-hidden="true" size={16} />} {busy ? 'Đang gửi...' : 'Bắt đầu chế biến'}</button>}{request.status === 'Preparing' && <button type="button" disabled={busy} onClick={() => void updateStatus(request, 'Ready')} className="touch-manipulation flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 py-3 text-xs font-black text-white shadow-lg transition hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60" aria-label={`Báo sẵn sàng đợt gọi ${request.requestNumber}`}>{busy ? <Loader2 aria-hidden="true" className="animate-spin" size={16} /> : <CheckCircle2 aria-hidden="true" size={16} />} {busy ? 'Đang gửi...' : 'Báo sẵn sàng'}</button>}{request.status === 'Ready' && <button type="button" disabled={busy} onClick={() => void updateStatus(request, 'Completed')} className="touch-manipulation flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-xs font-black text-white shadow-lg transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60" aria-label={`Xác nhận đã trả món đợt gọi ${request.requestNumber}`}>{busy ? <Loader2 aria-hidden="true" className="animate-spin" size={16} /> : <CheckCircle2 aria-hidden="true" size={16} />} {busy ? 'Đang gửi...' : 'Đã trả món'}</button>}<button type="button" disabled={busy} onClick={() => { if (window.confirm('Hủy yêu cầu này?')) void updateStatus(request, 'Cancelled'); }} aria-label={`Hủy đợt gọi ${request.requestNumber}`} title="Hủy yêu cầu" className="touch-manipulation min-h-11 min-w-11 rounded-xl border border-slate-200 bg-white px-3 text-rose-500 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:opacity-50"><X aria-hidden="true" size={17} /></button></div></article>; })}</div>}
-    <p className="mt-6 text-center text-[11px] text-slate-400">Tự động kiểm tra đơn mới mỗi 8 giây · Đồng bộ cuối: {lastSyncRef.current ? new Date(lastSyncRef.current).toLocaleTimeString('vi-VN') : '—'}</p>
+    <p className="mt-6 text-center text-[11px] text-slate-400">Realtime qua SignalR · Đồng bộ dự phòng mỗi {connected ? 30 : 10} giây · Đồng bộ cuối: {lastSyncRef.current ? new Date(lastSyncRef.current).toLocaleTimeString('vi-VN') : '—'}</p>
   </div>;
 };
 export default KitchenPage;

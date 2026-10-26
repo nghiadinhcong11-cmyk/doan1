@@ -146,44 +146,36 @@ namespace RestaurantPOS.Application.Services
 
         public async Task<List<object>> GetActiveKitchenRequestsAsync(Guid? branchId)
         {
-            var query = _context.OrderRequests
-                .Include(r => r.Items)
-                .Where(r => r.Status != "Completed" && r.Status != "Cancelled");
+            // Project only the fields rendered by the kitchen board. The old
+            // Include loaded complete OrderRequestItem entities before the
+            // projection, which made the first load grow with every column and
+            // every active request.
+            var query = from r in _context.OrderRequests.AsNoTracking()
+                        join o in _context.Orders.AsNoTracking() on r.OrderId equals o.Id
+                        where r.Status != "Completed" && r.Status != "Cancelled" &&
+                            (!branchId.HasValue || o.BranchId == branchId.Value)
+                        orderby r.CreatedAt
+                        select new
+                        {
+                            r.Id,
+                            r.OrderId,
+                            r.RequestNumber,
+                            r.Status,
+                            r.CreatedAt,
+                            tableName = o.TableName,
+                            items = r.Items
+                                .OrderBy(item => item.Id)
+                                .Select(item => new
+                                {
+                                    item.ProductName,
+                                    item.Quantity,
+                                    item.Options
+                                })
+                                .ToList()
+                        };
 
-            if (branchId.HasValue)
-            {
-                var requests = await (from r in query
-                                      join o in _context.Orders on r.OrderId equals o.Id
-                                      where o.BranchId == branchId.Value
-                                      orderby r.CreatedAt
-                                      select (object)new
-                                      {
-                                          r.Id,
-                                          r.OrderId,
-                                          r.RequestNumber,
-                                          r.Status,
-                                          r.CreatedAt,
-                                          tableName = o.TableName,
-                                          items = r.Items
-                                      }).ToListAsync();
-                return requests;
-            }
-
-            var allRequests = await (from r in query
-                                     join o in _context.Orders on r.OrderId equals o.Id
-                                     orderby r.CreatedAt
-                                     select (object)new
-                                     {
-                                         r.Id,
-                                         r.OrderId,
-                                         r.RequestNumber,
-                                         r.Status,
-                                         r.CreatedAt,
-                                         tableName = o.TableName,
-                                         items = r.Items
-                                     }).ToListAsync();
-
-            return allRequests;
+            var requests = await query.ToListAsync();
+            return requests.Cast<object>().ToList();
         }
 
         public Task<OrderRequest?> UpdateRequestStatusAsync(Guid requestId, string status) => UpdateRequestStatusAsync(requestId, status, null);

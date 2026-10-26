@@ -143,6 +143,9 @@ function App() {
     localStorage.removeItem('customerToken');
     setCustomerInfo(null);
     setIsLoggedIn(false);
+    setIsGuest(false);
+    setIsLoginRequested(false);
+    window.dispatchEvent(new Event('customer:logout'));
   };
 
   const handleGuestEntry = () => {

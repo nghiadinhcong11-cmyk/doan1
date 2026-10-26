@@ -661,7 +661,13 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
 
          {/* Logout Button */}
          <button
-           onClick={onLogout}
+           type="button"
+           onClick={(event) => {
+             event.preventDefault();
+             event.stopPropagation();
+             onLogout();
+           }}
+           aria-label="Đăng xuất tài khoản"
            className="w-full mt-10 py-4 bg-gray-100 text-gray-500 rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-red-50 hover:text-red-600 transition-all flex items-center justify-center"
          >
             <LogOut size={16} className="mr-2" /> Đăng xuất tài khoản

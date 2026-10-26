@@ -211,11 +211,23 @@ namespace RestaurantPOS.AI.Controllers
 
             try
             {
+                var hasRegisteredCustomerId = Guid.TryParse(
+                    User.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+                    out var registeredCustomerId);
+                var isRegisteredQrCustomer = string.Equals(
+                    User.FindFirst("customerAuthMethod")?.Value,
+                    "registeredQr",
+                    StringComparison.OrdinalIgnoreCase) && hasRegisteredCustomerId;
                 var guestContext = new AiUserContext
                 {
+                    UserId = isRegisteredQrCustomer ? registeredCustomerId : Guid.Empty,
                     Role = RoleNames.Customer,
-                    IsGuest = true,
-                    UserName = "Khách vãng lai",
+                    IsGuest = !isRegisteredQrCustomer,
+                    CustomerId = isRegisteredQrCustomer ? registeredCustomerId : null,
+                    PhoneNumber = isRegisteredQrCustomer ? User.Identity?.Name : null,
+                    UserName = isRegisteredQrCustomer
+                        ? User.FindFirst("fullName")?.Value ?? User.Identity?.Name
+                        : "Khách vãng lai",
                     BranchId = guestSession?.BranchId,
                     HasVerifiedGuestSession = guestSession is not null
                 };

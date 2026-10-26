@@ -14,13 +14,14 @@ namespace RestaurantPOS.AI.Services
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "customer_get_menu",
+            "customer_get_best_sellers",
             "get_my_orders"
         };
 
         private readonly AiAuthorization _authorization;
         private static readonly IReadOnlySet<string> AdminTools =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "get_revenue", "get_business_summary", "get_revenue_comparison", "get_best_sellers", "get_order_list", "customer_get_menu", "update_product_price", "update_product_name", "create_product", "create_topping" };
+            { "get_revenue", "get_business_summary", "get_revenue_comparison", "get_best_sellers", "get_order_list", "customer_get_menu", "customer_get_best_sellers", "update_product_price", "update_product_name", "create_product", "create_topping" };
 
         public AiPermissionService(AiAuthorization authorization)
         {
@@ -44,7 +45,8 @@ namespace RestaurantPOS.AI.Services
                 return context.HasVerifiedGuestSession && context.BranchId.HasValue &&
                        tool.RiskLevel == ToolRiskLevel.Read &&
                        _authorization.IsRoleAllowed(tool, context) &&
-                       string.Equals(tool.Name, "customer_get_menu", StringComparison.OrdinalIgnoreCase);
+                       (string.Equals(tool.Name, "customer_get_menu", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(tool.Name, "customer_get_best_sellers", StringComparison.OrdinalIgnoreCase));
             }
 
             if (string.Equals(context.Role, "customer", StringComparison.OrdinalIgnoreCase) &&

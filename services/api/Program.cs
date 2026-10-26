@@ -339,6 +339,7 @@ builder.Services.AddScoped<IAiTool, CreateToppingTool>();
 
 // Customer Tools
 builder.Services.AddScoped<IAiTool, GetMenuTool>();
+builder.Services.AddScoped<IAiTool, GetCustomerBestSellersTool>();
 builder.Services.AddScoped<IAiTool, GetMyOrderTool>();
 
 Console.WriteLine("BACKEND_STARTUP_PHASE=PERSISTENCE_CONFIGURATION");

@@ -63,6 +63,7 @@ public sealed class AiToolExecutionAuditSink : IAiToolExecutionAuditSink
         "get_my_shift",
         "update_order_status",
         "customer_get_menu",
+        "customer_get_best_sellers",
         "get_my_orders",
         "create_booking"
     };

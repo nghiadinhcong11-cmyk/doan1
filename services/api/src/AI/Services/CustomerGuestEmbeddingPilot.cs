@@ -72,6 +72,18 @@ public sealed class CustomerGuestEmbeddingPilot : IDisposable
         var boundary = EvaluateScopeBoundary(text, context.IsGuest);
         if (boundary is not null) return boundary;
 
+        // Popular-dish requests are a safe, read-only recommendation capability.
+        // Resolve explicit Vietnamese cues before the embedding catalog so the
+        // request cannot fall through to the generic full-menu tool.
+        if (LooksLikePopularQuery(normalized))
+        {
+            if (!context.BranchId.HasValue)
+                return Clarify("CustomerBranchUnavailable", boundary: "CUSTOMER_BRANCH_REQUIRED");
+
+            return new("ACCEPT", "LexicalIntentEvidence", "PRODUCT_RANKING", "customer_get_best_sellers",
+                JsonSerializer.SerializeToElement(new { limit = 5 }), null, 1, 1, null);
+        }
+
         await EnsureInitializedAsync(cancellationToken);
         if (_initializationError is not null) throw new InvalidOperationException("Customer/Guest embedding pilot is unavailable.", _initializationError);
         if (!await _capacity.WaitAsync(TimeSpan.FromMilliseconds(GetTimeout()), cancellationToken)) throw new TimeoutException("Customer/Guest embedding queue is busy.");
@@ -137,6 +149,9 @@ public sealed class CustomerGuestEmbeddingPilot : IDisposable
 
     private static bool LooksLikeMenuQuery(string value) =>
         Regex.IsMatch(value, @"\b(?:menu|thuc don|danh muc mon|mon an|do uong|khai vi|mon chinh)\b", RegexOptions.CultureInvariant);
+
+    private static bool LooksLikePopularQuery(string value) =>
+        Regex.IsMatch(value, @"\b(?:ban chay|goi nhieu|duoc ua chuong|mon ngon nhat|mon nao.*(?:ngon|ban chay)|(?:nen thu|nen goi|goi y).*(?:mon|mon nao))\b", RegexOptions.CultureInvariant);
 
     private static bool IsGuestOrderRequest(string value) =>
         Regex.IsMatch(value, @"(?<!thuc )\bdon\b|\b(?:da dat|dat nhung gi|da goi|goi nhung gi)\b", RegexOptions.CultureInvariant);

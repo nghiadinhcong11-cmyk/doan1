@@ -15,6 +15,7 @@ public static class CustomerGuestAiResponseFormatter
         }
 
         if (string.Equals(toolName, "customer_get_menu", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(toolName, "customer_get_best_sellers", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(toolName, "get_my_orders", StringComparison.OrdinalIgnoreCase))
         {
             // The tools already produce a deterministic, server-authoritative

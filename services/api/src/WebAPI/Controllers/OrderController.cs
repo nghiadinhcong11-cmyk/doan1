@@ -382,14 +382,22 @@ namespace RestaurantPOS.WebAPI.Controllers
                     {
                         if (_notificationService != null)
                         {
+                            var followUpItems = order.Details
+                                .Where(detail => detail.Quantity > 0)
+                                .Select(detail => $"{detail.ProductName ?? "Món"} x{detail.Quantity}")
+                                .ToList();
+                            var followUpSummary = string.Join(", ", followUpItems);
+                            if (followUpSummary.Length > 140)
+                                followUpSummary = $"{followUpSummary[..137]}...";
+
                             await _notificationService.CreateAsync(new Notification
                             {
                                 Type = "ORDER_FOLLOW_UP",
                                 Title = "Khách gọi thêm món",
-                                Message = $"{result.TableName ?? "Bàn khách"} vừa gọi thêm món, cần kiểm tra để gửi bếp.",
+                                Message = $"{result.TableName ?? "Bàn khách"} gọi thêm: {followUpSummary}. Cần kiểm tra để gửi bếp.",
                                 EntityType = "Order",
                                 EntityId = result.Id,
-                                Route = "/pos",
+                                Route = $"/pos?reviewOrderId={result.Id}",
                                 BranchId = result.BranchId
                             });
                         }

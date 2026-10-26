@@ -32,8 +32,9 @@ namespace RestaurantPOS.WebAPI.Controllers
         private readonly ApplicationDbContext? _context;
         private readonly IHubContext<KitchenHub>? _hub;
         private readonly ILogger<OrderController>? _logger;
+        private readonly INotificationService? _notificationService;
 
-        public OrderController(IOrderService orderService, IKitchenService kitchenService, ILoyaltyService loyaltyService, ApplicationDbContext? context = null, IHubContext<KitchenHub>? hub = null, ILogger<OrderController>? logger = null)
+        public OrderController(IOrderService orderService, IKitchenService kitchenService, ILoyaltyService loyaltyService, ApplicationDbContext? context = null, IHubContext<KitchenHub>? hub = null, ILogger<OrderController>? logger = null, INotificationService? notificationService = null)
         {
             _orderService = orderService;
             _kitchenService = kitchenService;
@@ -41,6 +42,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             _context = context;
             _hub = hub;
             _logger = logger;
+            _notificationService = notificationService;
         }
 
         /// <summary>
@@ -341,9 +343,50 @@ namespace RestaurantPOS.WebAPI.Controllers
                     return BadRequest("One or more toppings do not exist.");
 
                 var deferAvailabilityValidation = guestMarker || IsCustomer();
+                var existingAcceptedTableOrderId = Guid.Empty;
+                if (deferAvailabilityValidation && order.Id == Guid.Empty && _context != null &&
+                    (order.TableId.HasValue || !string.IsNullOrWhiteSpace(order.TableName)))
+                {
+                    existingAcceptedTableOrderId = await _context.Orders
+                        .AsNoTracking()
+                        .Where(candidate => candidate.BranchId == order.BranchId &&
+                            candidate.Status == "Đang xử lý" &&
+                            candidate.CreatedBy != null && candidate.CreatedBy != "" &&
+                            (order.TableId.HasValue
+                                ? (candidate.TableId == order.TableId.Value ||
+                                   (candidate.TableId == null && candidate.TableName == order.TableName))
+                                : candidate.TableName == order.TableName))
+                        .Select(candidate => candidate.Id)
+                        .FirstOrDefaultAsync();
+                }
+
                 var result = await _orderService.CreateOrUpdateOrderAsync(order, deferAvailabilityValidation);
                 if (string.Equals(result.Status, "Đang xử lý", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(result.CreatedBy))
                     await NotifyPendingOrderChangedAsync(result.BranchId);
+
+                if (existingAcceptedTableOrderId != Guid.Empty && result.Id == existingAcceptedTableOrderId)
+                {
+                    try
+                    {
+                        if (_notificationService != null)
+                        {
+                            await _notificationService.CreateAsync(new Notification
+                            {
+                                Type = "ORDER_FOLLOW_UP",
+                                Title = "Khách gọi thêm món",
+                                Message = $"{result.TableName ?? "Bàn khách"} vừa gọi thêm món, cần kiểm tra để gửi bếp.",
+                                EntityType = "Order",
+                                EntityId = result.Id,
+                                Route = "/pos",
+                                BranchId = result.BranchId
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Could not create follow-up order notification for {OrderId}", result.Id);
+                    }
+                }
                 return Ok(result);
             }
             catch (Exception ex)

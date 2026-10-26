@@ -45,7 +45,9 @@ if (!customerFetchInstalled && typeof window !== 'undefined') {
     // Product remains a public endpoint for branch selection, but a QR guest
     // must send the signed session so the API can reject a mismatched branchId.
     const isGuestProductRead = useGuestSession && path === '/api/Product';
-    if ((!isPublicMenuRead || isGuestProductRead) && !isGuestBootstrap && !isCustomerAuthRoute && token && !headers.has('Authorization')) {
+    const shouldAttachRegisteredBootstrapToken = isGuestBootstrap && Boolean(registeredCustomerToken);
+    const shouldAttachSessionToken = !isGuestBootstrap && (!isPublicMenuRead || isGuestProductRead);
+    if ((shouldAttachRegisteredBootstrapToken || shouldAttachSessionToken) && !isCustomerAuthRoute && token && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${token}`);
     }
     return nativeFetch(input, { ...init, headers }).then(response => {

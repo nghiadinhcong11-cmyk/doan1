@@ -108,6 +108,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   const [showNotification, setShowNotification] = useState(false);
   const [notifType, setNotifType] = useState<'order' | 'res'>('order');
   const [orderToAccept, setOrderToAccept] = useState<any>(null);
+  const [reviewFollowUpOrderId, setReviewFollowUpOrderId] = useState<string | null>(null);
   const [isSignalRConnected, setIsSignalRConnected] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -190,16 +191,22 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   useEffect(() => {
     const handleAction = (orderId: string) => {
         if (!orderId) return;
-        setPosTab('notifications');
+        setPosTab('menu');
         const targetOrder = pendingOrders.find(o => o.id === orderId);
         if (targetOrder) {
             setOrderToAccept(targetOrder);
+            setPosTab('notifications');
+            return;
         }
+        // Follow-up QR orders are already accepted and therefore do not appear
+        // in pendingOrders. Open the active table order so staff can review the
+        // added items and use the existing "Gửi bếp" confirmation flow.
+        setReviewFollowUpOrderId(orderId);
     };
 
     // Kiểm tra URL params khi load trang
     const reviewOrderId = searchParams.get('reviewOrderId');
-    if (reviewOrderId && pendingOrders.length > 0) {
+    if (reviewOrderId) {
         handleAction(reviewOrderId);
         // Xóa param sau khi xử lý
         const newParams = new URLSearchParams(searchParams);
@@ -799,6 +806,60 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       setTableCustomers(prev => ({ ...prev, [tableId]: { phone: '', name: 'Khách lẻ' } }));
     }
   };
+
+  useEffect(() => {
+    if (!reviewFollowUpOrderId || !branchInfo?.id || tables.length === 0) return;
+
+    let disposed = false;
+    const openFollowUpOrder = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/Order/${reviewFollowUpOrderId}`, {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` }
+        });
+        if (!response.ok) throw new Error(`Không thể tải đơn gọi thêm (${response.status}).`);
+
+        const order = await response.json();
+        if (disposed) return;
+
+        if (String(order.branchId) !== String(branchInfo.id)) {
+          const targetBranch = allBranches.find(branch => String(branch.id) === String(order.branchId));
+          if (userRole === 'admin' && targetBranch && currentCart.length === 0) {
+            handleSwitchBranch(targetBranch);
+            return;
+          }
+
+          notifyFeedback('Thông báo thuộc chi nhánh khác. Vui lòng chuyển đúng chi nhánh để xem chi tiết.', 'warning');
+          setReviewFollowUpOrderId(null);
+          return;
+        }
+
+        const table = tables.find(candidate => candidate.name === order.tableName);
+        if (!table) {
+          notifyFeedback(`Không tìm thấy ${order.tableName || 'bàn'} trong chi nhánh hiện tại.`, 'warning');
+          setReviewFollowUpOrderId(null);
+          return;
+        }
+
+        await handleSelectTable(table.id, true, true);
+        if (!disposed) {
+          setReviewFollowUpOrderId(null);
+          notifyFeedback(`Đã mở chi tiết gọi thêm tại ${table.name}. Kiểm tra món mới rồi bấm Gửi bếp để xác nhận.`, 'success');
+        }
+      } catch (error) {
+        if (!disposed) {
+          console.error('Không thể mở chi tiết đơn gọi thêm:', error);
+          notifyFeedback('Không thể mở chi tiết đơn gọi thêm. Vui lòng thử lại từ thông báo.', 'error');
+          setReviewFollowUpOrderId(null);
+        }
+      }
+    };
+
+    void openFollowUpOrder();
+    return () => {
+      disposed = true;
+    };
+  }, [reviewFollowUpOrderId, branchInfo?.id, tables, allBranches, currentCart.length, userRole]);
 
   useEffect(() => {
     let disposed = false;

@@ -27,6 +27,7 @@ namespace RestaurantPOS.Infrastructure.Persistence
         public DbSet<Shift> Shifts { get; set; }
         public DbSet<Reservation> Reservations { get; set; }
         public DbSet<Topping> Toppings { get; set; }
+        public DbSet<ToppingBranchAvailability> ToppingBranchAvailabilities { get; set; }
         public DbSet<Promotion> Promotions { get; set; }
         public DbSet<OrderRequest> OrderRequests { get; set; }
         public DbSet<OrderRequestItem> OrderRequestItems { get; set; }
@@ -70,6 +71,12 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .HasForeignKey(o => o.BranchId)
                 .IsRequired()
                 .OnDelete(DeleteBehavior.NoAction);
+            modelBuilder.Entity<Order>()
+                .HasOne(o => o.Table)
+                .WithMany()
+                .HasForeignKey(o => o.TableId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.ClientSetNull);
 
             // 1.1 Order và OrderRequest
             modelBuilder.Entity<OrderRequest>()
@@ -106,6 +113,23 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 entity.HasOne(state => state.Product)
                     .WithMany()
                     .HasForeignKey(state => state.ProductId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.Branch)
+                    .WithMany()
+                    .HasForeignKey(state => state.BranchId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(state => new { state.BranchId, state.Status });
+            });
+
+            modelBuilder.Entity<ToppingBranchAvailability>(entity =>
+            {
+                entity.ToTable("ToppingBranchAvailabilities");
+                entity.HasKey(state => new { state.ToppingId, state.BranchId });
+                entity.Property(state => state.Status).HasMaxLength(32).IsRequired();
+                entity.Property(state => state.UpdatedAtUtc).IsRequired();
+                entity.HasOne(state => state.Topping)
+                    .WithMany()
+                    .HasForeignKey(state => state.ToppingId)
                     .OnDelete(DeleteBehavior.Cascade);
                 entity.HasOne(state => state.Branch)
                     .WithMany()
@@ -207,9 +231,13 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .HasForeignKey(read => read.NotificationId)
                 .OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<ReceiptSettings>()
-                .HasIndex(s => s.BranchId)
+                .HasIndex(s => new { s.BranchId, s.DocumentType })
                 .IsUnique()
                 .HasFilter("\"BranchId\" IS NOT NULL");
+            modelBuilder.Entity<ReceiptSettings>()
+                .HasIndex(s => s.DocumentType)
+                .IsUnique()
+                .HasFilter("\"BranchId\" IS NULL");
             modelBuilder.Entity<SystemSetting>()
                 .HasIndex(s => new { s.BranchId, s.Key })
                 .IsUnique()
@@ -222,6 +250,8 @@ namespace RestaurantPOS.Infrastructure.Persistence
             // Analytics Indexes
             modelBuilder.Entity<Order>()
                 .HasIndex(o => new { o.BranchId, o.CreatedAt, o.Status });
+            modelBuilder.Entity<Order>()
+                .HasIndex(o => new { o.BranchId, o.TableId, o.Status });
             modelBuilder.Entity<LoyaltyTransaction>()
                 .HasOne<Customer>()
                 .WithMany()

@@ -136,7 +136,7 @@ const PromotionManagement = () => {
             }
             setEditingToEdit(null); setIsModalOpen(true);
           }}
-          className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all active:scale-95 flex items-center"
+          className="flex items-center rounded-full bg-orange-500 px-8 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-500/20 transition-all hover:bg-orange-600 active:scale-95"
         >
           <Plus size={18} className="mr-2"/> TẠO CHƯƠNG TRÌNH MỚI
         </button>
@@ -195,8 +195,8 @@ const PromotionManagement = () => {
       )}
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] backdrop-blur-sm p-4">
-           <form onSubmit={handleSave} className="bg-white rounded-[3rem] w-full max-w-xl shadow-2xl animate-in zoom-in-95 overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/60 px-4 pb-10 pt-10 backdrop-blur-sm">
+           <form onSubmit={handleSave} className="w-full max-w-3xl overflow-hidden rounded-[2.5rem] bg-white shadow-2xl animate-in zoom-in-95">
               <div className="bg-orange-500 p-8 text-white flex justify-between items-center">
                  <div>
                     <h3 className="text-2xl font-black uppercase italic tracking-tighter flex items-center"><Gift className="mr-3"/> {editingPromo ? 'Cập nhật' : 'Tạo mới'} Khuyến mãi</h3>
@@ -208,13 +208,13 @@ const PromotionManagement = () => {
               <div className="p-10 space-y-6">
                  <div>
                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Tên chương trình ưu đãi</label>
-                    <input className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none outline-none font-black text-gray-800 focus:ring-2 focus:ring-orange-500/20" placeholder="VD: Đổi 100 điểm lấy 1 Ly Cà phê muối" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required/>
+                    <input className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" placeholder="VD: Đổi 100 điểm lấy 1 Ly Cà phê muối" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required/>
                  </div>
 
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Loại ưu đãi</label>
-                       <select className="w-full px-6 py-3.5 bg-gray-50 rounded-2xl border-none font-bold text-gray-600 appearance-none" value={formData.promotionType} onChange={e => setFormData({...formData, promotionType: e.target.value as any})}>
+                       <select className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-600 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" value={formData.promotionType} onChange={e => setFormData({...formData, promotionType: e.target.value as any})}>
                           <option value="Gift">Quà tặng (Món ăn/Đồ uống)</option>
                           <option value="Percentage">Giảm giá % hóa đơn</option>
                           <option value="Fixed">Giảm số tiền cố định</option>
@@ -222,13 +222,13 @@ const PromotionManagement = () => {
                     </div>
                     <div>
                        <label className="block text-[10px] font-black text-orange-600 uppercase tracking-widest mb-1 ml-1">Điểm yêu cầu</label>
-                       <input type="number" className="w-full px-6 py-3.5 bg-orange-50 rounded-2xl border-none outline-none font-black text-orange-600" value={formData.requiredPoints} onChange={e => setFormData({...formData, requiredPoints: parseInt(e.target.value) || 0})} required/>
+                       <input type="number" className="w-full rounded-2xl border border-orange-100 bg-orange-50 px-5 py-3 text-sm font-black text-orange-600 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" value={formData.requiredPoints} onChange={e => setFormData({...formData, requiredPoints: parseInt(e.target.value) || 0})} required/>
                     </div>
                  </div>
 
                  <div>
                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Mô tả chi tiết</label>
-                    <textarea className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none outline-none font-medium text-gray-600 text-xs" rows={3} placeholder="Mô tả nội dung khuyến mãi để khách hàng nắm rõ..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}/>
+                    <textarea className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-medium text-gray-600 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" rows={3} placeholder="Mô tả nội dung khuyến mãi để khách hàng nắm rõ..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}/>
                  </div>
 
                  <div className="flex gap-4 pt-4">

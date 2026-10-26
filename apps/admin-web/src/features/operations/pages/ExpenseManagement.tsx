@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { fetchBranchList } from '../../../api/branchQuery';
+import { getCachedJson, invalidateCachedJson } from '../../../api/queryCache';
 import { Button, Feedback, FormField, PageHeader, TableActions, TableCell, TableContainer, TableEmpty, TableHeader, TableLoading } from '../../../components/ui';
 
 type Expense = { id: string; branchId: string; category: string; description: string; amount: number; expenseDate: string; paymentMethod?: string; note?: string };
@@ -49,7 +50,7 @@ const ExpenseManagement = () => {
   const abortController = useRef<AbortController | null>(null);
   const previousQuery = useRef({ branchId, category, fromDate, toDate });
 
-  const load = async (requestedPage = page) => {
+  const load = async (requestedPage = page, force = false) => {
     const generation = ++requestGeneration.current;
     abortController.current?.abort();
     const controller = new AbortController();
@@ -61,9 +62,7 @@ const ExpenseManagement = () => {
       if (category) params.set('category', category);
       if (fromDate) params.set('fromDate', fromDate);
       if (toDate) params.set('toDate', `${toDate}T23:59:59`);
-      const response = await fetch(`${API_URL}/api/Expense?${params}`, { signal: controller.signal });
-      if (!response.ok) throw new Error((await response.json()).message || 'Không thể tải dữ liệu chi phí');
-      const data = await response.json() as ExpensePage;
+      const data = await getCachedJson<ExpensePage>(`${API_URL}/api/Expense?${params}`, { signal: controller.signal }, { force });
       if (generation !== requestGeneration.current) return;
       setExpenses(data.items || []);
       setTotal(data.total || 0);
@@ -142,7 +141,8 @@ const ExpenseManagement = () => {
         throw new Error(message);
       }
       const wasEditing = Boolean(editing);
-      setEditing(null); setCreateIdempotencyKey(null); setIsFormOpen(false); await load(page);
+      invalidateCachedJson('/api/Expense');
+      setEditing(null); setCreateIdempotencyKey(null); setIsFormOpen(false); await load(page, true);
       setSuccess(wasEditing ? 'Cập nhật phiếu chi thành công.' : 'Lưu phiếu chi thành công.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Lỗi lưu dữ liệu');
@@ -154,12 +154,12 @@ const ExpenseManagement = () => {
   const remove = async (id: string) => {
     if (!window.confirm('Bạn có chắc muốn xóa phiếu chi này?')) return;
     const response = await fetch(`${API_URL}/api/Expense/${id}`, { method: 'DELETE' });
-    if (!response.ok) setError('Không thể xóa phiếu chi'); else void load(page);
+    if (!response.ok) setError('Không thể xóa phiếu chi'); else { invalidateCachedJson('/api/Expense'); void load(page, true); }
   };
 
   return (
     <div className="min-h-[calc(100vh-48px)] space-y-5 bg-gray-50 p-4 sm:p-6">
-      <PageHeader title="Chi phí / phiếu mua hàng" description="Ghi nhận chi phí thực tế, không quản lý tồn kho vật lý." action={<Button onClick={openCreate}><Plus aria-hidden="true" size={17} /> Lập phiếu chi</Button>} />
+      <PageHeader title="Chi phí / phiếu mua hàng" description="Ghi nhận chi phí thực tế, không quản lý tồn kho vật lý." action={<Button className="min-h-0 rounded px-4 py-1.5 text-sm" onClick={openCreate}><Plus aria-hidden="true" size={16} /> Lập phiếu chi</Button>} />
       {branchLoadError && <Feedback tone="error">{branchLoadError}</Feedback>}
       {branchLoaded && !branchLoadError && availableBranches.length === 0 && <Feedback tone="warning">Chưa có chi nhánh hoạt động để chọn.</Feedback>}
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-white p-4">
@@ -167,7 +167,7 @@ const ExpenseManagement = () => {
         <label className="text-sm font-medium text-gray-600">Loại chi<select value={category} onChange={e => setCategory(e.target.value)} className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"><option value="">Tất cả</option>{CATEGORIES.map(item => <option key={item}>{item}</option>)}</select></label>
         <label className="text-sm font-medium text-gray-600">Từ ngày<input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" /></label>
         <label className="text-sm font-medium text-gray-600">Đến ngày<input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" /></label>
-        <Button variant="outline" onClick={() => void load()}><RefreshCw aria-hidden="true" size={16} /> Làm mới</Button>
+        <Button variant="outline" onClick={() => void load(page, true)}><RefreshCw aria-hidden="true" size={16} /> Làm mới</Button>
       </div>
       {error && <Feedback tone="error" onDismiss={() => setError('')}>{error}</Feedback>}
       {success && <Feedback tone="success" onDismiss={() => setSuccess('')}>{success}</Feedback>}
@@ -185,14 +185,14 @@ const ExpenseManagement = () => {
           <div className="flex gap-2"><Button variant="outline" disabled={loading || page <= 1} onClick={() => setPage(value => value - 1)}>Trang trước</Button><Button variant="outline" disabled={loading || page >= totalPages} onClick={() => setPage(value => value + 1)}>Trang sau</Button></div>
         </div>
       </section>
-      {isFormOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="expense-dialog-title"><form onSubmit={save} className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between"><h2 id="expense-dialog-title" className="text-xl font-bold text-gray-800">{editing ? 'Sửa phiếu chi' : 'Lập phiếu chi'}</h2><button type="button" aria-label="Đóng biểu mẫu" onClick={() => { setEditing(null); setCreateIdempotencyKey(null); setIsFormOpen(false); setForm(emptyForm); }} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X aria-hidden="true" /></button></div>
-        <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-600">Chi nhánh<select required value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 block w-full rounded-xl border border-gray-200 p-2.5" disabled={role !== 'admin'}><option value="">-- Chọn --</option>{availableBranches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label><label className="text-sm font-medium text-gray-600">Ngày chi<input required type="date" value={form.expenseDate} onChange={e => setForm({ ...form, expenseDate: e.target.value })} className="mt-1 block w-full rounded-xl border border-gray-200 p-2.5" /></label></div>
+      {isFormOpen && <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/60 px-4 pb-10 pt-10 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="expense-dialog-title"><form onSubmit={save} className="max-h-[90vh] w-full max-w-3xl space-y-6 overflow-y-auto rounded-[2.5rem] bg-white p-10 shadow-2xl">
+        <div className="flex items-center justify-between"><h2 id="expense-dialog-title" className="text-xl font-black uppercase italic tracking-tight text-gray-800">{editing ? 'Sửa phiếu chi' : 'Lập phiếu chi'}</h2><button type="button" aria-label="Đóng biểu mẫu" onClick={() => { setEditing(null); setCreateIdempotencyKey(null); setIsFormOpen(false); setForm(emptyForm); }} className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X aria-hidden="true" /></button></div>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-gray-600">Chi nhánh<select required value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 block w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" disabled={role !== 'admin'}><option value="">-- Chọn --</option>{availableBranches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label><label className="text-xs font-bold text-gray-600">Ngày chi<input required type="date" value={form.expenseDate} onChange={e => setForm({ ...form, expenseDate: e.target.value })} className="mt-1 block w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label></div>
         {branchLoaded && !branchLoadError && !availableBranches.some(branch => branch.id === form.branchId) && <Feedback tone="warning">Chưa có chi nhánh hoạt động hợp lệ cho phiếu này.</Feedback>}
         <FormField label="Nội dung" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} required />
-        <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-600">Loại chi<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="mt-1 block w-full rounded-xl border border-gray-200 p-2.5">{CATEGORIES.map(item => <option key={item}>{item}</option>)}</select></label><FormField label="Số tiền" type="number" min="1" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></div>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-gray-600">Loại chi<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="mt-1 block w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">{CATEGORIES.map(item => <option key={item}>{item}</option>)}</select></label><FormField label="Số tiền" type="number" min="1" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></div>
         <div className="grid gap-3 sm:grid-cols-2"><FormField label="Thanh toán" value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })} /><FormField label="Ghi chú" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
-      <div className="flex justify-end gap-3 pt-2"><Button type="button" variant="secondary" onClick={() => { setEditing(null); setCreateIdempotencyKey(null); setIsFormOpen(false); }}>Hủy</Button><Button type="submit" loading={saving} disabled={!form.branchId || !availableBranches.some(branch => branch.id === form.branchId)}>Lưu phiếu chi</Button></div>
+       <div className="flex justify-end gap-3 pt-4"><Button className="rounded-full" type="button" variant="secondary" onClick={() => { setEditing(null); setCreateIdempotencyKey(null); setIsFormOpen(false); }}>Hủy</Button><Button className="rounded-full" type="submit" loading={saving} disabled={!form.branchId || !availableBranches.some(branch => branch.id === form.branchId)}>Lưu phiếu chi</Button></div>
       </form></div>}
     </div>
   );

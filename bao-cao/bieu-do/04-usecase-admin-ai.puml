@@ -1,0 +1,54 @@
+@startuml
+title Hình 3.4 - Use Case nhóm quản trị và trợ lý ảo
+left to right direction
+
+actor "Admin / Chủ quán" as Admin
+
+rectangle "Admin Web - AI Assistant" {
+  usecase "Xem doanh thu,
+KPI và báo cáo" as Reports
+  usecase "Xem đơn hàng và
+catalog" as ReadData
+  usecase "Cập nhật giá sản phẩm" as UpdatePrice
+  usecase "Đổi tên sản phẩm" as RenameProduct
+  usecase "Tạo sản phẩm mới" as CreateProduct
+  usecase "Tạo topping mới" as CreateTopping
+  usecase "Hiển thị bản xem trước" as Preview
+  usecase "Xác nhận hoặc hủy
+thao tác ghi" as Confirm
+  usecase "Kiểm tra quyền và
+phạm vi chi nhánh" as Permission
+}
+
+Admin --> Reports
+Admin --> ReadData
+Admin --> UpdatePrice
+Admin --> RenameProduct
+Admin --> CreateProduct
+Admin --> CreateTopping
+
+UpdatePrice ..> Preview : <<include>>
+RenameProduct ..> Preview : <<include>>
+CreateProduct ..> Preview : <<include>>
+CreateTopping ..> Preview : <<include>>
+Preview ..> Confirm : <<include>>
+Confirm ..> Permission : <<include>>
+
+note right of Permission
+Đường gọi hiện tại:
+AiController
+-> AiOrchestrator
+-> local embedding pilot
+-> AiToolRegistry
+-> AiPermissionService
+-> AI tool
+-> Application Service
+end note
+
+note bottom
+Các thao tác ghi không thực thi trước khi
+người dùng xác nhận. Token xác nhận gắn
+với Admin, có thời hạn và chỉ dùng một lần.
+end note
+@enduml
+

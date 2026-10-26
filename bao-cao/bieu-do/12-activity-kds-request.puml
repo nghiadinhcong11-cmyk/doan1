@@ -1,0 +1,34 @@
+@startuml
+title Hình 3.8 - Activity gửi món và xử lý yêu cầu trên KDS
+|POS / Nhân viên vận hành|
+start
+:Mở đơn hàng;
+:Tính pending = Quantity - SentQuantity;
+if (Còn món chưa gửi?) then (Có)
+  :Tạo OrderRequest;
+  :Tạo OrderRequestItem;
+  :Cập nhật SentQuantity;
+  |Backend - KitchenService|
+  :Lưu OrderRequest;
+  :Phát NewOrderRequest qua KitchenHub;
+  |KDS / Nhân viên bếp|
+  :Nhận yêu cầu theo branch group;
+  :Xem món và ghi chú;
+  if (Chấp nhận chế biến?) then (Có)
+    :Cập nhật Preparing;
+    :Chế biến món;
+    :Cập nhật Ready;
+    :Giao món / hoàn tất;
+    :Cập nhật Completed;
+    |Backend - KitchenService|
+    :Phát notification trạng thái;
+  else (Không)
+    :Cập nhật Cancelled;
+    |Backend - KitchenService|
+    :Phát notification hủy;
+  endif
+else (Không)
+  :Không tạo yêu cầu trùng;
+endif
+stop
+@enduml

@@ -29,7 +29,7 @@ interface CustomerOrderDetail {
 const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boolean; onLoginRequest: () => void; onLogout: () => void }) => {
   const [customer, setCustomer] = useState<any>(null);
   const [orders, setOrders] = useState<CustomerOrderDetail[]>([]);
-  const [branches, setBranches] = useState<Array<{ id: string; imageUrl?: string }>>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name?: string; address?: string; phoneNumber?: string; imageUrl?: string }>>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [loyaltyHistory, setLoyaltyHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(!isGuest);
@@ -87,8 +87,11 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
   useEffect(() => {
     fetch(`${API_URL}/api/Branch`)
       .then(response => response.ok ? response.json() : [])
-      .then(data => setBranches(Array.isArray(data) ? data.map((branch: { id?: string; Id?: string; imageUrl?: string; ImageUrl?: string }) => ({
+      .then(data => setBranches(Array.isArray(data) ? data.map((branch: { id?: string; Id?: string; name?: string; Name?: string; address?: string; Address?: string; phoneNumber?: string; PhoneNumber?: string; imageUrl?: string; ImageUrl?: string }) => ({
         id: String(branch.id ?? branch.Id ?? ''),
+        name: branch.name ?? branch.Name,
+        address: branch.address ?? branch.Address,
+        phoneNumber: branch.phoneNumber ?? branch.PhoneNumber,
         imageUrl: branch.imageUrl ?? branch.ImageUrl
       })).filter(branch => branch.id) : []))
       .catch(() => setBranches([]));
@@ -98,21 +101,25 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
   const [isReservationsExpanded, setIsReservationsExpanded] = useState(false);
   const [isLoyaltyExpanded, setIsLoyaltyExpanded] = useState(false);
+  const [activeSection, setActiveSection] = useState<'overview' | 'orders' | 'loyalty' | 'reservations'>('overview');
   const INITIAL_SHOW_COUNT = 3;
 
   // States cho cập nhật Profile
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editData, setEditData] = useState({
+  const [editData, setEditData] = useState<{ fullName: string; email: string; address: string; gender: string; birthday: string }>({
     fullName: '',
     email: '',
     address: '',
     gender: 'Nam',
-    birthday: '',
-    newPassword: ''
+    birthday: ''
   });
   const [updating, setUpdating] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
   const [updateError, setUpdateError] = useState('');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' });
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
+  const [passwordUpdateError, setPasswordUpdateError] = useState('');
 
   useEffect(() => {
     if (isGuest) {
@@ -131,7 +138,6 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
           address: data.address || '',
           gender: data.gender || 'Nam',
           birthday: data.birthday ? new Date(data.birthday).toISOString().split('T')[0] : '',
-          newPassword: ''
         });
         if (data.phoneNumber) {
           fetchLatestProfile(data.phoneNumber);
@@ -167,7 +173,6 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
         address: data.address || '',
         gender: data.gender || 'Nam',
         birthday: data.birthday ? new Date(data.birthday).toISOString().split('T')[0] : '',
-        newPassword: ''
       });
       localStorage.setItem('customerInfo', JSON.stringify(data));
       await fetchLoyaltyHistory(data.id);
@@ -187,11 +192,6 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
       setUpdateError('Vui lòng nhập họ và tên.');
       return;
     }
-    if (editData.newPassword && (editData.newPassword.length < 8 || editData.newPassword.length > 128)) {
-      setUpdateError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
-      return;
-    }
-
     setUpdating(true);
     try {
       const response = await fetch(`${API_URL}/api/Customer/${customer.phoneNumber}/profile`, {
@@ -265,6 +265,53 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
     }
   };
 
+  const handleChangePassword = async () => {
+    setPasswordUpdateError('');
+    if (passwordData.newPassword.length < 8 || passwordData.newPassword.length > 128) {
+      setPasswordUpdateError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
+      return;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordUpdateError('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+
+    setPasswordUpdating(true);
+    try {
+      const token = localStorage.getItem('customerToken');
+      const response = await fetch(`${API_URL}/api/Customer/${encodeURIComponent(customer.phoneNumber)}/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ newPassword: passwordData.newPassword })
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setPasswordUpdateError(body.message || 'Không thể cập nhật mật khẩu.');
+        return;
+      }
+
+      setPasswordData({ newPassword: '', confirmPassword: '' });
+      setIsPasswordModalOpen(false);
+      setShowUpdateSuccess(true);
+      setTimeout(() => setShowUpdateSuccess(false), 3000);
+    } catch {
+      setPasswordUpdateError('Lỗi kết nối máy chủ khi cập nhật mật khẩu.');
+    } finally {
+      setPasswordUpdating(false);
+    }
+  };
+
+  const loyaltyEarned = loyaltyHistory
+    .filter(log => log.type === 'Earn' || log.type === 'Refund')
+    .reduce((sum, log) => sum + Math.max(Number(log.points || 0), 0), 0);
+  const loyaltyUsed = loyaltyHistory
+    .filter(log => log.type === 'Redeem' || log.type === 'Reversal')
+    .reduce((sum, log) => sum + Math.abs(Number(log.points || 0)), 0);
+
   if (loading && !customer) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
@@ -319,6 +366,13 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
                 <div>
                    <h1 className="text-xl font-black uppercase italic tracking-tighter">{customer.fullName}</h1>
                    <p className="text-xs opacity-70 font-bold">{customer.phoneNumber}</p>
+                   <button
+                     type="button"
+                     onClick={() => { setPasswordUpdateError(''); setIsPasswordModalOpen(true); }}
+                     className="mt-3 rounded-xl border border-white/30 bg-white/15 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-white/25"
+                   >
+                     Đổi mật khẩu
+                   </button>
                 </div>
             </div>
             <button
@@ -329,11 +383,10 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
                   address: customer.address || '',
                   gender: customer.gender || 'Nam',
                   birthday: customer.birthday ? new Date(customer.birthday).toISOString().split('T')[0] : '',
-                  newPassword: ''
                 });
                 setIsEditModalOpen(true);
               }}
-              className="bg-white/20 p-3 rounded-2xl hover:bg-white/30 transition-all border border-white/20 active:scale-90"
+              className="hidden"
               title="Chỉnh sửa hồ sơ"
             >
                <Edit3 size={18} />
@@ -358,10 +411,20 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
          </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <nav className="sticky top-0 z-20 border-b border-blue-100 bg-white/95 px-4 py-3 shadow-sm backdrop-blur" aria-label="Customer profile navigation">
+         <div className="mx-auto flex max-w-2xl gap-2 overflow-x-auto">
+            {([['overview', 'Tổng quan'], ['orders', 'Đơn hàng'], ['loyalty', 'Tích điểm'], ['reservations', 'Lịch hẹn']] as const).map(([id, label]) => (
+               <button type="button" key={id} onClick={() => { setActiveSection(id); document.getElementById(`customer-profile-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition ${activeSection === id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}>
+                  {label}
+               </button>
+            ))}
+         </div>
+      </nav>
+
+      <div id="customer-profile-overview" className="scroll-mt-20 p-6 space-y-6">
          {/* Personal Info Summary */}
          <div className="bg-white p-6 rounded-[2rem] shadow-xl shadow-blue-500/5 border border-gray-100 space-y-4 relative overflow-hidden">
-            <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
                 <h2 className="text-xs font-black uppercase tracking-widest text-gray-400">Thông tin cá nhân</h2>
                 <button
                     onClick={() => {
@@ -371,13 +434,19 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
                             address: customer.address || '',
                             gender: customer.gender || 'Nam',
                             birthday: customer.birthday ? new Date(customer.birthday).toISOString().split('T')[0] : '',
-                            newPassword: ''
                         });
                         setIsEditModalOpen(true);
                     }}
-                    className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
+                    className="absolute right-5 top-5 p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
                 >
                     <Edit3 size={14} />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setPasswordUpdateError(''); setIsPasswordModalOpen(true); }}
+                    className="hidden"
+                >
+                    Đổi mật khẩu
                 </button>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -397,7 +466,7 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
          </div>
 
          {/* Order History */}
-         <div className="flex justify-between items-center">
+         <div id="customer-profile-orders" className="scroll-mt-20 flex justify-between items-center">
             <h2 className="text-lg font-black uppercase italic tracking-tighter text-gray-800">Lịch sử đặt món</h2>
             <span className="text-[10px] font-bold text-gray-400 bg-gray-200/50 px-2 py-1 rounded uppercase tracking-widest">{orders.length} đơn</span>
          </div>
@@ -452,8 +521,23 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
             </div>
          )}
 
+         <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-2xl border border-green-100 bg-green-50 p-4">
+               <p className="text-[9px] font-black uppercase text-green-600">Đã tích</p>
+               <p className="mt-1 text-lg font-black text-green-700">{loyaltyEarned.toLocaleString('vi-VN')}</p>
+            </div>
+            <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+               <p className="text-[9px] font-black uppercase text-red-600">Đã dùng</p>
+               <p className="mt-1 text-lg font-black text-red-700">{loyaltyUsed.toLocaleString('vi-VN')}</p>
+            </div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+               <p className="text-[9px] font-black uppercase text-blue-600">Hiện có</p>
+               <p className="mt-1 text-lg font-black text-blue-700">{Number(customer.loyaltyPoints || 0).toLocaleString('vi-VN')}</p>
+            </div>
+         </div>
+
          {/* Loyalty History */}
-         <div className="flex justify-between items-center pt-4">
+         <div id="customer-profile-loyalty" className="scroll-mt-20 flex justify-between items-center pt-4">
             <h2 className="text-lg font-black uppercase italic tracking-tighter text-gray-800">Lịch sử tích điểm</h2>
             <span className="text-[10px] font-bold text-gray-400 bg-gray-200/50 px-2 py-1 rounded uppercase tracking-widest">{loyaltyHistory.length} giao dịch</span>
          </div>
@@ -510,7 +594,7 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
          )}
 
          {/* Reservations Section */}
-         <div className="pt-4">
+         <div id="customer-profile-reservations" className="scroll-mt-20 pt-4">
             <div className="flex justify-between items-center mb-4">
                <h2 className="text-lg font-black uppercase italic tracking-tighter text-gray-800">Lịch hẹn của tôi</h2>
                <span className="text-[10px] font-bold text-gray-400 bg-gray-200/50 px-2 py-1 rounded uppercase tracking-widest">{reservations.length} lịch</span>
@@ -609,7 +693,10 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">Thanh toán</p><p className="font-bold text-gray-700">{orderDetail.paymentMethod || 'Chưa thanh toán'}</p></div>
                   </div>
                   <div className="flex justify-center overflow-x-auto">
-                    <ReceiptPreview settings={receiptSettings} branch={{ name: orderDetail.branchName, imageUrl: branches.find(branch => branch.id.toLowerCase() === String(orderDetail.branchId ?? '').toLowerCase())?.imageUrl }} order={orderDetail} />
+                    <ReceiptPreview settings={receiptSettings} branch={(() => {
+                      const branch = branches.find(item => item.id.toLowerCase() === String(orderDetail.branchId ?? '').toLowerCase());
+                      return { name: orderDetail.branchName || branch?.name, address: branch?.address, phoneNumber: branch?.phoneNumber, imageUrl: branch?.imageUrl };
+                    })()} order={orderDetail} />
                   </div>
                   {orderDetail.note && <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><span className="font-black">Ghi chú đơn:</span> {orderDetail.note}</p>}
                   {(() => {
@@ -711,6 +798,29 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
         </div>
       )}
 
+      {/* CHANGE PASSWORD MODAL */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm" onClick={() => setIsPasswordModalOpen(false)}>
+           <div className="relative w-full max-w-md rounded-[3rem] bg-white p-8 shadow-2xl" onClick={event => event.stopPropagation()}>
+              <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="absolute right-6 top-6 text-gray-300 hover:text-gray-600"><X size={20}/></button>
+              <div className="mb-8 text-center">
+                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><User size={32}/></div>
+                 <h3 className="text-xl font-black uppercase italic tracking-tighter text-gray-800">Đổi mật khẩu</h3>
+                 <p className="mt-1 text-xs font-bold uppercase tracking-widest text-gray-400">Bảo vệ tài khoản của bạn</p>
+              </div>
+              <div className="space-y-5">
+                 <FormField label="Mật khẩu mới" type="password" value={passwordData.newPassword} onChange={event => setPasswordData({ ...passwordData, newPassword: event.target.value })} minLength={8} maxLength={128} />
+                 <FormField label="Xác nhận mật khẩu mới" type="password" value={passwordData.confirmPassword} onChange={event => setPasswordData({ ...passwordData, confirmPassword: event.target.value })} minLength={8} maxLength={128} />
+                 {passwordUpdateError && <Feedback tone="error">{passwordUpdateError}</Feedback>}
+                 <div className="flex gap-3 pt-2">
+                    <Button type="button" onClick={() => setIsPasswordModalOpen(false)} variant="secondary" className="flex-1 uppercase tracking-widest">Hủy</Button>
+                    <Button type="button" onClick={handleChangePassword} disabled={passwordUpdating} loading={passwordUpdating} className="flex-[2] uppercase tracking-widest">Lưu mật khẩu</Button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* EDIT PROFILE MODAL */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-6 backdrop-blur-sm" onClick={() => setIsEditModalOpen(false)}>
@@ -782,19 +892,6 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
                     />
                  </div>
 
-                 <div className="border-t border-gray-100 pt-4">
-                    <FormField
-                      label="Đổi mật khẩu (nếu cần)"
-                      type="password"
-                      value={editData.newPassword}
-                      onChange={(e) => setEditData({...editData, newPassword: e.target.value})}
-                      placeholder="Mật khẩu mới..."
-                      minLength={8}
-                      maxLength={128}
-                      helperText="Sử dụng từ 8 đến 128 ký tự."
-                      className="bg-red-50/30"
-                    />
-                 </div>
 
                  {updateError && <Feedback tone="error">{updateError}</Feedback>}
 

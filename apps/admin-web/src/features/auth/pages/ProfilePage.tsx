@@ -1,537 +1,99 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
-import { User, Store, Package, History, Shield, Settings, LogOut, ChevronRight, Moon, Globe, Camera, CheckCircle2, X, CreditCard, Lock, AlertCircle, MapPin, Phone, Zap } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Building2, CheckCircle2, ChevronRight, Clock3, FileText, Lock, MapPin, Package, Phone, Shield, User, Wallet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../../../config';
+import { getCachedJson } from '../../../api/queryCache';
 import { Button, Feedback, FormField } from '../../../components/ui';
 
-interface ProfileData {
-  businessType: string;
-  birthDate: string;
-  phone: string;
-  representative: string;
-  address: string;
-  storeName: string;
-  expiryDate: string;
-  industry: string;
-  servicePackage: string;
-  avatarUrl?: string;
-  email?: string;
-  taxCode?: string;
-}
+type ProfileTab = 'account' | 'security' | 'package' | 'billing';
+type BranchProfile = { id: string; name: string; address?: string | null; phoneNumber?: string | null; imageUrl?: string | null; taxCode?: string | null; representativeName?: string | null; representativeEmail?: string | null; industry?: string | null; businessType?: string | null; isActive?: boolean };
+
+const tabs: Array<{ id: ProfileTab; label: string; description: string; icon: React.ElementType }> = [
+  { id: 'account', label: 'Hồ sơ nhà hàng', description: 'Thông tin thương hiệu và chi nhánh', icon: Building2 },
+  { id: 'security', label: 'Bảo mật tài khoản', description: 'Đổi mật khẩu đăng nhập', icon: Lock },
+  { id: 'package', label: 'Gói dịch vụ', description: 'Thông tin gói và quyền sử dụng', icon: Package },
+  { id: 'billing', label: 'Thanh toán', description: 'Lịch sử thanh toán dịch vụ', icon: Wallet }
+];
 
 const ProfilePage = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('account'); // account, package, billing, security
-  const [isEditing, setIsEditing] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [profile, setProfile] = useState<ProfileData>({
-    businessType: 'Cá nhân',
-    birthDate: '1995-01-01',
-    phone: '0949774303',
-    representative: 'Đinh Công Nghĩa',
-    address: '123 Đường ABC, Quận 1, TP.HCM',
-    storeName: 'DOAN RESTAURANT',
-    expiryDate: '20/07/2026',
-    industry: 'F&B - Bar, Coffee & Restaurant',
-    servicePackage: 'Gói Chuyên nghiệp',
-    avatarUrl: '',
-    email: 'contact@doan-pos.vn',
-    taxCode: '0102030405'
-  });
-
-  const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
-  const [showPass, setShowPass] = useState({ current: false, new: false, confirm: false });
+  const [activeTab, setActiveTab] = useState<ProfileTab>('account');
+  const [branch, setBranch] = useState<BranchProfile | null>(null);
+  const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState('');
   const [authUserId, setAuthUserId] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState('');
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
-  const [profileError, setProfileError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [branchData, setBranchData] = useState<any>(null);
-  const userRole = localStorage.getItem('userRole');
+  const authHeaders = { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` };
 
-  // Tải dữ liệu từ API để đồng bộ
   useEffect(() => {
-    const fetchData = async () => {
+    let disposed = false;
+    const load = async () => {
+      setIsLoading(true);
       try {
-        setIsLoading(true);
-        // 1. Lấy thông tin User hiện tại
-        const meRes = await fetch(`${API_URL}/api/Auth/me`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }
-        });
-        const user = meRes.ok ? await meRes.json() : null;
-        if (user) setAuthUserId(user.userId || '');
-
-        // 2. Lấy thông tin Chi nhánh (Trụ sở chính)
-        const branchRes = await fetch(`${API_URL}/api/Branch`);
-        const branches = branchRes.ok ? await branchRes.json() : [];
-        const main = branches.find((b: any) => b.isMain) || branches[0];
-
-        if (main) {
-          setBranchData(main);
-          setProfile(current => ({
-            ...current,
-            storeName: main.name || current.storeName,
-            address: main.address || current.address,
-            phone: main.phoneNumber || current.phone,
-            representative: main.representativeName || current.representative,
-            email: main.representativeEmail || current.email,
-            taxCode: main.taxCode || current.taxCode,
-            industry: main.industry || current.industry,
-            businessType: main.businessType || current.businessType,
-            avatarUrl: main.imageUrl || current.avatarUrl
-          }));
+        const [meResponse, branchResponse] = await Promise.all([
+          fetch(`${API_URL}/api/Auth/me`, { headers: authHeaders }),
+          getCachedJson<BranchProfile[]>(`${API_URL}/api/Branch/management`, { headers: authHeaders })
+        ]);
+        if (!meResponse.ok) throw new Error('Không thể tải thông tin hồ sơ.');
+        const me = await meResponse.json() as { userId?: string; fullName?: string; role?: string };
+        const branches = branchResponse;
+        const selectedId = localStorage.getItem('selectedBranchId');
+        const current = branches.find(item => item.id === selectedId) || branches.find(item => item.isActive !== false) || null;
+        if (!disposed) {
+          setAuthUserId(me.userId || '');
+          setUserName(me.fullName || localStorage.getItem('userName') || '');
+          setUserRole(me.role || localStorage.getItem('userRole') || '');
+          setBranch(current);
         }
-      } catch (err) {
-        console.error("Lỗi tải thông tin hồ sơ:", err);
+      } catch (error) {
+        if (!disposed) setProfileError(error instanceof Error ? error.message : 'Không thể tải thông tin hồ sơ.');
       } finally {
-        setIsLoading(false);
+        if (!disposed) setIsLoading(false);
       }
     };
-
-    fetchData();
+    void load();
+    return () => { disposed = true; };
   }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfile({ ...profile, avatarUrl: reader.result as string });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleChangePassword = async () => {
+  const changePassword = async () => {
     setPasswordError('');
+    setPasswordSuccess(false);
     if (!authUserId) return setPasswordError('Không xác định được tài khoản. Vui lòng đăng nhập lại.');
-    if (passwords.new.length < 8 || passwords.new.length > 128) return setPasswordError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
-    if (passwords.new !== passwords.confirm) return setPasswordError('Mật khẩu xác nhận không khớp.');
+    if (passwords.next.length < 8 || passwords.next.length > 128) return setPasswordError('Mật khẩu mới phải dài từ 8 đến 128 ký tự.');
+    if (passwords.next !== passwords.confirm) return setPasswordError('Mật khẩu xác nhận không khớp.');
+    setPasswordSaving(true);
     try {
-      setPasswordSaving(true);
-      const response = await fetch(`${API_URL}/api/Auth/change-password`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: authUserId, oldPassword: passwords.current, newPassword: passwords.new, type: 'Employee' })
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || 'Không thể cập nhật mật khẩu.');
-      }
-      setPasswords({ current: '', new: '', confirm: '' });
+      const response = await fetch(`${API_URL}/api/Auth/change-password`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: authUserId, oldPassword: passwords.current, newPassword: passwords.next, type: 'Employee' }) });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Không thể cập nhật mật khẩu.'); }
+      setPasswords({ current: '', next: '', confirm: '' });
       setPasswordSuccess(true);
-      setShowSuccess(true);
-      window.setTimeout(() => { setShowSuccess(false); setPasswordSuccess(false); }, 3000);
-    } catch (error: any) { setPasswordError(error.message || 'Không thể kết nối máy chủ.'); }
-    finally { setPasswordSaving(false); }
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+    } finally { setPasswordSaving(false); }
   };
 
-  const renderAccountInfo = () => (
-    <div className="space-y-12 animate-in fade-in duration-300">
-      <section>
-        <div className="flex items-center space-x-2 mb-6 border-b pb-2 border-blue-100">
-           <div className="p-1.5 bg-blue-50 text-[#0070f4] rounded-md"><User size={16}/></div>
-           <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest italic">Hồ sơ chủ quán</h3>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Người đại diện</label>
-            {isEditing ? (
-              <input
-                type="text"
-                className="w-full border-b-2 border-gray-100 py-1.5 focus:border-blue-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
-                value={profile.representative}
-                onChange={e => setProfile({...profile, representative: e.target.value})}
-              />
-            ) : (
-              <p className="text-sm font-black text-gray-800 py-1.5">{profile.representative}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Số điện thoại liên hệ</label>
-            {isEditing ? (
-              <input
-                type="text"
-                className="w-full border-b-2 border-gray-100 py-1.5 focus:border-blue-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
-                value={profile.phone}
-                onChange={e => setProfile({...profile, phone: e.target.value})}
-              />
-            ) : (
-              <p className="text-sm font-black text-blue-600 py-1.5 flex items-center"><Phone size={14} className="mr-2" /> {profile.phone}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Email đăng ký</label>
-            {isEditing ? (
-              <input
-                type="email"
-                className="w-full border-b-2 border-gray-100 py-1.5 focus:border-red-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
-                value={profile.email}
-                onChange={e => setProfile({...profile, email: e.target.value})}
-              />
-            ) : (
-              <p className="text-sm font-bold text-gray-600 py-1.5">{profile.email}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Mã số thuế</label>
-            {isEditing ? (
-              <input
-                type="text"
-                className="w-full border-b-2 border-gray-100 py-1.5 focus:border-red-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
-                value={profile.taxCode}
-                onChange={e => setProfile({...profile, taxCode: e.target.value})}
-              />
-            ) : (
-              <p className="text-sm font-bold text-gray-700 py-1.5">{profile.taxCode || '---'}</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="flex items-center space-x-2 mb-6 border-b pb-2 border-blue-100">
-           <div className="p-1.5 bg-blue-50 text-[#0070f4] rounded-md"><Store size={16}/></div>
-           <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest italic">Thông tin thương hiệu</h3>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Tên gian hàng</label>
-            {isEditing ? (
-              <input
-                type="text"
-                className="w-full border-b-2 border-gray-100 py-1.5 focus:border-blue-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
-                value={profile.storeName}
-                onChange={e => setProfile({...profile, storeName: e.target.value})}
-              />
-            ) : (
-              <p className="text-lg font-black text-[#0070f4] py-1.5 uppercase tracking-tighter italic">{profile.storeName}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Địa chỉ văn phòng</label>
-            {isEditing ? (
-              <input
-                type="text"
-                className="w-full border-b-2 border-gray-100 py-1.5 focus:border-red-500 outline-none font-bold text-gray-700 transition-all bg-transparent"
-                value={profile.address}
-                onChange={e => setProfile({...profile, address: e.target.value})}
-              />
-            ) : (
-              <p className="text-sm font-medium text-gray-600 py-1.5 flex items-start"><MapPin size={14} className="mr-2 mt-0.5 text-gray-400" /> {profile.address}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Lĩnh vực hoạt động</label>
-            <p className="text-sm font-bold text-gray-700 py-1.5 bg-gray-50 px-3 rounded-xl inline-block">{profile.industry}</p>
-          </div>
-        </div>
-      </section>
+  const branchLink = userRole === 'admin' ? `/branches?branchId=${encodeURIComponent(branch?.id || '')}` : '/forbidden';
+  const renderAccount = () => <div className="space-y-6">
+    <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-600">Thông tin chi nhánh</p><h2 className="mt-1 text-xl font-bold text-slate-800">{branch?.name || 'Chưa chọn chi nhánh'}</h2></div><span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"><CheckCircle2 size={14} />{branch?.isActive === false ? 'Tạm ngưng' : 'Đang hoạt động'}</span></div><div className="mt-6 grid gap-5 sm:grid-cols-2"><Info label="Người đại diện" value={branch?.representativeName} icon={<User size={16} />} /><Info label="Số điện thoại" value={branch?.phoneNumber} icon={<Phone size={16} />} /><Info label="Email đăng ký" value={branch?.representativeEmail} icon={<FileText size={16} />} /><Info label="Mã số thuế" value={branch?.taxCode} icon={<FileText size={16} />} /><Info label="Địa chỉ" value={branch?.address} icon={<MapPin size={16} />} /><Info label="Lĩnh vực" value={branch?.industry || branch?.businessType} icon={<Building2 size={16} />} /></div></section>
+      <section className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 p-6 text-white shadow-lg shadow-blue-200"><div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white/15 ring-1 ring-white/30">{branch?.imageUrl ? <img src={branch.imageUrl} alt="Logo chi nhánh" className="h-full w-full object-contain" /> : <Building2 size={34} className="opacity-80" />}</div><p className="mt-5 text-xs font-bold uppercase tracking-wider text-blue-100">Tài khoản đang sử dụng</p><p className="mt-1 text-lg font-bold">{userName || 'Quản trị viên'}</p><p className="mt-1 text-sm text-blue-100">Vai trò: {userRole || 'admin'}</p>{userRole === 'admin' && <button type="button" onClick={() => navigate(branchLink)} className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-white hover:text-blue-100">Chỉnh sửa chi nhánh <ChevronRight size={16} /></button>}</section>
     </div>
-  );
+    <section className="rounded-2xl border border-slate-200 bg-white p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-slate-800">Quản lý dữ liệu hồ sơ</h2><p className="mt-1 text-sm text-slate-500">Thông tin nhà hàng được quản lý tập trung trong phần Chi nhánh.</p></div><Button type="button" variant="outline" onClick={() => navigate(branchLink)}>Mở quản lý chi nhánh</Button></div></section>
+  </div>;
 
-  const renderPackageInfo = () => (
-    <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
-       <div className="bg-gradient-to-br from-[#0070f4] to-blue-900 rounded-[2rem] p-10 text-white relative overflow-hidden shadow-2xl shadow-blue-500/20">
-          <div className="absolute -top-10 -right-10 opacity-10 rotate-12"><Package size={280} /></div>
-          <div className="relative z-10">
-             <div className="flex items-center space-x-3 mb-4">
-                <span className="bg-white/20 backdrop-blur-md px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-white/30">Contracted</span>
-                <span className="bg-green-400 text-green-900 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Active</span>
-             </div>
-             <h3 className="text-4xl font-black mb-2 italic tracking-tighter">{profile.servicePackage}</h3>
-             <p className="text-blue-100 text-sm mb-10 italic font-medium opacity-80">Thời hạn sử dụng đến: <span className="font-black text-white">{profile.expiryDate}</span></p>
+  const renderSecurity = () => <div className="max-w-3xl space-y-5"><div className="grid gap-3 sm:grid-cols-3"><SecurityStatus icon={<Lock size={17} />} label="Mật khẩu" value="Đã sẵn sàng" tone="green" /><SecurityStatus icon={<Shield size={17} />} label="Xác thực 2 lớp" value="Sắp ra mắt" tone="amber" /><SecurityStatus icon={<Clock3 size={17} />} label="Phiên đăng nhập" value="Sắp ra mắt" tone="slate" /></div><div className="rounded-2xl border border-slate-200 bg-white p-6"><div className="mb-6 flex items-start gap-3"><div className="rounded-xl bg-blue-50 p-3 text-blue-600"><Shield size={20} /></div><div><h2 className="font-bold text-slate-800">Đổi mật khẩu</h2><p className="mt-1 text-sm text-slate-500">Dùng mật khẩu dài từ 8 đến 128 ký tự.</p></div></div><div className="grid gap-4 md:grid-cols-2"><FormField label="Mật khẩu hiện tại" type="password" value={passwords.current} onChange={e => setPasswords({ ...passwords, current: e.target.value })} required /><div /><FormField label="Mật khẩu mới" type="password" value={passwords.next} onChange={e => setPasswords({ ...passwords, next: e.target.value })} minLength={8} maxLength={128} required /><FormField label="Xác nhận mật khẩu mới" type="password" value={passwords.confirm} onChange={e => setPasswords({ ...passwords, confirm: e.target.value })} minLength={8} maxLength={128} required /></div>{passwordError && <div className="mt-4"><Feedback tone="error">{passwordError}</Feedback></div>}{passwordSuccess && <div className="mt-4"><Feedback tone="success">Mật khẩu đã được cập nhật.</Feedback></div>}<div className="mt-6 flex justify-end"><Button type="button" loading={passwordSaving} onClick={() => void changePassword()}>Cập nhật mật khẩu</Button></div></div></div>;
 
-             <div className="grid grid-cols-3 gap-10 pt-10 border-t border-white/10">
-                <div className="group">
-                    <p className="text-[10px] uppercase font-black text-blue-200 mb-2 tracking-widest opacity-70">Chi nhánh</p>
-                    <p className="text-2xl font-black italic">05 <span className="text-sm opacity-50 not-italic">/ max</span></p>
-                </div>
-                <div>
-                    <p className="text-[10px] uppercase font-black text-blue-200 mb-2 tracking-widest opacity-70">Nhân sự</p>
-                    <p className="text-2xl font-black italic">UNLIMITED</p>
-                </div>
-                <div>
-                    <p className="text-[10px] uppercase font-black text-blue-200 mb-2 tracking-widest opacity-70">Giao dịch/tháng</p>
-                    <p className="text-2xl font-black italic">5,000</p>
-                </div>
-             </div>
-          </div>
-       </div>
+  const renderComingSoon = (tab: ProfileTab) => { const current = tabs.find(item => item.id === tab)!; const Icon = current.icon; return <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-dashed border-blue-200 bg-blue-50/50 p-8 text-center"><div className="max-w-md"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm"><Icon size={28} /></div><span className="mt-6 inline-flex rounded-full bg-amber-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-700">Sắp ra mắt</span><h2 className="mt-4 text-xl font-bold text-slate-800">{current.label}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{current.description}. Tính năng này sẽ được kết nối với hệ thống quản lý dịch vụ sau.</p></div></div>; };
 
-       <div className="grid grid-cols-2 gap-8">
-          <div className="bg-white border-2 border-gray-50 rounded-[2rem] p-8 hover:border-blue-100 transition-all shadow-xl shadow-blue-500/5">
-             <h4 className="font-black text-gray-800 uppercase italic tracking-tighter mb-6 flex items-center">
-                <CheckCircle2 className="text-green-500 mr-3" size={20}/> Tính năng hiện có
-             </h4>
-             <ul className="space-y-4">
-                {['Bán hàng POS đa nền tảng', 'Quản lý kho hàng & Định lượng', 'Báo cáo phân tích chuyên sâu', 'Tích điểm & CSKH tự động', 'Quản lý đa chi nhánh'].map((item, i) => (
-                    <li key={i} className="flex items-center text-xs font-bold text-gray-500">
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-3"></div>
-                        {item}
-                    </li>
-                ))}
-             </ul>
-          </div>
-          <div className="bg-blue-50 rounded-[2rem] p-8 border border-blue-100 relative overflow-hidden group">
-             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:rotate-12 transition-transform"><Zap size={100} /></div>
-             <h4 className="font-black text-blue-800 uppercase italic tracking-tighter mb-4 flex items-center">
-                <Zap className="text-blue-500 mr-3" size={20}/> Nâng cấp hệ thống
-             </h4>
-             <p className="text-xs text-blue-700/70 mb-8 italic leading-relaxed font-medium">Bạn đang sử dụng đầy đủ các tính năng tốt nhất. Liên hệ đội ngũ kỹ thuật để yêu cầu thêm các tính năng tùy chỉnh riêng cho thương hiệu của bạn.</p>
-             <button className="w-full py-4 bg-[#0070f4] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95">LIÊN HỆ TƯ VẤN</button>
-          </div>
-       </div>
-    </div>
-  );
-
-  const renderBillingHistory = () => (
-    <div className="animate-in slide-in-from-right-4 duration-300">
-       <div className="flex justify-between items-center mb-8">
-          <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest italic">Lịch sử thanh toán dịch vụ</h3>
-          <button className="text-[10px] font-black text-[#0070f4] flex items-center uppercase tracking-widest hover:underline bg-blue-50 px-4 py-2 rounded-xl transition-all">
-             <History size={14} className="mr-2"/> Xuất sao kê
-          </button>
-       </div>
-
-       <div className="bg-white rounded-[2rem] overflow-hidden border border-gray-100 shadow-xl shadow-blue-500/5">
-          <table className="w-full text-left border-collapse">
-             <thead className="bg-gray-50 border-b text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-                <tr>
-                   <th className="px-8 py-5">Mã Giao dịch</th>
-                   <th className="px-8 py-5">Nội dung</th>
-                   <th className="px-8 py-5">Ngày thanh toán</th>
-                   <th className="px-8 py-5 text-right">Số tiền (VNĐ)</th>
-                   <th className="px-8 py-5 text-center">Trạng thái</th>
-                </tr>
-             </thead>
-             <tbody className="divide-y divide-gray-50 text-xs font-bold text-gray-600">
-                {[
-                  { code: 'DP-2026-001', title: 'Gia hạn Gói Chuyên nghiệp (12 tháng)', date: '20/03/2026', amount: 5000000, status: 'Thành công' },
-                  { code: 'DP-2026-000', title: 'Phí thiết lập hệ thống ban đầu', date: '20/03/2026', amount: 1000000, status: 'Thành công' },
-                ].map((bill, i) => (
-                  <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                     <td className="px-8 py-5 font-black text-[#0070f4] tracking-tighter">{bill.code}</td>
-                     <td className="px-8 py-5">{bill.title}</td>
-                     <td className="px-8 py-5 text-gray-400">{bill.date}</td>
-                     <td className="px-8 py-5 text-right font-black text-gray-800">{bill.amount.toLocaleString()}</td>
-                     <td className="px-8 py-5 text-center">
-                        <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border border-green-100">
-                           {bill.status}
-                        </span>
-                     </td>
-                  </tr>
-                ))}
-             </tbody>
-          </table>
-       </div>
-    </div>
-  );
-
-  const renderSecurity = () => (
-    <div className="max-w-md animate-in slide-in-from-right-4 duration-300 space-y-10">
-       <section>
-          <div className="flex items-center space-x-2 mb-10 border-b pb-3 border-blue-100">
-             <div className="p-1.5 bg-blue-50 text-[#0070f4] rounded-md"><Lock size={16}/></div>
-             <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest italic">Thay đổi mật khẩu đăng nhập</h3>
-          </div>
-
-          <div className="space-y-8">
-             {[
-                { label: 'Mật khẩu hiện tại', key: 'current' as const },
-                { label: 'Mật khẩu mới', key: 'new' as const },
-                { label: 'Xác nhận mật khẩu mới', key: 'confirm' as const }
-             ].map((f) => (
-                <FormField
-                  key={f.key}
-                  label={f.label}
-                  type={showPass[f.key] ? 'text' : 'password'}
-                  value={passwords[f.key]}
-                  onChange={e => setPasswords({...passwords, [f.key]: e.target.value})}
-                  placeholder="••••••••"
-                  required
-                  maxLength={128}
-                  minLength={f.key === 'current' ? undefined : 8}
-                  helperText={f.key === 'new' ? 'Sử dụng từ 8 đến 128 ký tự.' : undefined}
-                />
-             ))}
-
-             {passwordError && <Feedback tone="error">{passwordError}</Feedback>}
-             {passwordSuccess && <Feedback tone="success">Mật khẩu đã được cập nhật.</Feedback>}
-             <div className="flex items-center justify-between gap-3 pt-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowPass({ current: !showPass.current, new: !showPass.new, confirm: !showPass.confirm })} aria-pressed={showPass.current}>
-                  {showPass.current ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                </Button>
-                <Button type="button" loading={passwordSaving} onClick={() => void handleChangePassword()}>
-                  Cập nhật mật khẩu
-                </Button>
-             </div>
-          </div>
-       </section>
-
-       <div className="bg-gray-50 p-6 rounded-[2rem] border-2 border-white shadow-inner">
-          <div className="flex items-start space-x-3">
-             <AlertCircle size={18} className="text-blue-500 mt-0.5 shrink-0"/>
-             <div>
-                <p className="text-[10px] font-black text-gray-800 uppercase mb-1">Mẹo bảo mật</p>
-                <p className="text-[11px] text-gray-500 italic leading-relaxed font-medium">Mật khẩu cần có từ 8 đến 128 ký tự. Không yêu cầu bắt buộc về chữ hoa, chữ thường, số hoặc ký tự đặc biệt.</p>
-             </div>
-          </div>
-       </div>
-    </div>
-  );
-
-  return (
-    <div className="flex h-[calc(100vh-48px)] bg-[#f8f9fa] overflow-hidden font-sans">
-      {/* Sidebar Menu */}
-      <div className="w-80 bg-white border-r p-8 overflow-y-auto shadow-sm flex flex-col">
-        <h2 className="font-black text-xl mb-10 text-gray-800 uppercase italic tracking-tighter">Cài đặt hệ thống</h2>
-
-        <div className="space-y-2 flex-1">
-          <p className="text-[10px] font-black text-gray-300 uppercase mb-3 px-4 tracking-[0.2em]">Cấu hình chung</p>
-          <button
-            onClick={() => setActiveTab('account')}
-            className={`w-full flex items-center px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'account' ? 'bg-blue-50 text-[#0070f4] shadow-sm' : 'text-gray-400 hover:bg-gray-50'}`}
-          >
-            <Shield className="h-5 w-5 mr-4" /> Hồ sơ chủ quán
-          </button>
-
-          <p className="text-[10px] font-black text-gray-300 uppercase mt-10 mb-3 px-4 tracking-[0.2em]">Hợp đồng dịch vụ</p>
-          <button
-            onClick={() => setActiveTab('package')}
-            className={`w-full flex items-center px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'package' ? 'bg-blue-50 text-[#0070f4] shadow-sm' : 'text-gray-400 hover:bg-gray-50'}`}
-          >
-            <Package className="h-5 w-5 mr-4" /> Gói dịch vụ
-          </button>
-          <button
-            onClick={() => setActiveTab('billing')}
-            className={`w-full flex items-center px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'billing' ? 'bg-blue-50 text-[#0070f4] shadow-sm' : 'text-gray-400 hover:bg-gray-50'}`}
-          >
-            <History className="h-5 w-5 mr-4" /> Lịch sử thanh toán
-          </button>
-
-          <p className="text-[10px] font-black text-gray-300 uppercase mt-10 mb-3 px-4 tracking-[0.2em]">An toàn bảo mật</p>
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`w-full flex items-center px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'security' ? 'bg-blue-50 text-[#0070f4] shadow-sm' : 'text-gray-400 hover:bg-gray-50'}`}
-          >
-            <Settings className="h-5 w-5 mr-4" /> Đổi mật khẩu
-          </button>
-        </div>
-
-        <div className="mt-10 pt-10 border-t border-gray-50">
-           <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 shadow-sm relative overflow-hidden group">
-              <div className="absolute -bottom-4 -right-4 text-blue-100 group-hover:scale-110 transition-transform"><Package size={80} /></div>
-              <p className="text-[#0070f4] font-black text-xs flex items-center mb-2 uppercase tracking-tighter italic">Hợp đồng VIP PRO</p>
-              <p className="text-[10px] text-blue-700/60 leading-relaxed font-medium italic relative z-10">Tận hưởng tối đa sức mạnh quản lý không giới hạn chi nhánh.</p>
-           </div>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-auto p-10 bg-[#f8f9fa]">
-        <div className="max-w-5xl mx-auto">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center min-h-[600px] bg-white rounded-[3rem] shadow-2xl shadow-blue-500/5 border border-white">
-              <Zap className="h-12 w-12 text-blue-600 animate-pulse mb-4" />
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Đang tải hồ sơ hệ thống...</p>
-            </div>
-          ) : (
-            <>
-              {/* Header with Actions */}
-              <div className="flex justify-between items-end mb-10">
-             <div>
-                <h1 className="text-3xl font-black text-gray-800 tracking-tighter uppercase italic">
-                   {activeTab === 'account' ? 'Thông tin chủ sở hữu' :
-                    activeTab === 'package' ? 'Chi tiết gói dịch vụ' :
-                    activeTab === 'billing' ? 'Hóa đơn dịch vụ' : 'Bảo mật hệ thống'}
-                </h1>
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-2">
-                   {activeTab === 'account' ? 'Định danh người sở hữu thương hiệu và gian hàng' :
-                    activeTab === 'package' ? 'Kiểm tra thời hạn và các tính năng được phép sử dụng' :
-                    activeTab === 'billing' ? 'Theo dõi các khoản phí duy trì phần mềm' : 'Thiết lập các lớp bảo vệ cho tài khoản quản trị'}
-                </p>
-             </div>
-             <div className="flex items-center space-x-4 pb-1">
-                {showSuccess && (
-                  <div className="flex items-center text-green-600 text-[10px] font-black uppercase tracking-widest animate-in fade-in slide-in-from-right-4 bg-green-50 px-4 py-2 rounded-xl border border-green-100">
-                    <CheckCircle2 size={14} className="mr-2" /> Đã cập nhật thành công
-                  </div>
-                )}
-
-                {activeTab === 'account' && userRole === 'admin' && (
-                  <button
-                    onClick={() => navigate(`/branches?branchId=${encodeURIComponent(branchData?.id || '')}`)}
-                    className="px-8 py-3 bg-[#dc2626] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-500/20 hover:bg-red-700 transition-all active:scale-95"
-                  >
-                    CHỈNH SỬA THÔNG TIN CHI NHÁNH
-                  </button>
-                )}
-             </div>
-             {profileError && <div className="mt-4"><Feedback tone="error" onDismiss={() => setProfileError('')}>{profileError}</Feedback></div>}
-          </div>
-
-          <div className="bg-white rounded-[3rem] shadow-2xl shadow-blue-500/5 border border-white overflow-hidden min-h-[600px]">
-            {/* Show Profile Header ONLY for Account Tab */}
-            {activeTab === 'account' && (
-              <div className="h-40 bg-gradient-to-r from-[#0070f4] to-blue-800 relative">
-                 <div className="absolute -bottom-14 left-12 flex items-end">
-                    <div className="w-32 h-32 bg-white rounded-[2.5rem] p-1.5 shadow-2xl relative">
-                       <div
-                          onClick={() => navigate(`/branches?branchId=${encodeURIComponent(branchData?.id || '')}`)}
-                          className="w-full h-full bg-blue-50 rounded-[2rem] flex items-center justify-center text-[#0070f4] relative group overflow-hidden cursor-pointer border-2 border-white shadow-inner"
-                        >
-                          {profile.avatarUrl ? (
-                            <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <User size={56} className="opacity-80" />
-                          )}
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                             <Camera size={24} className="text-white" />
-                          </div>
-                       </div>
-                       <div className="absolute -bottom-2 -right-2 bg-green-500 text-white p-2 rounded-full border-4 border-white shadow-lg">
-                          <CheckCircle2 size={16} />
-                       </div>
-                    </div>
-                    <div className="ml-8 mb-4">
-                       <h2 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">{profile.representative}</h2>
-                       <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest flex items-center mt-1 opacity-80">
-                          <Shield size={12} className="mr-2" /> Chủ sở hữu hệ thống
-                       </p>
-                    </div>
-                 </div>
-              </div>
-            )}
-
-            <div className={`${activeTab === 'account' ? 'pt-24' : 'pt-12'} px-12 pb-12`}>
-               {activeTab === 'account' && renderAccountInfo()}
-               {activeTab === 'package' && renderPackageInfo()}
-               {activeTab === 'billing' && renderBillingHistory()}
-               {activeTab === 'security' && renderSecurity()}
-            </div>
-          </div>
-
-            </>
-          )}
-
-          <p className="text-center mt-12 text-[10px] text-gray-300 font-black uppercase tracking-[0.3em] italic">
-            DOAN Restaurant POS • Enterprise Edition v2.4.0
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="min-h-full bg-slate-50 p-4 text-slate-800 sm:p-6 lg:p-8"><div className="mx-auto max-w-7xl"><div className="mb-6"><p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Tài khoản & hệ thống</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Hồ sơ quản trị</h1><p className="mt-2 text-sm text-slate-500">Quản lý thông tin tài khoản và dữ liệu nhà hàng từ một nơi.</p></div>{profileError && <div className="mb-5"><Feedback tone="error" onDismiss={() => setProfileError('')}>{profileError}</Feedback></div>}{isLoading ? <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-slate-200 bg-white"><Clock3 className="mr-3 animate-pulse text-blue-600" size={22} />Đang tải hồ sơ...</div> : <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"><aside className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm lg:sticky lg:top-4 lg:block lg:h-fit lg:p-3"><p className="hidden px-3 pb-3 pt-2 text-xs font-bold uppercase tracking-wider text-slate-400 lg:block">Cài đặt tài khoản</p>{tabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex min-w-[230px] items-center gap-3 rounded-xl px-3 py-3 text-left transition lg:min-w-0 lg:w-full ${activeTab === tab.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}><Icon size={18} /><span className="min-w-0 flex-1"><span className="block text-sm font-bold">{tab.label}</span><span className="mt-0.5 block truncate text-xs text-slate-400">{tab.description}</span></span><ChevronRight size={15} className={activeTab === tab.id ? 'text-blue-500' : 'text-slate-300'} /></button>; })}</aside><main>{activeTab === 'account' && renderAccount()}{activeTab === 'security' && renderSecurity()}{(activeTab === 'package' || activeTab === 'billing') && renderComingSoon(activeTab)}</main></div>}</div></div>;
 };
 
-export default ProfilePage;
+function SecurityStatus({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone: 'green' | 'amber' | 'slate' }) { const styles = tone === 'green' ? 'border-green-200 bg-green-50 text-green-700' : tone === 'amber' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-600'; return <div className={`rounded-2xl border p-4 ${styles}`}><div className="flex items-center gap-2 text-xs font-bold"><span>{icon}</span>{label}</div><p className="mt-3 text-sm font-bold">{value}</p></div>; }
+function Info({ label, value, icon }: { label: string; value?: string | null; icon: React.ReactNode }) { return <div className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3"><span className="mt-0.5 text-slate-400">{icon}</span><div className="min-w-0"><p className="text-xs font-semibold text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-semibold text-slate-700">{value || 'Chưa cập nhật'}</p></div></div>; }
 
+export default ProfilePage;

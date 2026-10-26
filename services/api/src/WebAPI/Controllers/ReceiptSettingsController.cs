@@ -22,30 +22,42 @@ public class ReceiptSettingsController : ControllerBase
     public ReceiptSettingsController(ApplicationDbContext context) => _context = context;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] Guid? branchId)
+    public async Task<IActionResult> Get([FromQuery] Guid? branchId, [FromQuery] string? documentType)
     {
         if (!TryBranch(branchId, out var effective)) return Forbid();
-        var settings = await _context.ReceiptSettings.AsNoTracking().FirstOrDefaultAsync(x => x.BranchId == effective);
-        return Ok(settings ?? new ReceiptSettings { BranchId = effective });
+        var type = NormalizeDocumentType(documentType);
+        var query = _context.ReceiptSettings.AsNoTracking()
+            .Where(x => x.DocumentType == type);
+        var settings = effective.HasValue
+            ? await query.Where(x => x.BranchId == effective || x.BranchId == null)
+                .OrderByDescending(x => x.BranchId.HasValue)
+                .FirstOrDefaultAsync()
+            : await query.FirstOrDefaultAsync(x => x.BranchId == null);
+        return Ok(settings ?? new ReceiptSettings { BranchId = effective, DocumentType = type });
     }
 
     [HttpPut]
     [Authorize(Roles = "admin")]
-    public async Task<IActionResult> Put([FromBody] ReceiptSettings input, [FromQuery] Guid? branchId)
+    public async Task<IActionResult> Put([FromBody] ReceiptSettings input, [FromQuery] Guid? branchId, [FromQuery] string? documentType)
     {
         var role = User.FindFirstValue(ClaimTypes.Role);
         if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)) return Forbid();
         if (!TryBranch(branchId, out var effective)) return Forbid();
-        var settings = await _context.ReceiptSettings.FirstOrDefaultAsync(x => x.BranchId == effective);
+        var type = NormalizeDocumentType(documentType);
+        var settings = await _context.ReceiptSettings.FirstOrDefaultAsync(x => x.BranchId == effective && x.DocumentType == type);
         if (settings == null)
         {
-            settings = new ReceiptSettings { Id = Guid.NewGuid(), BranchId = effective };
+            settings = new ReceiptSettings { Id = Guid.NewGuid(), BranchId = effective, DocumentType = type };
             _context.ReceiptSettings.Add(settings);
         }
         settings.PaperWidth = input.PaperWidth == 58 ? 58 : 80;
         settings.ShowLogo = input.ShowLogo; settings.ShowAddress = input.ShowAddress; settings.ShowPhone = input.ShowPhone;
         settings.ShowStaff = input.ShowStaff; settings.ShowPaymentMethod = input.ShowPaymentMethod;
         settings.ShowOrderNote = input.ShowOrderNote; settings.ShowThankYou = input.ShowThankYou;
+        settings.ShowSupplier = input.ShowSupplier; settings.ShowWarehouse = input.ShowWarehouse;
+        settings.ShowUnit = input.ShowUnit; settings.ShowUnitPrice = input.ShowUnitPrice;
+        settings.ShowPreparedBy = input.ShowPreparedBy; settings.ShowApprovedBy = input.ShowApprovedBy;
+        settings.ShowSignatures = input.ShowSignatures;
         settings.ThankYouText = string.IsNullOrWhiteSpace(input.ThankYouText) ? "Cảm ơn quý khách và hẹn gặp lại!" : input.ThankYouText.Trim();
         settings.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -111,4 +123,9 @@ public class ReceiptSettingsController : ControllerBase
         if (requested.HasValue && requested != branch) return false;
         effective = branch; return true;
     }
+
+    private static string NormalizeDocumentType(string? documentType) =>
+        string.Equals(documentType, ReceiptSettings.StockReceiptDocumentType, StringComparison.OrdinalIgnoreCase)
+            ? ReceiptSettings.StockReceiptDocumentType
+            : ReceiptSettings.InvoiceDocumentType;
 }

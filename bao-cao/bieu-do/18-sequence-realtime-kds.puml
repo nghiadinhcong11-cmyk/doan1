@@ -1,0 +1,79 @@
+@startuml
+title Hình 3.16 - Biểu đồ khối luồng giao tiếp thời gian thực giữa POS, Backend và KDS
+
+left to right direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Admin Web" as AdminWeb {
+  rectangle "POS Web" as POS
+  rectangle "KDS Web" as KDS
+  rectangle "SignalR Client" as SignalRClient
+}
+
+package "ASP.NET Core Backend" as Backend {
+  rectangle "OrderController" as OrderController
+  rectangle "KitchenService" as KitchenService
+  rectangle "KitchenNotifier" as KitchenNotifier
+  rectangle "KitchenHub\n/kitchenHub" as KitchenHub
+  rectangle "Branch / Role\nAuthorization" as Authorization
+  rectangle "Kitchen Event Payload" as Payload
+}
+
+database "PostgreSQL" as DB
+
+rectangle "Kitchen Branch Groups\nkitchen-admin\nkitchen-branch:{branchId}" as Groups
+rectangle "SignalR Events\nNewOrderRequest\nRequestStatusUpdated" as Events
+
+' POS gửi yêu cầu chế biến
+POS --> OrderController : 1. HTTPS REST\nGửi món / truy vấn trạng thái
+OrderController --> Authorization : 2. Xác thực role\nvà branch scope
+Authorization --> KitchenService : 3. Cho phép nghiệp vụ
+
+' Backend lưu dữ liệu nghiệp vụ chính thức
+KitchenService --> DB : 4. Lưu OrderRequest\nvà OrderDetail
+
+' Backend tạo và phát sự kiện yêu cầu mới
+KitchenService --> Payload : 5. Tạo payload yêu cầu mới\norderId, branchId, items, status
+Payload --> Events : 6. NewOrderRequest
+KitchenService --> KitchenNotifier : 7. Phát yêu cầu mới
+KitchenNotifier --> KitchenHub : 8. SendAsync(\n"NewOrderRequest", payload)
+
+' Hub định tuyến sự kiện theo chi nhánh
+KitchenHub --> Groups : 9. Clients.Group(\n"kitchen-branch:{branchId}")
+Groups --> SignalRClient : 10. SignalR message
+SignalRClient --> KDS : 11. Hiển thị yêu cầu mới\ntrên danh sách bếp
+
+' KDS cập nhật trạng thái
+KDS --> OrderController : 12. HTTPS REST\nCập nhật trạng thái
+OrderController --> Authorization : 13. Kiểm tra lại quyền\nvà branch scope
+Authorization --> KitchenService : 14. Cho phép cập nhật
+KitchenService --> DB : 15. Lưu trạng thái\nPending / Preparing /\nReady / Completed
+
+' Backend phát trạng thái mới về POS
+KitchenService --> Payload : 16. Tạo payload trạng thái mới\norderId, branchId, status
+Payload --> Events : 17. RequestStatusUpdated
+KitchenService --> KitchenNotifier : 18. Phát trạng thái mới
+KitchenNotifier --> KitchenHub : 19. SendAsync(\n"RequestStatusUpdated", payload)
+KitchenHub --> Groups : 20. Phát đúng group\ncủa chi nhánh
+Groups --> SignalRClient : 21. SignalR message
+SignalRClient --> POS : 22. Cập nhật trạng thái đơn
+
+note right of Payload
+Payload minh họa:
+- orderId
+- branchId
+- order items
+- kitchen status
+- createdAt / updatedAt
+
+Các trường cần khớp với DTO
+thực tế của hệ thống.
+end note
+
+note bottom of DB
+PostgreSQL là nguồn dữ liệu nghiệp vụ chính thức.
+SignalR chỉ truyền thông báo cập nhật.
+end note
+
+@enduml

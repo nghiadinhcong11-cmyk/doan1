@@ -1,0 +1,208 @@
+@startuml
+title Hình 3.13 - Biểu đồ lớp miền nghiệp vụ của hệ thống
+hide empty members
+hide circle
+hide stereotype
+skinparam classAttributeIconSize 0
+
+class Branch {
+  +Id
+  +Name
+}
+class Area {
+  +Id
+  +BranchId
+  +Name
+}
+class RestaurantTable {
+  +Id
+  +BranchId
+  +AreaId
+  +Status
+}
+class Product {
+  +Id
+  +CategoryId
+  +Name
+  +Price
+}
+class ProductBranchAvailability {
+  +ProductId
+  +BranchId
+  +IsAvailable
+}
+class Topping {
+  +Id
+  +Name
+  +Price
+}
+class Customer {
+  +Id
+  +UserId
+}
+class Order {
+  +Id
+  +BranchId
+  +CustomerId
+  +TableId
+  +TotalAmount
+  +Status
+}
+class OrderDetail {
+  +Id
+  +OrderId
+  +ProductId
+  +Quantity
+  +SentQuantity
+}
+class OrderRequest {
+  +Id
+  +OrderId
+  +BranchId
+  +RequestNumber
+  +Status
+}
+class OrderRequestItem {
+  +Id
+  +OrderRequestId
+  +OrderDetailId
+  +Quantity
+}
+class InventoryItem {
+  +Id
+  +Name
+  +Unit
+}
+class BranchInventory {
+  +Id
+  +BranchId
+  +InventoryItemId
+  +Quantity
+}
+class StockReceipt {
+  +Id
+  +BranchId
+  +Status
+}
+class StockReceiptItem {
+  +Id
+  +StockReceiptId
+  +InventoryItemId
+  +Quantity
+}
+class StockIssue {
+  +Id
+  +BranchId
+  +Status
+}
+class StockIssueItem {
+  +Id
+  +StockIssueId
+  +InventoryItemId
+  +Quantity
+}
+class StockTransaction {
+  +Id
+  +BranchId
+  +InventoryItemId
+  +Quantity
+  +Type
+}
+class LoyaltyTransaction {
+  +Id
+  +CustomerId
+  +OrderId
+  +Points
+}
+class Expense {
+  +Id
+  +BranchId
+  +Amount
+}
+class Employee {
+  +Id
+  +UserId
+  +BranchId
+}
+class Attendance {
+  +Id
+  +EmployeeId
+  +WorkDate
+}
+class WorkSchedule {
+  +Id
+  +BranchId
+  +EmployeeId
+}
+class Shift {
+  +Id
+  +BranchId
+  +Name
+}
+class Reservation {
+  +Id
+  +BranchId
+  +CustomerId
+  +TableId
+  +Status
+}
+class Notification {
+  +Id
+  +BranchId
+  +Type
+}
+class NotificationRead {
+  +NotificationId
+  +UserId
+}
+class ReceiptSettings {
+  +Id
+  +BranchId
+}
+class SystemSetting {
+  +Id
+  +BranchId
+  +Key
+  +Value
+}
+
+Branch "1" -- "0..*" Area
+Branch "1" -- "0..*" RestaurantTable
+Area "1" -- "0..*" RestaurantTable
+Product "1" -- "0..*" ProductBranchAvailability
+Branch "1" -- "0..*" ProductBranchAvailability
+Customer "1" -- "0..*" Order
+Branch "1" -- "0..*" Order
+RestaurantTable "0..1" -- "0..*" Order
+Order "1" -- "1..*" OrderDetail
+Product "1" -- "0..*" OrderDetail
+OrderDetail "1" -- "0..*" OrderRequestItem
+Order "1" -- "0..*" OrderRequest
+OrderRequest "1" -- "1..*" OrderRequestItem
+Branch "1" -- "0..*" OrderRequest
+Branch "1" -- "0..*" BranchInventory
+InventoryItem "1" -- "0..*" BranchInventory
+StockReceipt "1" -- "1..*" StockReceiptItem
+StockIssue "1" -- "1..*" StockIssueItem
+InventoryItem "1" -- "0..*" StockReceiptItem
+InventoryItem "1" -- "0..*" StockIssueItem
+Branch "1" -- "0..*" StockReceipt
+Branch "1" -- "0..*" StockIssue
+Branch "1" -- "0..*" StockTransaction
+InventoryItem "1" -- "0..*" StockTransaction
+Order "1" -- "0..*" LoyaltyTransaction
+Customer "1" -- "0..*" LoyaltyTransaction
+Branch "1" -- "0..*" Expense
+Employee "1" -- "0..*" Attendance
+Branch "1" -- "0..*" WorkSchedule
+Employee "1" -- "0..*" WorkSchedule
+Branch "1" -- "0..*" Shift
+Branch "1" -- "0..*" Reservation
+Customer "0..1" -- "0..*" Reservation
+RestaurantTable "0..1" -- "0..*" Reservation
+Branch "1" -- "0..*" Notification
+Notification "1" -- "0..*" NotificationRead
+Branch "1" -- "0..1" ReceiptSettings
+Branch "1" -- "0..*" SystemSetting
+@enduml
+

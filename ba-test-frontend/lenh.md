@@ -1,43 +1,73 @@
 Dưới đây là lệnh đã cập nhật để test luôn AI embedding mới. Chỉ cần thay 172.18.41.58 bằng IP LAN hiện tại trong cả ba terminal.
- 192.168.11.172
+
 Terminal 1 — API + chứng chỉ + bật AI embedding
 Set-Location D:\Dev\doan
 
-$lanHost = '192.168.11.172'
+# Lấy IP của card mạng đang dùng route mặc định
+$defaultRoute = Get-NetRoute `
+  -AddressFamily IPv4 `
+  -DestinationPrefix '0.0.0.0/0' |
+  Sort-Object RouteMetric, InterfaceIndex |
+  Select-Object -First 1
 
-Remove-Item Env:VITE_API_URL,Env:VITE_CUSTOMER_WEB_URL,Env:DOAN_DEV_LAN_HOST,Env:AI__ProviderMode -ErrorAction SilentlyContinue
+$lanHost = (Get-NetIPAddress `
+  -AddressFamily IPv4 `
+  -InterfaceIndex $defaultRoute.InterfaceIndex |
+  Where-Object {
+    $_.IPAddress -notlike '127.*' -and
+    $_.IPAddress -notlike '169.254.*'
+  } |
+  Select-Object -First 1).IPAddress
 
+if ([string]::IsNullOrWhiteSpace($lanHost)) {
+  throw 'Không tìm thấy IP mạng hiện tại.'
+}
+
+Write-Host "LAN IP hiện tại: $lanHost"
+
+# Xóa cấu hình cũ trong PowerShell session
+Remove-Item `
+  Env:VITE_API_URL,
+  Env:VITE_CUSTOMER_WEB_URL,
+  Env:DOAN_DEV_LAN_HOST,
+  Env:AI__ProviderMode,
+  Env:Database__TargetMode,
+  Env:Database__ExpectedProjectRef,
+  Env:ConnectionStrings__DefaultConnection,
+  Env:SUPABASE_CONNECTION_STRING `
+  -ErrorAction SilentlyContinue
+
+# Tạo/kiểm tra certificate cho IP hiện tại
 . .\scripts\setup-https.ps1 -LanHost $lanHost
 
+# Backend environment
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:Database__TargetMode = 'Test'
+$env:Database__ExpectedProjectRef = 'lizpcvayxcuwjgrxsvfe'
 $env:DatabaseSafety__AllowAutomaticMigration = 'false'
 
-# Bật AI embedding mới
+# AI embedding pilots
 $env:AI__AdminEmbeddingPilot__Enabled = 'true'
 $env:AI__CustomerGuestEmbeddingPilot__Enabled = 'true'
 $env:AI__UatLogging__Enabled = 'true'
 
-dotnet run --project .\services\api\RestaurantPOS.api.csproj --no-launch-profile
+# Khởi động backend
+dotnet run `
+  --project .\services\api\RestaurantPOS.api.csproj `
+  --no-launch-profile
 
 Terminal 2 — Admin Web
+
 Set-Location D:\Dev\doan
 
-$lanHost = '192.168.11.172'
-
-Remove-Item Env:VITE_API_URL,Env:VITE_CUSTOMER_WEB_URL,Env:DOAN_DEV_LAN_HOST -ErrorAction SilentlyContinue
-
-. .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
+. .\scripts\setup-https.ps1 -LanHost 192.168.11.172
 
 npm run dev --prefix .\apps\admin-web
 
 Terminal 3 — Customer Web\
 Set-Location D:\Dev\doan
 
-$lanHost = '192.168.11.172'
-
-Remove-Item Env:VITE_API_URL,Env:VITE_CUSTOMER_WEB_URL,Env:DOAN_DEV_LAN_HOST -ErrorAction SilentlyContinue
-
-. .\scripts\setup-https.ps1 -LanHost $lanHost -ValidateOnly
+. .\scripts\setup-https.ps1 -LanHost 192.168.11.172
 
 npm run dev --prefix .\apps\customer-web
 

@@ -1,0 +1,59 @@
+@startuml
+title Hình 3.3 - Use Case nhóm nhân sự vận hành
+left to right direction
+
+actor "Manager / Quản lý" as Manager
+actor "Employee / Nhân viên" as Employee
+actor "Cashier / Thu ngân" as Cashier
+actor "Kitchen / Bếp" as Kitchen
+
+rectangle "Operations" {
+  usecase "Mở POS và tạo đơn" as CreateOrder
+  usecase "Thêm/sửa món,
+size, topping, ghi chú" as EditOrder
+  usecase "Tiếp nhận đơn web" as AcceptWeb
+  usecase "Gửi món xuống bếp" as SendKitchen
+  usecase "Xem OrderRequest" as ViewRequest
+  usecase "Cập nhật trạng thái
+Pending/Preparing/Ready/Completed" as KitchenStatus
+  usecase "Thanh toán đơn" as Pay
+  usecase "Quản lý bàn" as Table
+  usecase "Quản lý ca,
+lịch làm và chấm công" as Workforce
+  usecase "Quản lý tồn kho,
+nhập xuất và chứng từ" as Stock
+  usecase "Xem thông báo" as Notification
+}
+
+Employee --> CreateOrder
+Employee --> EditOrder
+Employee --> AcceptWeb
+Employee --> SendKitchen
+Employee --> Notification
+Cashier --> CreateOrder
+Cashier --> EditOrder
+Cashier --> Pay
+Cashier --> AcceptWeb
+Kitchen --> ViewRequest
+Kitchen --> KitchenStatus
+Kitchen --> Notification
+Manager --> Table
+Manager --> Workforce
+Manager --> Stock
+Manager --> Notification
+EditOrder ..> CreateOrder : <<extend>>
+SendKitchen ..> CreateOrder : <<extend>>
+AcceptWeb ..> CreateOrder : <<include>>
+KitchenStatus ..> ViewRequest : <<include>>
+
+note right of SendKitchen
+Pending quantity = Quantity - SentQuantity.
+Chỉ phần chưa gửi mới tạo đợt yêu cầu bếp.
+end note
+
+note bottom
+Menu và route frontend chỉ hỗ trợ UX.
+Authorization và branch scope được kiểm tra ở backend.
+end note
+@enduml
+

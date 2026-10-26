@@ -2,6 +2,8 @@
 import { useRef } from 'react';
 import { Search, Filter, FileText, Download, ChevronRight, Calendar, Loader2, X, Clock, MapPin, User, Printer, RefreshCw } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { fetchBranchList } from '../../../api/branchQuery';
+import { getCachedJson } from '../../../api/queryCache';
 import ReceiptPreview from '../../../components/ReceiptPreview';
 
 interface OrderDetail {
@@ -59,23 +61,21 @@ const InvoiceHistory = () => {
   const [receiptSettings, setReceiptSettings] = useState<any>({ showLogo: true, showAddress: true, showPhone: true, showStaff: true, showPaymentMethod: true, showOrderNote: true, showThankYou: true, thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!' });
   const pageSize = 20;
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (force = false) => {
     const generation = ++requestGeneration.current;
     requestController.current?.abort();
     const controller = new AbortController();
     requestController.current = controller;
     try {
       setLoading(true);
-      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), _t: String(Date.now()) });
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
       if (fromDate) params.set('fromDate', fromDate);
       if (toDate) params.set('toDate', toDate);
       if (paymentMethod) params.set('paymentMethod', paymentMethod);
       if (filterStatus === 'Hoàn thành') params.set('paymentStatus', 'Completed');
       if (filterStatus === 'Đang xử lý') params.set('paymentStatus', 'Pending');
-      const response = await fetch(`${API_URL}/api/Invoice?${params}`, { cache: 'no-store', signal: controller.signal });
-      if (!response.ok) throw new Error(`Invoice API ${response.status}`);
-      const result = await response.json();
+      const result = await getCachedJson<{ items?: Order[]; totalPages?: number }>(`${API_URL}/api/Invoice?${params}`, { signal: controller.signal }, { force });
       if (generation !== requestGeneration.current) return;
       setOrders((result.items || []).map((order: Order) => ({ ...order, status: displayStatus(order) })));
       setTotalPages(Math.max(1, result.totalPages || 1));
@@ -88,7 +88,7 @@ const InvoiceHistory = () => {
   };
 
   useEffect(() => {
-    fetch(`${API_URL}/api/Branch`).then(response => response.ok ? response.json() : []).then(data => setBranches(Array.isArray(data) ? data : [])).catch(() => undefined);
+    fetchBranchList().then(data => setBranches(data)).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -105,7 +105,9 @@ const InvoiceHistory = () => {
 
   useEffect(() => {
     if (!selectedOrder?.branchId) return;
-    fetch(`${API_URL}/api/ReceiptSettings?branchId=${selectedOrder.branchId}`).then(response => response.ok ? response.json() : null).then(data => data && setReceiptSettings(data)).catch(() => undefined);
+    getCachedJson(`${API_URL}/api/ReceiptSettings?branchId=${selectedOrder.branchId}&documentType=Invoice`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }
+    }).then(data => data && setReceiptSettings(data)).catch(() => undefined);
   }, [selectedOrder?.branchId]);
 
   const filteredOrders = useMemo(() => {
@@ -211,7 +213,7 @@ const InvoiceHistory = () => {
         <div className="bg-white border-b p-4 flex justify-between items-center shadow-sm">
           <h1 className="text-xl font-semibold text-gray-800 tracking-tight">Lịch sử hóa đơn</h1>
           <div className="flex space-x-2">
-            <button type="button" onClick={() => void fetchOrders()} disabled={loading} className="border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all flex items-center active:scale-95 disabled:cursor-wait disabled:opacity-60">
+            <button type="button" onClick={() => void fetchOrders(true)} disabled={loading} className="border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all flex items-center active:scale-95 disabled:cursor-wait disabled:opacity-60">
                <RefreshCw size={14} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Làm mới
             </button>
             <button type="button" className="bg-[#0070f4] text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center active:scale-95">

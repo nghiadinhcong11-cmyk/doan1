@@ -63,7 +63,7 @@ if (!MigrationUpgradePolicy.ValidateAvailable(available, out var sourceFailure))
     return Fail($"SOURCE MIGRATION CHECK: FAIL ({sourceFailure})");
 
 Console.WriteLine("TEST TARGET CHECK: PASS");
-Console.WriteLine("PROJECT REF: eorboopkwgmvainlxzkz");
+Console.WriteLine($"PROJECT REF: {MigrationUpgradePolicy.TestProjectRef}");
 Console.WriteLine($"TARGET: {connection.Host}:{connection.Port}/{connection.Database}");
 Console.WriteLine("MAIN TARGET: REJECTED");
 Console.WriteLine("ENVIRONMENT: Development");

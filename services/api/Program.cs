@@ -109,6 +109,7 @@ if (string.IsNullOrWhiteSpace(jwtSecret))
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "RestaurantPOS";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "RestaurantPOS";
 
+//cau hinh xac thuc JWT Bearer
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;

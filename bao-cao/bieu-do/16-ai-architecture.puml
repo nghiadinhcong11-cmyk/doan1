@@ -1,0 +1,43 @@
+@startuml
+title Hình 3.17 - Kiến trúc trợ lý ảo thông minh
+left to right direction
+skinparam componentStyle rectangle
+
+actor "Admin / Customer / Guest" as User
+component "Web Chat UI" as UI
+component "AiController" as Controller
+component "AiOrchestrator" as Orchestrator
+component "Intent Analysis\nargument validation" as Intent
+component "AdminEmbeddingPilot\nCustomerGuestEmbeddingPilot\n(local, feature flag)" as Pilot
+component "AiToolRegistry" as Registry
+component "AiPermissionService" as Permission
+component "AI Tools" as Tools
+component "Application Services" as Services
+database "PostgreSQL" as DB
+
+User --> UI : Nhập yêu cầu
+UI --> Controller : HTTPS REST
+Controller --> Orchestrator : Message + context
+Orchestrator --> Intent : Phân tích intent
+Intent --> Pilot : Semantic decision
+Pilot --> Intent : Intent + tool + arguments
+Intent --> Orchestrator : Decision đã kiểm tra
+Orchestrator --> Registry : Resolve approved tool
+Registry --> Permission : Authorization + risk + branch
+Permission --> Tools : Cho phép / từ chối
+Tools --> Services : Use case nghiệp vụ
+Services --> DB : Persistence
+
+note right of Orchestrator
+Không truy cập DbContext trực tiếp.
+Điều phối hội thoại, xác định luồng
+và yêu cầu xác nhận khi cần.
+end note
+
+note bottom of Permission
+Guest: chỉ read-only trong verified branch session.
+Customer: chỉ các tool read-only được cấp.
+Admin: có thể dùng tool ghi nhưng phải preview
+và xác nhận trước khi mutation.
+end note
+@enduml

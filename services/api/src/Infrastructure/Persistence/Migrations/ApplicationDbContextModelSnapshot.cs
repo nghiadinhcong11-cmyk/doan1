@@ -622,6 +622,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("SubTotal")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid?>("TableId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("TableName")
                         .HasColumnType("text");
 
@@ -638,7 +641,11 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("TableId");
+
                     b.HasIndex("BranchId", "CreatedAt", "Status");
+
+                    b.HasIndex("BranchId", "TableId", "Status");
 
                     b.ToTable("Orders");
                 });
@@ -875,6 +882,10 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("BranchId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("FontFamily")
                         .IsRequired()
                         .HasColumnType("text");
@@ -886,6 +897,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<bool>("ShowAddress")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowApprovedBy")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("ShowLogo")
@@ -900,10 +914,28 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<bool>("ShowPhone")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("ShowPreparedBy")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowSignatures")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("ShowStaff")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("ShowSupplier")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("ShowThankYou")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowUnit")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowUnitPrice")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowWarehouse")
                         .HasColumnType("boolean");
 
                     b.Property<string>("ThankYouText")
@@ -915,7 +947,11 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BranchId")
+                    b.HasIndex("DocumentType")
+                        .IsUnique()
+                        .HasFilter("\"BranchId\" IS NULL");
+
+                    b.HasIndex("BranchId", "DocumentType")
                         .IsUnique()
                         .HasFilter("\"BranchId\" IS NOT NULL");
 
@@ -1397,6 +1433,29 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.ToTable("Toppings");
                 });
 
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.ToppingBranchAvailability", b =>
+                {
+                    b.Property<Guid>("ToppingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ToppingId", "BranchId");
+
+                    b.HasIndex("BranchId", "Status");
+
+                    b.ToTable("ToppingBranchAvailabilities", (string)null);
+                });
+
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.WorkSchedule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1549,7 +1608,13 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CustomerId");
 
+                    b.HasOne("RestaurantPOS.Domain.Entities.RestaurantTable", "Table")
+                        .WithMany()
+                        .HasForeignKey("TableId");
+
                     b.Navigation("Branch");
+
+                    b.Navigation("Table");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.OrderDetail", b =>
@@ -1753,6 +1818,25 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .HasForeignKey("BranchId");
 
                     b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("RestaurantPOS.Domain.Entities.ToppingBranchAvailability", b =>
+                {
+                    b.HasOne("RestaurantPOS.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Topping", "Topping")
+                        .WithMany()
+                        .HasForeignKey("ToppingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Topping");
                 });
 
             modelBuilder.Entity("RestaurantPOS.Domain.Entities.WorkSchedule", b =>

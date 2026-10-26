@@ -1,0 +1,41 @@
+@startuml
+title Hình 3.11 - Sequence giao tiếp giữa POS, Backend và KDS
+actor "Nhân viên vận hành" as Staff
+participant "POS Web" as POS
+participant "OrderController" as OrderController
+participant "KitchenService" as KitchenService
+database "PostgreSQL" as DB
+participant "KitchenNotifier" as Notifier
+participant "KitchenHub" as Hub
+participant "KDS Web" as KDS
+actor "Nhân viên bếp" as Kitchen
+
+Staff -> POS : Chọn gửi món
+POS -> OrderController : POST send-to-kitchen(orderId)
+OrderController -> KitchenService : SendToKitchenAsync(orderId)
+KitchenService -> DB : Đọc OrderDetail và SentQuantity
+DB --> KitchenService : Chi tiết đơn
+KitchenService -> KitchenService : Tính pending quantity
+alt Có món chưa gửi
+  KitchenService -> DB : Tạo OrderRequest và Items
+  KitchenService -> DB : Cập nhật SentQuantity
+  KitchenService -> Notifier : NotifyNewOrderRequest(payload)
+  Notifier -> Hub : SendAsync(NewOrderRequest)
+  Hub --> KDS : Sự kiện theo kitchen-admin/branch group
+  KDS -> Kitchen : Hiển thị yêu cầu
+  Kitchen -> KDS : Cập nhật trạng thái
+  KDS -> OrderController : PUT request/status
+  OrderController -> KitchenService : UpdateRequestStatusAsync()
+  KitchenService -> DB : Kiểm tra branch và trạng thái hợp lệ
+  KitchenService -> DB : Lưu trạng thái
+  KitchenService -> Notifier : Phát notification cập nhật
+else Không có món mới
+  KitchenService --> OrderController : Không tạo request trùng
+end
+OrderController --> POS : HTTP response
+
+note over Hub,KDS
+KDS chỉ nhận sự kiện trong branch/group được phép.
+Không thay SignalR bằng polling.
+end note
+@enduml

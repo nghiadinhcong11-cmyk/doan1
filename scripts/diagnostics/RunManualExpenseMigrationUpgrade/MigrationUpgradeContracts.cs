@@ -2,11 +2,11 @@ namespace RestaurantPOS.MigrationUpgrade;
 
 public static class MigrationUpgradePolicy
 {
-    public const string TestProjectRef = "eorboopkwgmvainlxzkz";
+    public const string TestProjectRef = "lizpcvayxcuwjgrxsvfe";
     public const string TestPoolerHost = "aws-0-ap-northeast-1.pooler.supabase.com";
     public const int TestPoolerPort = 5432;
     public const string TestDatabase = "postgres";
-    public const string TestUsername = "postgres.eorboopkwgmvainlxzkz";
+    public const string TestUsername = "postgres.lizpcvayxcuwjgrxsvfe";
     public const string ApprovedMigration = "20261013091926_AddManualExpenseIdempotency";
     public const string HistoricalLatestMigration = "20261005072156_RemoveLegacyTableAreaName";
     public const int HistoricalMigrationCount = 47;

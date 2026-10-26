@@ -1,4 +1,4 @@
-import { Bell, History, LogIn, Printer, RotateCcw, Search, Signal, Trash2, UserPlus, Utensils, WifiOff, X } from 'lucide-react';
+import { ArrowRightLeft, History, Printer, RotateCcw, Search, Signal, Trash2, UserPlus, Utensils, WifiOff, X } from 'lucide-react';
 import type { RefObject } from 'react';
 import type { CartItem, POSUserRole, Table } from '../types';
 
@@ -13,13 +13,12 @@ interface POSOrderHeaderProps {
   isSignalRConnected: boolean;
   isSaving: boolean;
   onCloseCurrentOrder: () => void;
-  onLogout: () => void;
-  onViewNotifications: () => void;
   onPrint: () => void;
   onOpenInvoiceHistory: () => void;
   onCloseShift: () => void;
   onOpenShiftHistory: () => void;
   onRefreshTable: () => void;
+  onOpenTransferTable: () => void;
   onCancelCurrentOrder: () => void | Promise<void>;
   onCustomerPhoneChange: (value: string) => void;
   onFocusCustomerPhone: () => void;
@@ -37,13 +36,12 @@ export default function POSOrderHeader({
   isSignalRConnected,
   isSaving,
   onCloseCurrentOrder,
-  onLogout,
-  onViewNotifications,
   onPrint,
   onOpenInvoiceHistory,
   onCloseShift,
   onOpenShiftHistory,
   onRefreshTable,
+  onOpenTransferTable,
   onCancelCurrentOrder,
   onCustomerPhoneChange,
   onFocusCustomerPhone,
@@ -59,8 +57,6 @@ export default function POSOrderHeader({
         </div>
         <div className="flex-1"></div>
         <div className="flex items-center space-x-3 pr-2">
-          <button onClick={onLogout} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-[11px] font-bold flex items-center transition-all mr-2 shadow-lg border border-blue-400" title="Đăng xuất khỏi phiên bán hàng"><LogIn size={14} className="mr-1" /> Đăng xuất</button>
-          <button onClick={onViewNotifications} title="Thông báo" aria-label="Thông báo" className="text-white opacity-60 hover:opacity-100"><Bell size={18} /></button>
           <button onClick={onPrint} title="In đơn hiện tại" aria-label="In đơn hiện tại" className="text-white opacity-60 hover:opacity-100"><Printer size={18} /></button>
           <button onClick={onOpenInvoiceHistory} title="Lịch sử hóa đơn" aria-label="Lịch sử hóa đơn" className="text-white opacity-60 hover:opacity-100"><History size={18} /></button>
         </div>
@@ -82,6 +78,10 @@ export default function POSOrderHeader({
 
         {selectedTable?.status === 'Có khách' && (
           <button onClick={onRefreshTable} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-100 shadow-sm" title="Đồng bộ lại món từ máy chủ"><RotateCcw size={14} className={isSaving ? 'animate-spin' : ''} /></button>
+        )}
+
+        {selectedTableId !== 'delivery' && currentCart.length > 0 && (
+          <button onClick={onOpenTransferTable} disabled={isSaving} className="rounded-lg border border-purple-100 p-1.5 text-purple-600 transition-colors hover:bg-purple-50 disabled:opacity-50" title="Chuyển toàn bộ đơn sang bàn khác" aria-label="Chuyển toàn bộ đơn sang bàn khác"><ArrowRightLeft size={16} /></button>
         )}
 
         {selectedTableId !== 'delivery' && currentCart.length > 0 && (

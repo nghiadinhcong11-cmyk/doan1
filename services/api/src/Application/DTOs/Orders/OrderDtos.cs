@@ -8,6 +8,11 @@ namespace RestaurantPOS.Application.DTOs.Orders
         public Guid? TableId { get; set; }
     }
 
+    public sealed class TransferOrderDto
+    {
+        public Guid TargetTableId { get; set; }
+    }
+
     public class OrderKitchenRequestStatusDto
     {
         public Guid Id { get; set; }

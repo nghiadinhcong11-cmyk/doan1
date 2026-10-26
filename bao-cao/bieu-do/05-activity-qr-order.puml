@@ -1,0 +1,33 @@
+@startuml
+title Hình 3.5 - Activity quy trình đặt món bằng mã QR
+|Khách vãng lai / Khách hàng|
+start
+:Quét hoặc mở mã QR;
+:Gửi QR token hoặc yêu cầu khởi tạo phiên;
+|Customer Web / GuestController|
+:Bootstrap phiên;
+|Backend - Auth/Branch Scope|
+:Xác thực token và kiểm tra branch/table;
+if (QR/session hợp lệ?) then (Có)
+  :Cấp context phiên;
+  |Customer Web|
+  :Tải thực đơn của chi nhánh;
+  :Chọn món, size, topping, số lượng;
+  :Gửi yêu cầu tạo/cập nhật đơn;
+  |Backend - OrderService|
+  :Kiểm tra branch scope;
+  :Lấy giá chuẩn từ database;
+  if (Món, topping và số lượng hợp lệ?) then (Có)
+    :Tính subtotal, phí dịch vụ, VAT và tổng tiền;
+    :Lưu Order và OrderDetail;
+    :Trả Order DTO;
+    |Customer Web|
+    :Hiển thị đơn và trạng thái;
+  else (Không)
+    :Trả lỗi dữ liệu nghiệp vụ;
+  endif
+else (Không)
+  :Từ chối QR/session;
+endif
+stop
+@enduml

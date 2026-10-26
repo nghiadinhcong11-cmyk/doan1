@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import ForbiddenPage from '../../components/ForbiddenPage';
@@ -11,9 +11,9 @@ import { ProductManagement, ToppingManagement, PromotionManagement } from '../..
 import { TableManagement, ReservationManagement, CustomerManagement, ExpenseManagement } from '../../features/operations';
 import { EmployeeManagement, AttendanceManagement, ShiftManagement, WorkSchedulePage } from '../../features/hrm';
 import { BranchManagement, SystemSettings, SupportPage, ReceiptSettingsPage } from '../../features/settings';
-import { POSPage, PrintTemplates } from '../../features/pos';
+import { POSPage } from '../../features/pos';
 import { KitchenPage, KitchenHistoryPage } from '../../features/kitchen';
-import { InventoryPage } from '../../features/inventory';
+import { InventoryPage, StockReceiptPrintButton } from '../../features/inventory';
 import { ProfilePage } from '../../features/auth';
 import NotificationHistoryPage from '../../features/notifications/NotificationHistoryPage';
 
@@ -28,15 +28,18 @@ type ManagementRoutesProps = {
 export default function ManagementRoutes({ userRole, userName, userPosition, onLogout }: ManagementRoutesProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const openedPaths = useRef(new Set<string>([location.pathname]));
-  openedPaths.current.add(location.pathname);
-  const wasOpened = (path: string) => openedPaths.current.has(path);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Mount only the active page. Keeping every previously visited page mounted
+  // leaves its effects/listeners alive and makes each navigation accumulate API
+  // requests against Supabase.
+  const wasOpened = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5]">
-      <Navbar onLogout={onLogout} userName={userName} userRole={userRole} />
+    <div className="h-screen overflow-hidden bg-[#f0f2f5]">
+      <Navbar onLogout={onLogout} userName={userName} userRole={userRole} sidebarCollapsed={sidebarCollapsed} onSidebarToggle={() => setSidebarCollapsed(value => !value)} />
+      <div className={`admin-management-content ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72'}`}>
       {wasOpened('/dashboard') && (
-        <main className={location.pathname === '/dashboard' ? 'h-[calc(100vh-48px)] overflow-auto' : 'hidden'}>
+        <main className={location.pathname === '/dashboard' ? 'h-[calc(100vh-48px)] min-w-0 overflow-auto lg:h-screen' : 'hidden'}>
           <Dashboard />
         </main>
       )}
@@ -115,25 +118,29 @@ export default function ManagementRoutes({ userRole, userName, userPosition, onL
           <SupportPage />
         </main>
       )}
-      {userRole === 'admin' && wasOpened('/settings') && (
-        <main className={location.pathname === '/settings' ? 'h-[calc(100vh-48px)] overflow-auto' : 'hidden'}>
-          <SystemSettings />
-        </main>
-      )}
-      {userRole === 'admin' && wasOpened('/settings/receipt') && (
-        <main className={location.pathname === '/settings/receipt' ? 'h-[calc(100vh-48px)] overflow-auto' : 'hidden'}>
-          <ReceiptSettingsPage />
-        </main>
-      )}
-      {userRole === 'admin' && wasOpened('/print-templates') && (
-        <main className={location.pathname === '/print-templates' ? 'h-[calc(100vh-48px)] overflow-auto' : 'hidden'}>
-          <PrintTemplates />
-        </main>
-      )}
-      {userRole === 'admin' && wasOpened('/branches') && (
-        <main className={location.pathname === '/branches' ? 'h-[calc(100vh-48px)] overflow-auto' : 'hidden'}>
-          <BranchManagement />
-        </main>
+      {userRole === 'admin' && ['/settings', '/settings/receipt', '/print-templates', '/branches'].some(path => wasOpened(path)) && (
+        <SettingsLayout>
+          {wasOpened('/settings') && (
+            <div className={location.pathname === '/settings' ? 'h-full overflow-auto' : 'hidden'}>
+              <SystemSettings />
+            </div>
+          )}
+          {wasOpened('/settings/receipt') && (
+            <div className={location.pathname === '/settings/receipt' ? 'h-full overflow-auto' : 'hidden'}>
+              <ReceiptSettingsPage />
+            </div>
+          )}
+          {wasOpened('/print-templates') && (
+            <div className={location.pathname === '/print-templates' ? 'h-full overflow-auto' : 'hidden'}>
+              <ReceiptSettingsPage />
+            </div>
+          )}
+          {wasOpened('/branches') && (
+            <div className={location.pathname === '/branches' ? 'h-full overflow-hidden' : 'hidden'}>
+              <BranchManagement />
+            </div>
+          )}
+        </SettingsLayout>
       )}
       {wasOpened('/tables') && (
         <main className={location.pathname === '/tables' ? 'h-[calc(100vh-48px)] overflow-auto' : 'hidden'}>
@@ -159,7 +166,7 @@ export default function ManagementRoutes({ userRole, userName, userPosition, onL
           <Route path="/inventory" element={null} />
           <Route path="/inventory/items" element={null} />
           <Route path="/inventory/receipts" element={null} />
-          <Route path="/inventory/receipts/:id" element={<InventoryPage view="receipts" />} />
+          <Route path="/inventory/receipts/:id" element={<><StockReceiptPrintButton /><InventoryPage view="receipts" /></>} />
           <Route path="/inventory/issues" element={null} />
           <Route path="/inventory/issues/:id" element={<InventoryPage view="issues" />} />
           <Route path="/inventory/history" element={null} />
@@ -171,28 +178,26 @@ export default function ManagementRoutes({ userRole, userName, userPosition, onL
           <Route path="/profile" element={null} />
           <Route path="/toppings" element={null} />
           <Route path="/support" element={null} />
+          <Route path="/settings" element={userRole === 'admin' ? null : <Navigate to="/forbidden" replace />} />
+          <Route path="/settings/receipt" element={userRole === 'admin' ? null : <Navigate to="/forbidden" replace />} />
+          <Route path="/print-templates" element={userRole === 'admin' ? null : <Navigate to="/forbidden" replace />} />
+          <Route path="/branches" element={userRole === 'admin' ? null : <Navigate to="/forbidden" replace />} />
           <Route path="/forbidden" element={<ForbiddenPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
 
-        <Route element={userRole === 'admin' ? <SettingsLayout /> : <Navigate to="/forbidden" replace />}>
-          <Route path="/settings" element={null} />
-          <Route path="/settings/receipt" element={null} />
-          <Route path="/print-templates" element={null} />
-          <Route path="/branches" element={null} />
-        </Route>
-
-        <Route element={<OperationsLayout mainClassName="h-[calc(100vh-48px)] overflow-auto" />}>
-          <Route path="/pos" element={<POSPage onLogout={() => navigate('/dashboard')} userName={userName} userRole={userRole} userPosition={userPosition} />} />
+        <Route element={<OperationsLayout mainClassName="h-[calc(100vh-48px)] overflow-auto lg:h-screen" />}>
+          <Route path="/pos" element={<POSPage onLogout={onLogout} userName={userName} userRole={userRole} userPosition={userPosition} />} />
           <Route path="/tables" element={null} />
           <Route path="/invoices" element={<InvoiceHistory />} />
           <Route path="/shifts" element={null} />
           <Route path="/reservations" element={null} />
-          <Route path="/kitchen" element={<KitchenPage />} />
+          <Route path="/kitchen" element={<KitchenPage userRole={userRole} />} />
           <Route path="/kitchen/history" element={<KitchenHistoryPage />} />
         </Route>
       </Routes>
+      </div>
       {userRole === 'admin' && <ChatBot />}
     </div>
   );

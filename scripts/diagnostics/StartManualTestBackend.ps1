@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$testProjectRef = 'eorboopkwgmvainlxzkz'
+$testProjectRef = 'lizpcvayxcuwjgrxsvfe'
 $RepositoryRoot = if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 } else {

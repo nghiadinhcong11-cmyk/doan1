@@ -1,0 +1,35 @@
+@startuml
+title Hình 3.6 - Activity tiếp nhận đơn trực tuyến và chuyển KDS
+|Customer Web / Khách hàng|
+start
+:Gửi đơn trực tuyến;
+|Backend - OrderController|
+:Xác thực và kiểm tra branch scope;
+|OrderService|
+:Đọc sản phẩm và giá từ database;
+:Tính và lưu tổng tiền authoritative;
+:Lưu Order và OrderDetail;
+|OrderController|
+:Trả kết quả tạo đơn;
+|POS / Nhân viên vận hành|
+:Nhận thông báo đơn mới;
+:Kiểm tra đơn và xác nhận tiếp nhận;
+if (Đơn hợp lệ?) then (Có)
+  :Gửi món xuống bếp;
+  |KitchenService|
+  :Tính pending quantity;
+  :Tạo OrderRequest và OrderRequestItem;
+  :Cập nhật SentQuantity;
+  :Lưu transaction;
+  :Phát NewOrderRequest qua KitchenHub;
+  |KDS / Nhân viên bếp|
+  :Hiển thị yêu cầu theo branch group;
+  :Cập nhật trạng thái chế biến;
+  |KitchenService|
+  :Lưu và phát notification trạng thái;
+else (Không)
+  |POS / Nhân viên vận hành|
+  :Từ chối hoặc yêu cầu xử lý lại;
+endif
+stop
+@enduml

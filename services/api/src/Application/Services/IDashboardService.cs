@@ -11,7 +11,7 @@ namespace RestaurantPOS.Application.Services
 
     public interface IDashboardService : IDashboardCacheInvalidator
     {
-        Task<object> GetSummaryAsync(string? branchId);
+        Task<object> GetSummaryAsync(string? branchId, string period = "today");
         Task<decimal> GetRevenueByPeriodAsync(string period, Guid? branchId = null);
         Task<List<TopProductDto>> GetBestSellersAsync(DateTime startUtc, DateTime endUtc, Guid? branchId, int limit);
         Task<(decimal Revenue, int OrderCount)> GetRevenueReportAsync(DateTime startUtc, DateTime endUtc, Guid? branchId);

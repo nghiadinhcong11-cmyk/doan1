@@ -1,4 +1,5 @@
 import { API_URL } from '../../config';
+import { getCachedJson, invalidateCachedJson } from '../../api/queryCache';
 
 export const INVENTORY_UNITS = ['kg', 'g', 'litre', 'ml', 'piece', 'box', 'bottle', 'pack'] as const;
 export type InventoryUnit = typeof INVENTORY_UNITS[number];
@@ -125,7 +126,12 @@ export interface ApiError {
   status: number;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options?: { force?: boolean }): Promise<T> {
+  const method = (init?.method || 'GET').toUpperCase();
+  if (method === 'GET') return getCachedJson<T>(`${API_URL}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
+  }, options);
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
@@ -160,23 +166,23 @@ const query = (params: Record<string, string | number | boolean | undefined>) =>
 
 export const inventoryApi = {
   getItems: async (activeOnly?: boolean) => parseInventoryItemsResponse(await request<unknown>(`/api/inventory/items${query({ activeOnly })}`)),
-  createItem: (body: { name: string; unitCode: string }) => request<InventoryItem>('/api/inventory/items', { method: 'POST', body: JSON.stringify(body) }),
-  updateItem: (id: string, body: { name: string; unitCode: string; isActive: boolean }) => request<InventoryItem>(`/api/inventory/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  getBranchInventory: (branchId: string) => request<BranchInventory[]>(`/api/inventory/branches/${branchId}`),
-  getOverview: (branchId: string) => request<InventoryOverview>(`/api/inventory/overview/${branchId}`),
-  updateMinimumStock: (branchId: string, itemId: string, minimumStock: number) => request<BranchInventory>(`/api/inventory/branches/${branchId}/items/${itemId}/minimum-stock`, { method: 'PUT', body: JSON.stringify({ minimumStock }) }),
+  createItem: async (body: { name: string; unitCode: string }) => { const result = await request<InventoryItem>('/api/inventory/items', { method: 'POST', body: JSON.stringify(body) }); invalidateCachedJson('/api/inventory/items'); return result; },
+  updateItem: async (id: string, body: { name: string; unitCode: string; isActive: boolean }) => { const result = await request<InventoryItem>(`/api/inventory/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }); invalidateCachedJson('/api/inventory'); return result; },
+  getBranchInventory: (branchId: string, force = false) => request<BranchInventory[]>(`/api/inventory/branches/${branchId}`, undefined, { force }),
+  getOverview: (branchId: string, force = false) => request<InventoryOverview>(`/api/inventory/overview/${branchId}`, undefined, { force }),
+  updateMinimumStock: async (branchId: string, itemId: string, minimumStock: number) => { const result = await request<BranchInventory>(`/api/inventory/branches/${branchId}/items/${itemId}/minimum-stock`, { method: 'PUT', body: JSON.stringify({ minimumStock }) }); invalidateCachedJson('/api/inventory'); return result; },
   getReceipts: (params: { branchId?: string; status?: StockStatus; page?: number; pageSize?: number }) => request<InventoryPage<StockReceipt>>(`/api/inventory/receipts${query({ ...params, pageSize: params.pageSize ?? 20 })}`),
   getReceipt: (id: string) => request<StockReceipt>(`/api/inventory/receipts/${id}`),
-  createReceipt: (body: { branchId: string; supplierName?: string; purchaseDate?: string; note?: string; idempotencyKey: string; items: StockLineInput[] }) => request<StockReceipt>('/api/inventory/receipts', { method: 'POST', body: JSON.stringify(body) }),
-  updateReceipt: (id: string, body: { supplierName?: string; purchaseDate?: string; note?: string; items: StockLineInput[] }) => request<StockReceipt>(`/api/inventory/receipts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  confirmReceipt: (id: string) => request<StockReceipt>(`/api/inventory/receipts/${id}/confirm`, { method: 'POST' }),
-  cancelReceipt: (id: string) => request<StockReceipt>(`/api/inventory/receipts/${id}/cancel`, { method: 'POST' }),
+  createReceipt: async (body: { branchId: string; supplierName?: string; purchaseDate?: string; note?: string; idempotencyKey: string; items: StockLineInput[] }) => { const result = await request<StockReceipt>('/api/inventory/receipts', { method: 'POST', body: JSON.stringify(body) }); invalidateCachedJson('/api/inventory'); return result; },
+  updateReceipt: async (id: string, body: { supplierName?: string; purchaseDate?: string; note?: string; items: StockLineInput[] }) => { const result = await request<StockReceipt>(`/api/inventory/receipts/${id}`, { method: 'PUT', body: JSON.stringify(body) }); invalidateCachedJson('/api/inventory'); return result; },
+  confirmReceipt: async (id: string) => { const result = await request<StockReceipt>(`/api/inventory/receipts/${id}/confirm`, { method: 'POST' }); invalidateCachedJson('/api/inventory'); return result; },
+  cancelReceipt: async (id: string) => { const result = await request<StockReceipt>(`/api/inventory/receipts/${id}/cancel`, { method: 'POST' }); invalidateCachedJson('/api/inventory'); return result; },
   getIssues: (params: { branchId?: string; status?: StockStatus; page?: number; pageSize?: number }) => request<InventoryPage<StockIssue>>(`/api/inventory/issues${query({ ...params, pageSize: params.pageSize ?? 20 })}`),
   getIssue: (id: string) => request<StockIssue>(`/api/inventory/issues/${id}`),
-  createIssue: (body: { branchId: string; reason: string; note?: string; idempotencyKey: string; items: StockLineInput[] }) => request<StockIssue>('/api/inventory/issues', { method: 'POST', body: JSON.stringify(body) }),
-  updateIssue: (id: string, body: { reason: string; note?: string; items: StockLineInput[] }) => request<StockIssue>(`/api/inventory/issues/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  confirmIssue: (id: string) => request<StockIssue>(`/api/inventory/issues/${id}/confirm`, { method: 'POST' }),
-  cancelIssue: (id: string) => request<StockIssue>(`/api/inventory/issues/${id}/cancel`, { method: 'POST' }),
+  createIssue: async (body: { branchId: string; reason: string; note?: string; idempotencyKey: string; items: StockLineInput[] }) => { const result = await request<StockIssue>('/api/inventory/issues', { method: 'POST', body: JSON.stringify(body) }); invalidateCachedJson('/api/inventory'); return result; },
+  updateIssue: async (id: string, body: { reason: string; note?: string; items: StockLineInput[] }) => { const result = await request<StockIssue>(`/api/inventory/issues/${id}`, { method: 'PUT', body: JSON.stringify(body) }); invalidateCachedJson('/api/inventory'); return result; },
+  confirmIssue: async (id: string) => { const result = await request<StockIssue>(`/api/inventory/issues/${id}/confirm`, { method: 'POST' }); invalidateCachedJson('/api/inventory'); return result; },
+  cancelIssue: async (id: string) => { const result = await request<StockIssue>(`/api/inventory/issues/${id}/cancel`, { method: 'POST' }); invalidateCachedJson('/api/inventory'); return result; },
   getTransactions: (params: { branchId?: string; inventoryItemId?: string; type?: TransactionType; fromDate?: string; toDate?: string; page?: number; pageSize?: number }) => request<InventoryPage<StockTransaction>>(`/api/inventory/transactions${query({ ...params, pageSize: params.pageSize ?? 20 })}`)
 };
 

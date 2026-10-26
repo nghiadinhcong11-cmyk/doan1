@@ -2,6 +2,8 @@
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, MapPin, QrCode, Download, Upload, HelpCircle, LayoutGrid, CheckCircle2, Eye, Printer, AlertTriangle, Settings2, Store, Utensils } from 'lucide-react';
 import { API_URL, CUSTOMER_WEB_URL } from '../../../config';
 import { notifyFeedback } from '../../../components/ui';
+import { fetchBranchList } from '../../../api/branchQuery';
+import { getCachedJson, invalidateCachedJson } from '../../../api/queryCache';
 
 interface Table {
   id?: string;
@@ -72,13 +74,13 @@ const TableManagement = () => {
       setLoading(true);
       const [resTables, resAreas, resBranches] = await Promise.all([
         fetch(`${API_URL}/api/Table`),
-        fetch(`${API_URL}/api/Area`),
-        fetch(`${API_URL}/api/Branch`)
+        getCachedJson<Area[]>(`${API_URL}/api/Area`),
+        fetchBranchList()
       ]);
 
       const dataTables = await resTables.json();
-      const dataAreas = await resAreas.json();
-      const dataBranches = await resBranches.json();
+      const dataAreas = resAreas;
+      const dataBranches = resBranches;
 
       setTables(dataTables);
       setAreas(dataAreas);
@@ -151,6 +153,7 @@ const TableManagement = () => {
         setIsModalOpen(false);
         setEditingTable(null);
         resetForm();
+        invalidateCachedJson('/api/Table');
         fetchData();
       } else if (response.status !== 403) {
         notifyFeedback('Lỗi khi lưu thông tin bàn.');
@@ -190,7 +193,7 @@ const TableManagement = () => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa bàn này không?')) return;
     try {
       const response = await fetch(`${API_URL}/api/Table/${id}`, { method: 'DELETE' });
-      if (response.ok) fetchData();
+      if (response.ok) { invalidateCachedJson('/api/Table'); fetchData(); }
     } catch (err) { notifyFeedback('Lỗi khi xóa bàn'); }
   };
 
@@ -199,6 +202,11 @@ const TableManagement = () => {
       notifyFeedback("Bạn không có quyền thực hiện chức năng này.");
       return;
     }
+    if (filterBranch === 'all') {
+      notifyFeedback('Hãy chọn một cơ sở cụ thể trước khi thêm khu vực.');
+      return;
+    }
+
     const areaName = prompt('Nhập tên khu vực mới:');
     if (areaName) {
       try {
@@ -208,10 +216,10 @@ const TableManagement = () => {
           body: JSON.stringify({
             name: areaName,
             displayOrder: areas.length + 1,
-            branchId: localStorage.getItem('selectedBranchId') || undefined
+            branchId: filterBranch
           })
         });
-        if (response.ok) fetchData();
+        if (response.ok) { invalidateCachedJson('/api/Area'); fetchData(); }
       } catch (err) { notifyFeedback('Lỗi khi thêm khu vực'); }
     }
   };
@@ -229,7 +237,7 @@ const TableManagement = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...area, name: newName })
         });
-        if (response.ok) fetchData();
+        if (response.ok) { invalidateCachedJson('/api/Area'); fetchData(); }
         else if (response.status !== 403) notifyFeedback('Lỗi khi cập nhật khu vực');
       } catch (err) { notifyFeedback('Lỗi kết nối server'); }
     }
@@ -244,6 +252,7 @@ const TableManagement = () => {
     try {
       const response = await fetch(`${API_URL}/api/Area/${id}`, { method: 'DELETE' });
       if (response.ok) {
+        invalidateCachedJson('/api/Area');
         fetchData();
       } else if (response.status !== 403) {
         const error = await response.json();

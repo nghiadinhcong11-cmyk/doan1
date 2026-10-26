@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace RestaurantPOS.Domain.Entities
 {
@@ -15,5 +16,7 @@ namespace RestaurantPOS.Domain.Entities
         public string? ImageUrl { get; set; } // Ảnh minh họa (nếu có)
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        [NotMapped]
+        public string AvailabilityStatus { get; set; } = "Available";
     }
 }

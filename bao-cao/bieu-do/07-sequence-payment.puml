@@ -1,0 +1,38 @@
+@startuml
+title Hình 3.10 - Sequence thanh toán đơn hàng
+actor "Cashier" as Cashier
+participant "POS Web" as POS
+participant "OrderController" as Controller
+participant "OrderService" as OrderService
+database "PostgreSQL" as DB
+participant "LoyaltyService" as Loyalty
+participant "Response" as Response
+
+Cashier -> POS : Chọn thanh toán
+POS -> Controller : POST payment request
+Controller -> OrderService : PayOrderAsync(orderId, method)
+OrderService -> DB : Đọc Order.TotalAmount và trạng thái
+DB --> OrderService : Đơn persisted
+
+alt Đơn đủ điều kiện thanh toán
+  OrderService -> OrderService : Kiểm tra số tiền theo TotalAmount
+  OrderService -> OrderService : Cập nhật Payment/Order state
+  opt Có Loyalty
+    OrderService -> Loyalty : Ghi điểm hoặc giao dịch Loyalty
+    Loyalty -> DB : Lưu LoyaltyTransaction
+  end
+  OrderService -> DB : Commit thay đổi liên quan
+  DB --> OrderService : Thành công
+  OrderService --> Controller : Kết quả thanh toán
+  Controller --> POS : HTTP success + trạng thái mới
+else Không hợp lệ
+  OrderService --> Controller : Lỗi trạng thái hoặc số tiền
+  Controller --> POS : HTTP error
+end
+
+note over OrderService
+Tổng tiền authoritative là Order.TotalAmount.
+Phí dịch vụ và VAT được làm tròn riêng ở backend.
+end note
+@enduml
+

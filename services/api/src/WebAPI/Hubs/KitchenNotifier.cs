@@ -14,7 +14,7 @@ namespace RestaurantPOS.WebAPI.Hubs
         {
             _hubContext = hubContext;
         }
-
+        //phat su kien SignaIR
         public async Task NotifyNewOrderRequestAsync(object payload)
         {
             var branchId = payload.GetType().GetProperty("branchId", BindingFlags.Public | BindingFlags.Instance)?.GetValue(payload)?.ToString();

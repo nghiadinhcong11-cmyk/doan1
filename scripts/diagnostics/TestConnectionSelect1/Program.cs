@@ -50,7 +50,7 @@ connection.Timeout = 15;
 connection.CommandTimeout = 15;
 
 Console.WriteLine("TARGET CHECK: PASS");
-Console.WriteLine("TARGET PROJECT REF: eorboopkwgmvainlxzkz");
+Console.WriteLine($"TARGET PROJECT REF: {SupabaseProjectTargetGuard.TestProjectRef}");
 Console.WriteLine($"TARGET: {connection.Host}:{connection.Port}/{connection.Database}");
 Console.WriteLine("SSL: REQUIRED");
 Console.WriteLine("AUTOMATIC MIGRATION/SEED: DISABLED");

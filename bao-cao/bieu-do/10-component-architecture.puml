@@ -1,0 +1,67 @@
+@startuml
+title Kiến trúc thành phần và triển khai thực tế (tham chiếu bổ sung)
+left to right direction
+skinparam componentStyle rectangle
+
+package "Admin Web (React/Vite)" as AdminWeb {
+  [Management Routes] as Management
+  [POS] as POS
+  [KDS] as KDS
+  [Admin AI Chat] as AdminChat
+  [Notification / SignalR Client] as AdminRealtime
+}
+
+package "Customer Web (React/Vite)" as CustomerWeb {
+  [Customer Menu] as CustomerMenu
+  [QR Scan / Guest Session] as QR
+  [Customer / Guest AI Chat] as CustomerChat
+}
+
+package "ASP.NET Core 8 API" as Api {
+  [Controllers] as Controllers
+  [AiController] as AiController
+  [Application Services] as Services
+  [AiOrchestrator] as Orchestrator
+  [AdminEmbeddingPilot] as AdminPilot
+  [CustomerGuestEmbeddingPilot] as CustomerPilot
+  [AiToolRegistry] as Registry
+  [AiPermissionService] as Permission
+  [KitchenHub] as Hub
+  [EF Core DbContext] as DbContext
+}
+
+database "PostgreSQL / Supabase" as DB
+
+Management --> Controllers : HTTPS REST
+POS --> Controllers : HTTPS REST
+KDS --> Controllers : HTTPS REST
+AdminChat --> AiController : HTTPS REST
+AdminRealtime --> Hub : SignalR /kitchenHub
+CustomerMenu --> Controllers : HTTPS REST
+QR --> Controllers : HTTPS REST
+CustomerChat --> AiController : HTTPS REST
+
+AiController --> Orchestrator
+Orchestrator --> AdminPilot
+Orchestrator --> CustomerPilot
+Orchestrator --> Registry
+Registry --> Permission
+Registry --> Services
+Controllers --> Services
+Hub --> Services
+Services --> DbContext
+DbContext --> DB
+
+note right of CustomerWeb
+Customer Web không kết nối trực tiếp
+KitchenHub. Realtime vận hành bếp
+được dùng bởi các client Admin Web.
+end note
+
+note bottom of Api
+Branch scope lấy từ authenticated context.
+AI không truy cập DbContext trực tiếp;
+AI tool gọi application service.
+end note
+@enduml
+

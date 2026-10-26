@@ -1,0 +1,91 @@
+@startuml
+title Hình 3.15 - Kiến trúc tổng thể của hệ thống
+left to right direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Admin Web" as AdminWeb {
+  [Management UI] as ManagementUI
+  [POS] as POS
+  [KDS] as KDS
+  [Admin AI Chat] as AdminChat
+}
+
+package "Customer Web" as CustomerWeb {
+  [Menu / QR Ordering] as CustomerMenu
+  [Customer Account] as CustomerAccount
+  [Customer AI Chat] as CustomerChat
+}
+
+package "ASP.NET Core WebAPI" as WebAPI {
+  [Controllers] as Controllers
+  [SignalR KitchenHub] as KitchenHub
+}
+
+package "Application Layer" as Application {
+  [OrderService] as OrderService
+  [KitchenService] as KitchenService
+  [LoyaltyService] as LoyaltyService
+  [Branch / Product / Customer Services] as BusinessServices
+  [Dashboard / Report Services] as ReportServices
+}
+
+package "AI Module" as AI {
+  [AiOrchestrator] as Orchestrator
+  [Intent Analysis + Local Embedding Pilot] as Intent
+  [AiToolRegistry] as Registry
+  [AiPermissionService] as Permission
+  [AI Tools] as Tools
+}
+
+package "Infrastructure Layer" as Infrastructure {
+  [ApplicationDbContext / EF Core] as DbContext
+  [JWT / Identity Services] as Identity
+  [Notification Services] as Notifications
+}
+
+database "PostgreSQL / Supabase" as DB
+
+ManagementUI --> Controllers : HTTPS REST
+POS --> Controllers : HTTPS REST
+KDS --> Controllers : HTTPS REST
+AdminChat --> Orchestrator : HTTPS REST
+CustomerMenu --> Controllers : HTTPS REST
+CustomerAccount --> Controllers : HTTPS REST
+CustomerChat --> Orchestrator : HTTPS REST
+KDS <--> KitchenHub : SignalR /kitchenHub
+
+Controllers --> OrderService
+Controllers --> KitchenService
+Controllers --> LoyaltyService
+Controllers --> BusinessServices
+Controllers --> ReportServices
+Controllers --> Identity
+KitchenHub --> KitchenService
+
+Orchestrator --> Intent
+Intent --> Registry
+Registry --> Permission
+Permission --> Tools
+Tools --> BusinessServices
+Tools --> ReportServices
+
+OrderService --> DbContext
+KitchenService --> DbContext
+LoyaltyService --> DbContext
+BusinessServices --> DbContext
+ReportServices --> DbContext
+Notifications --> KitchenHub
+DbContext --> DB
+
+note bottom of WebAPI
+Authentication, authorization và branch scope
+được kiểm tra ở backend.
+end note
+
+note bottom of AI
+AI không truy cập DbContext trực tiếp.
+Tool phải đi qua AiPermissionService
+và Application Service.
+end note
+@enduml

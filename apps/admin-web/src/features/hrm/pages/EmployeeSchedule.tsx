@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Users, Calendar as CalendarIcon, Clock, Filter, Loader2, X, Search, Trash2, MapPin } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { getCachedJson } from '../../../api/queryCache';
 
 interface Schedule {
   id: string;
@@ -54,8 +55,7 @@ const EmployeeSchedule = () => {
       setSchedules(data);
 
       if (canSeeAll) {
-        const resEmp = await fetch(`${API_URL}/api/Employee`);
-        const dataEmp = await resEmp.json();
+        const dataEmp = await getCachedJson<any[]>(`${API_URL}/api/Employee`);
         setEmployees(dataEmp);
       } else {
         setEmployees([{ id: myEmployeeId, fullName: localStorage.getItem('userName') || 'Tôi', position: localStorage.getItem('userPosition') }]);

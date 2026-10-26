@@ -101,7 +101,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             return Ok(products);
         }
 
-        /// <summary>Tạo món mới.</summary>
+        /// Tao mon moi.
         [HttpPost]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateProduct(Product product)
@@ -121,6 +121,9 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             try
             {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                return await strategy.ExecuteAsync(async () =>
+                {
                 var existingBranchIds = await _context.Branches
                     .AsNoTracking()
                     .Select(branch => branch.Id)
@@ -149,6 +152,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
                 return Ok(product);
+                });
             }
             catch (Exception ex)
             {
@@ -170,7 +174,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             return NoContent();
         }
 
-        /// <summary>Cập nhật thông tin món.</summary>
+        /// cap nhat thong tin mon
         [HttpPut("{id}")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> UpdateProduct(Guid id, Product product)
@@ -228,6 +232,21 @@ namespace RestaurantPOS.WebAPI.Controllers
             product.IsActive = !product.IsActive;
             await _context.SaveChangesAsync();
             return Ok(new { isActive = product.IsActive });
+        }
+
+        /// <summary>Cập nhật trạng thái kinh doanh toàn hệ thống của món.</summary>
+        [HttpPatch("{id}/global-status")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> UpdateGlobalStatus(Guid id, [FromBody] GlobalStatusRequest request)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null) return NotFound();
+            if (request == null) return BadRequest(new { message = "Trạng thái món không hợp lệ." });
+
+            product.IsActive = request.IsActive;
+            await _context.SaveChangesAsync();
+            _dashboardService?.InvalidateSummaryCache();
+            return Ok(new { product.Id, isActive = product.IsActive });
         }
 
         [HttpPatch("{id}/availability")]
@@ -316,5 +335,6 @@ namespace RestaurantPOS.WebAPI.Controllers
         }
 
         public sealed class AvailabilityRequest { public string Status { get; set; } = "Available"; }
+        public sealed class GlobalStatusRequest { public bool IsActive { get; set; } }
     }
 }

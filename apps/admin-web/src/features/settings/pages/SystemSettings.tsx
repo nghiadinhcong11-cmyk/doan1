@@ -1,7 +1,8 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Search, ChevronRight, Settings, Users, Store, Printer, CreditCard, ShieldCheck, Bell, Database, Lock, Trash2, ShoppingBag, Utensils, ClipboardList, Users2, BarChart3, Receipt, QrCode, Truck, MessageSquare, Info, Smartphone, Eye, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Search, ChevronRight, Settings, Users, Store, Printer, CreditCard, ShieldCheck, Bell, Database, Lock, Trash2, ShoppingBag, Utensils, ClipboardList, Users2, BarChart3, Receipt, QrCode, Truck, MessageSquare, Info, Smartphone, Eye, AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../../../config';
+import { getCachedJson, invalidateCachedJson } from '../../../api/queryCache';
 import { notifyFeedback } from '../../../components/ui';
 import type { BranchManagementRecord } from '../branchTypes';
 
@@ -37,36 +38,33 @@ const SystemSettings = () => {
   }, []);
 
   useEffect(() => {
-    const init = async () => {
+    const init = async (force = false) => {
       setBranchError(null);
-      const branch = await fetchSelectedBranch();
-      if (branch) await fetchSettings();
+      const branch = await fetchSelectedBranch(force);
+      if (branch) await fetchSettings(force);
       else {
         setSettings(DEFAULT_SETTINGS);
         setIsLoading(false);
       }
     };
-    init();
+    void init();
   }, [selectedBranchId]);
 
-  const fetchSettings = async () => {
+  const fetchSettings = async (force = false) => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('adminToken');
-      const response = await fetch(`${API_URL}/api/SystemSettings?branchId=${selectedBranchId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (response.ok) {
-        const data = await response.json();
+      const data = await getCachedJson<Record<string, unknown>>(`${API_URL}/api/SystemSettings?branchId=${selectedBranchId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }, { force });
+      {
         // Parse strings back to their types
         const parsedSettings = { ...DEFAULT_SETTINGS };
         Object.keys(data).forEach(key => {
           const val = data[key];
           if (val === 'true') (parsedSettings as any)[key] = true;
           else if (val === 'false') (parsedSettings as any)[key] = false;
-          else if (!isNaN(val) && val !== '') (parsedSettings as any)[key] = Number(val);
+          else if ((typeof val === 'number') || (typeof val === 'string' && val !== '' && !Number.isNaN(Number(val)))) (parsedSettings as any)[key] = Number(val);
           else (parsedSettings as any)[key] = val;
         });
         const effectiveServiceFeeKey = Object.prototype.hasOwnProperty.call(data, 'serviceFeePercent')
@@ -85,7 +83,7 @@ const SystemSettings = () => {
     }
   };
 
-  const fetchSelectedBranch = async (): Promise<BranchManagementRecord | null> => {
+  const fetchSelectedBranch = async (force = false): Promise<BranchManagementRecord | null> => {
     if (!selectedBranchId) {
       setSelectedBranch(null);
       setBranchError('Vui lòng chọn một chi nhánh trước khi mở cấu hình.');
@@ -93,9 +91,7 @@ const SystemSettings = () => {
     }
     try {
       setLoadingBranch(true);
-      const response = await fetch(`${API_URL}/api/Branch/management`);
-      if (!response.ok) throw new Error(`Không thể tải thông tin chi nhánh (${response.status}).`);
-      const data = await response.json() as BranchManagementRecord[];
+      const data = await getCachedJson<BranchManagementRecord[]>(`${API_URL}/api/Branch/management`, undefined, { force });
       const branch = data.find(item => item.id === selectedBranchId && item.isActive) || null;
       setSelectedBranch(branch);
       if (!branch) setBranchError('Chi nhánh đang chọn không hợp lệ hoặc đã ngừng hoạt động. Vui lòng chọn lại chi nhánh.');
@@ -110,6 +106,13 @@ const SystemSettings = () => {
     }
   };
 
+  const refreshSettings = async () => {
+    invalidateCachedJson('/api/SystemSettings');
+    invalidateCachedJson('/api/Branch/management');
+    setBranchError(null);
+    const branch = await fetchSelectedBranch(true);
+    if (branch) await fetchSettings(true);
+  };
 
 
   const handleSave = async () => {
@@ -135,6 +138,7 @@ const SystemSettings = () => {
       });
 
       if (response.ok) {
+        invalidateCachedJson('/api/SystemSettings');
         setShowSaveSuccess(true);
         setTimeout(() => setShowSaveSuccess(false), 3000);
       } else {
@@ -533,9 +537,10 @@ const SystemSettings = () => {
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <button type="button" onClick={() => setActiveSubTab('store-info')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeSubTab === 'store-info' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Thông tin nhà hàng</button>
         <button type="button" onClick={() => setActiveSubTab('orders')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${activeSubTab === 'orders' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Thuế & phí dịch vụ</button>
+        <button type="button" onClick={() => void refreshSettings()} disabled={isLoading || loadingBranch} className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60"><RefreshCw size={15} className={isLoading || loadingBranch ? 'animate-spin' : ''} /> Làm mới</button>
       </div>
 
       {/* Content Area */}

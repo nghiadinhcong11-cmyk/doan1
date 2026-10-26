@@ -9,6 +9,7 @@ interface POSHeaderProps {
   posTab: string;
   searchTerm: string;
   loading: boolean;
+  refreshError: string | null;
   onSwitchBranch: (branch: Branch) => void;
   onNavigateBranches: () => void;
   onTabChange: (tab: 'tables' | 'menu') => void;
@@ -24,6 +25,7 @@ export default function POSHeader({
   posTab,
   searchTerm,
   loading,
+  refreshError,
   onSwitchBranch,
   onNavigateBranches,
   onTabChange,
@@ -91,6 +93,7 @@ export default function POSHeader({
         onRefresh={onRefresh}
         onFocusSearch={onFocusSearch}
       />
+      {refreshError && <span role="status" className="order-last w-full px-2 pb-1 text-[10px] font-bold text-red-100 sm:order-none sm:w-auto">{refreshError}</span>}
     </div>
   );
 }

@@ -1,0 +1,57 @@
+@startuml
+title Hình 3.2 - Use Case phân rã nhóm khách hàng và khách vãng lai
+left to right direction
+
+actor "Khách hàng\nđã đăng nhập" as Customer
+actor "Khách vãng lai\nquét QR" as GuestQr
+
+rectangle "Customer Web / Customer API" {
+  usecase "Đăng nhập / đăng ký" as Login
+  usecase "Quét hoặc nhập QR" as Scan
+  usecase "Khởi tạo phiên khách QR" as Bootstrap
+  usecase "Xác thực token bàn\nvà chi nhánh" as Validate
+  usecase "Xem thực đơn" as Menu
+  usecase "Chọn món, size, topping\nvà số lượng" as Select
+  usecase "Gửi yêu cầu đặt món" as CreateOrder
+  usecase "Theo dõi đơn của tôi" as MyOrders
+  usecase "Xem hồ sơ và\nlịch sử giao dịch" as Profile
+  usecase "Đặt bàn" as Reservation
+  usecase "Xem điểm Loyalty" as Loyalty
+  usecase "Hỏi trợ lý Customer/Guest\ntrong phạm vi cho phép" as Chat
+}
+
+Customer --> Login
+Customer --> Menu
+Customer --> Select
+Customer --> CreateOrder
+Customer --> MyOrders
+Customer --> Profile
+Customer --> Reservation
+Customer --> Loyalty
+Customer --> Chat
+
+GuestQr --> Scan
+GuestQr --> Bootstrap
+GuestQr --> Menu
+GuestQr --> Select
+GuestQr --> CreateOrder
+GuestQr --> Chat
+
+Scan ..> Bootstrap : <<include>>
+Bootstrap ..> Validate : <<include>>
+CreateOrder ..> Menu : <<include>>
+CreateOrder ..> Select : <<include>>
+
+note right of Bootstrap
+Server kiểm tra token, bàn,
+chi nhánh và trạng thái phiên
+trước khi cấp context/JWT.
+end note
+
+note bottom
+Khách vãng lai không phải là role quản trị riêng.
+Phiên QR được backend giới hạn theo branch/table context,
+không có quyền xem dữ liệu quản trị hoặc sử dụng tool ghi dữ liệu.
+Sơ đồ này phân rã hai actor đã được gom ở sơ đồ tổng quát.
+end note
+@enduml

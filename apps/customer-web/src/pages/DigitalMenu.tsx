@@ -273,13 +273,18 @@ const DigitalMenu = () => {
       const phase = getQrDiagnosticPhase(qrToken);
 
       // Load products independently so a topping endpoint failure does not hide the main menu.
-      // Customer/Guest menu is the shared catalog; branch context is needed
-      // for ordering, not for viewing products and prices.
+      // Once a branch is known, only products explicitly sellable at that
+      // branch may enter the customer cart. This keeps the customer menu in
+      // sync with the server-side acceptance check.
       const menuQuery = new URLSearchParams({ isActive: 'true' });
+      if (branchId) {
+        menuQuery.set('branchId', branchId);
+        menuQuery.set('sellableOnly', 'true');
+      }
       const branchQuery = `?${menuQuery.toString()}`;
       const [productResult, toppingResult] = await Promise.allSettled([
         fetchWithDiagnostics('/api/Product', `${API_URL}/api/Product${branchQuery}`, undefined, phase),
-        fetchWithDiagnostics('/api/Topping', `${API_URL}/api/Topping`, undefined, phase)
+        fetchWithDiagnostics('/api/Topping', `${API_URL}/api/Topping${branchId ? `?branchId=${encodeURIComponent(branchId)}&sellableOnly=true` : ''}`, undefined, phase)
       ]);
 
       const productStatus = productResult.status === 'fulfilled' ? productResult.value.status : null;
@@ -359,6 +364,15 @@ const DigitalMenu = () => {
       const allItems = [...sellableProducts, ...toppingProducts];
       setProducts(allItems);
       setProductCountAfterFilter(sellableProducts.length);
+
+      if (branchId) {
+        const sellableProductIds = new Set(sellableProducts.map((product: any) => String(product.id)));
+        setCart(previousCart => {
+          return previousCart.filter(item =>
+            Boolean((item as any).isStandaloneTopping) || sellableProductIds.has(String(item.id))
+          );
+        });
+      }
 
       if (import.meta.env.DEV) {
         console.info('[DigitalMenu] product counts', {

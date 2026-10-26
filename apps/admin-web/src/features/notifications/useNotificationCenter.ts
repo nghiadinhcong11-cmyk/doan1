@@ -22,6 +22,28 @@ type NotificationRole = 'admin' | 'manager' | 'cashier' | 'employee' | 'kitchen'
 const branchScope = () => localStorage.getItem('selectedBranchId') || '';
 const authScope = () => `${localStorage.getItem('adminToken') || ''}|${localStorage.getItem('userRole') || ''}|${branchScope()}`;
 
+let notificationSnapshotInFlight: { scope: string; promise: Promise<{ items: NotificationItem[]; count: number }> } | null = null;
+
+const fetchNotificationSnapshot = async (listQuery: string, countQuery: string, scope: string) => {
+  if (notificationSnapshotInFlight?.scope === scope) return notificationSnapshotInFlight.promise;
+  const promise = (async () => {
+    const [listResponse, countResponse] = await Promise.all([
+      fetch(`${API_URL}/api/Notification?${listQuery}`),
+      fetch(`${API_URL}/api/Notification/count?${countQuery}`)
+    ]);
+    if (!listResponse.ok || !countResponse.ok) throw new Error('Notification request failed');
+    const list = await listResponse.json() as { items?: NotificationItem[] };
+    const count = await countResponse.json() as { count?: number };
+    return { items: Array.isArray(list.items) ? list.items : [], count: typeof count.count === 'number' ? count.count : 0 };
+  })();
+  notificationSnapshotInFlight = { scope, promise };
+  try {
+    return await promise;
+  } finally {
+    if (notificationSnapshotInFlight?.promise === promise) notificationSnapshotInFlight = null;
+  }
+};
+
 export const useNotificationCenter = (role: NotificationRole) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [pendingNotifications, setPendingNotifications] = useState<PendingWebOrderNotification[]>([]);
@@ -44,16 +66,10 @@ export const useNotificationCenter = (role: NotificationRole) => {
     setLoadingNotifications(true);
     try {
       const query = `readState=unread&page=1&pageSize=20${branchQuery()}`;
-      const [listResponse, countResponse] = await Promise.all([
-        fetch(`${API_URL}/api/Notification?${query}`),
-        fetch(`${API_URL}/api/Notification/count?${branchQuery().replace(/^&/, '')}`)
-      ]);
-      if (!listResponse.ok || !countResponse.ok) throw new Error('Không thể tải thông báo.');
-      const list = await listResponse.json() as { items?: NotificationItem[] };
-      const count = await countResponse.json() as { count?: number };
+      const snapshot = await fetchNotificationSnapshot(query, branchQuery().replace(/^&/, ''), scope);
       if (generation !== requestGeneration.current || scope !== authScope()) return;
-      setNotifications(Array.isArray(list.items) ? list.items : []);
-      setUnreadCount(typeof count.count === 'number' ? count.count : 0);
+      setNotifications(snapshot.items);
+      setUnreadCount(snapshot.count);
       setError(null);
     } catch (reason) {
       if (generation === requestGeneration.current) setError(reason instanceof Error ? reason.message : 'Không thể tải thông báo.');
@@ -76,6 +92,7 @@ export const useNotificationCenter = (role: NotificationRole) => {
       if (generation !== requestGeneration.current) return;
       setPendingCount(count);
       setPendingNotifications(list);
+      window.dispatchEvent(new Event(PENDING_ORDER_CHANGED_EVENT));
     } catch (reason) {
       if (generation === requestGeneration.current) setError(reason instanceof Error ? reason.message : 'Không thể tải đơn đang xử lý.');
     } finally {
@@ -134,14 +151,20 @@ export const useNotificationCenter = (role: NotificationRole) => {
       if (payload?.branchId && selectedBranch && payload.branchId !== selectedBranch && role !== 'admin') return;
       void refreshPending();
     };
+    const onProductAvailabilityChanged = (payload: { id: string; availabilityStatus: string; branchId: string }) => {
+      if (!disposed) window.dispatchEvent(new CustomEvent('product-availability-changed', { detail: payload }));
+    };
+    const onToppingAvailabilityChanged = (payload: { id: string; availabilityStatus: string; branchId: string }) => {
+      if (!disposed) window.dispatchEvent(new CustomEvent('topping-availability-changed', { detail: payload }));
+    };
     connection.on('NotificationCreated', onNotification);
     connection.on('PendingOrderChanged', onPendingChanged);
+    connection.on('ProductAvailabilityChanged', onProductAvailabilityChanged);
+    connection.on('ToppingAvailabilityChanged', onToppingAvailabilityChanged);
     connection.onreconnected(() => refreshVisible());
     void connection.start().catch(() => undefined);
     const onCustomRefresh = () => { if (!disposed) void refreshNotifications(); };
-    const onPendingRefresh = () => { if (!disposed) void refreshPending(); };
     window.addEventListener('refresh-notifications', onCustomRefresh);
-    window.addEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingRefresh);
     document.addEventListener('visibilitychange', refreshVisible);
     return () => {
       disposed = true;
@@ -150,8 +173,9 @@ export const useNotificationCenter = (role: NotificationRole) => {
       window.clearInterval(pendingTimer);
       connection.off('NotificationCreated', onNotification);
       connection.off('PendingOrderChanged', onPendingChanged);
+      connection.off('ProductAvailabilityChanged', onProductAvailabilityChanged);
+      connection.off('ToppingAvailabilityChanged', onToppingAvailabilityChanged);
       window.removeEventListener('refresh-notifications', onCustomRefresh);
-      window.removeEventListener(PENDING_ORDER_CHANGED_EVENT, onPendingRefresh);
       document.removeEventListener('visibilitychange', refreshVisible);
       void connection.stop().catch(() => undefined);
     };

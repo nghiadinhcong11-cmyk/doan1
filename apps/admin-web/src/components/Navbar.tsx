@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Settings, User, Search, HelpCircle, ChevronRight, Globe, LogOut, Printer, Users, Store, ShieldCheck, CreditCard, Users2, ChevronDown, Clock, Calendar, Info, Book, Banknote, Utensils, Settings2, QrCode, X, Bell, BellRing, Loader2 } from 'lucide-react';
-import { API_URL, CUSTOMER_WEB_URL } from '../config';
+import { Settings, User, HelpCircle, ChevronRight, Globe, LogOut, Printer, Users, Store, ShieldCheck, CreditCard, Users2, ChevronDown, Clock, Calendar, Info, Book, Banknote, Utensils, Settings2, QrCode, X, Bell, BellRing, Loader2, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen, LayoutDashboard, Package } from 'lucide-react';
+import { API_URL } from '../config';
 import { fetchBranchList } from '../api/branchQuery';
 import { useNotificationCenter } from '../features/notifications/useNotificationCenter';
 import NotificationBell from '../features/notifications/NotificationBell';
 import BrandLogo from '../../../shared/BrandLogo';
+
+const ADMIN_LOGIN_URL = typeof window !== 'undefined' ? window.location.origin : '';
 
 interface Branch {
   id: string;
@@ -17,30 +19,59 @@ interface NavbarProps {
   onLogout: () => void;
   userName?: string;
   userRole?: 'admin' | 'manager' | 'cashier' | null;
+  sidebarCollapsed: boolean;
+  onSidebarToggle: () => void;
 }
 
 type NavItem = {
   id: string;
   label: string;
   path: string;
+  icon: React.ReactNode;
 };
 
-const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
+const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole, sidebarCollapsed, onSidebarToggle }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCatalogMenuOpen, setIsCatalogMenuOpen] = useState(false);
+  const [isCustomerMenuOpen, setIsCustomerMenuOpen] = useState(false);
+  const [isEmployeeMenuOpen, setIsEmployeeMenuOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchLoadError, setBranchLoadError] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const navRef = useRef<HTMLElement>(null);
   const location = useLocation();
   const notificationCenter = useNotificationCenter(userRole === 'manager' ? 'manager' : 'admin');
   const pendingOrderCount = notificationCenter.pendingCount;
   const displayedNotifications: any[] = [];
   const loadingNoti = notificationCenter.loadingNotifications;
   const notificationError = notificationCenter.error;
+
+  useEffect(() => {
+    setIsCatalogMenuOpen(false);
+    setIsCustomerMenuOpen(false);
+    setIsEmployeeMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const closeMenusOutside = (event: PointerEvent) => {
+      if (navRef.current?.contains(event.target as Node)) return;
+      setIsCatalogMenuOpen(false);
+      setIsCustomerMenuOpen(false);
+      setIsEmployeeMenuOpen(false);
+      setIsSettingsOpen(false);
+      setIsHelpOpen(false);
+      setIsQRModalOpen(false);
+      setIsUserMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeMenusOutside);
+    return () => document.removeEventListener('pointerdown', closeMenusOutside);
+  }, []);
 
   const fetchBranches = async () => {
     try {
@@ -72,8 +103,6 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
     setSelectedBranch(branch);
     localStorage.setItem('selectedBranchId', branch.id);
     window.dispatchEvent(new Event('branch:changed'));
-    // Trigger a page reload or event to update other components
-    window.location.reload();
   };
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -81,21 +110,21 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
   // This is presentation metadata only. Route layouts may still use their area
   // for sizing, but area must never remove an allowed admin/manager nav item.
   const managementNavItems: NavItem[] = [
-    { id: 'dashboard', label: 'TỔNG QUAN', path: '/dashboard' },
-    { id: 'expenses', label: 'CHI PHÍ', path: '/expenses' },
-    ...(userRole === 'admin' || userRole === 'manager' ? [{ id: 'inventory', label: 'KHO HÀNG', path: '/inventory' }] : []),
+    { id: 'dashboard', label: 'TỔNG QUAN', path: '/dashboard', icon: <LayoutDashboard size={18} /> },
+    { id: 'expenses', label: 'CHI PHÍ', path: '/expenses', icon: <Banknote size={18} /> },
+    ...(userRole === 'admin' || userRole === 'manager' ? [{ id: 'inventory', label: 'KHO HÀNG', path: '/inventory', icon: <Package size={18} /> }] : []),
   ];
   const operationsNavItems: NavItem[] = [
-    { id: 'pos', label: 'BÁN HÀNG', path: '/pos' },
-    { id: 'kitchen', label: 'NHÀ BẾP', path: '/kitchen' },
-    { id: 'tables', label: 'PHÒNG BÀN', path: '/tables' },
-    { id: 'invoices', label: 'HÓA ĐƠN', path: '/invoices' },
-    { id: 'reservations', label: 'ĐẶT BÀN', path: '/reservations' },
+    { id: 'pos', label: 'BÁN HÀNG', path: '/pos', icon: <CreditCard size={18} /> },
+    { id: 'kitchen', label: 'NHÀ BẾP', path: '/kitchen', icon: <Utensils size={18} /> },
+    { id: 'tables', label: 'PHÒNG BÀN', path: '/tables', icon: <Store size={18} /> },
+    { id: 'invoices', label: 'HÓA ĐƠN', path: '/invoices', icon: <Printer size={18} /> },
+    { id: 'reservations', label: 'ĐẶT BÀN', path: '/reservations', icon: <Calendar size={18} /> },
   ];
 
   return (
-    <nav className="bg-[#0070f4] text-white h-12 flex items-center justify-between px-4 shadow-md sticky top-0 z-50">
-      <div className="flex items-center h-full">
+    <nav ref={navRef} className={`sticky top-0 z-50 flex h-12 items-center justify-between bg-[#0070f4] px-4 text-white shadow-md lg:fixed lg:inset-y-0 lg:left-0 lg:h-screen lg:flex-col lg:items-stretch lg:justify-start lg:overflow-visible lg:bg-transparent lg:px-0 lg:pt-0 lg:pb-0 lg:shadow-none lg:z-[60] ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
+      <div className={`flex h-full items-center bg-[#0070f4] lg:h-auto lg:flex-none lg:flex-col lg:items-stretch lg:pt-4 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
         {/* Mobile Menu Toggle */}
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -110,75 +139,51 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
 
         {/* Logo/Brand */}
         {branchLoadError && <span role="status" className="mr-3 hidden text-[10px] font-bold text-amber-100 xl:inline">Không tải được danh sách cơ sở</span>}
-        <Link to="/dashboard" className="mr-4 flex h-10 w-28 shrink-0 items-center cursor-pointer">
-          <BrandLogo className="h-full w-full" imageClassName="h-full w-full" />
+        <Link to="/dashboard" className={`mr-4 flex h-10 shrink-0 cursor-pointer items-center lg:mb-3 lg:mr-0 lg:h-12 lg:justify-center ${sidebarCollapsed ? 'w-12 lg:w-20' : 'w-28 lg:w-72'}`}>
+          <BrandLogo markOnly={sidebarCollapsed} className={`shrink-0 ${sidebarCollapsed ? 'h-10 w-10 lg:h-12 lg:w-12' : 'h-10 w-28 lg:h-12 lg:w-44'}`} imageClassName="h-full w-full" />
         </Link>
 
-        {/* Branch Selector Global */}
-        {branches.length > 0 && (
-           <div className="relative group mr-4 h-full flex items-center">
-              <button className="flex items-center bg-blue-600/50 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-all border border-blue-400/30">
-                 <Store size={14} className="mr-2 text-blue-200" />
-                 <div className="text-left hidden md:block">
-                    <p className="text-[10px] font-black text-blue-200 uppercase leading-none mb-0.5">Cơ sở</p>
-                    <p className="text-[11px] font-bold truncate max-w-[100px]">{selectedBranch?.name || 'Chọn chi nhánh'}</p>
-                 </div>
-                 <ChevronDown size={12} className="ml-2 text-blue-200 opacity-60 group-hover:rotate-180 transition-transform"/>
-              </button>
+      </div>
+      <div className={`relative hidden flex-1 flex-col items-stretch bg-[#0070f4] lg:flex ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
 
-              {/* Dropdown */}
-              <div className="absolute top-full left-0 w-64 bg-white rounded-b-lg shadow-2xl border-t border-blue-500 hidden group-hover:block z-[60] overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-1">
-                 <div className="p-3 border-b bg-gray-50">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hệ thống chi nhánh</p>
-                 </div>
-                 <div className="max-h-80 overflow-y-auto">
-                    {(userRole === 'manager' ? branches.filter(b => b.id === selectedBranch?.id) : branches).map(b => (
-                       <button
-                          key={b.id}
-                          onClick={() => handleBranchChange(b)}
-                          className={`w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center justify-between border-b border-gray-50 last:border-0 transition-colors ${selectedBranch?.id === b.id ? 'bg-blue-50/80' : ''}`}
-                       >
-                          <div>
-                             <p className={`text-[13px] font-bold ${selectedBranch?.id === b.id ? 'text-blue-600' : 'text-gray-700'}`}>{b.name}</p>
-                             {b.isMain && <span className="text-[8px] bg-orange-100 text-orange-600 px-1 rounded-sm font-black uppercase">Trụ sở chính</span>}
-                          </div>
-                          {selectedBranch?.id === b.id && <ShieldCheck size={16} className="text-blue-600" />}
-                       </button>
-                    ))}
-                 </div>
-                 {userRole === 'admin' && (
-                   <Link to="/branches" className="block p-2 text-center text-[10px] text-blue-600 font-bold hover:bg-gray-50 transition-colors uppercase border-t">Quản lý cơ sở</Link>
-                 )}
-              </div>
-           </div>
-        )}
+        <div className="hidden lg:mb-1 lg:block lg:h-3 lg:w-full lg:overflow-hidden lg:text-blue-200/70" aria-hidden="true">
+          <svg viewBox="0 0 240 18" preserveAspectRatio="none" className="h-full w-full">
+            <path d="M0 9 C30 1 50 1 80 9 S130 17 160 9 S210 1 240 9" fill="none" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </div>
+
+        <button type="button" onClick={onSidebarToggle} className={`hidden lg:mb-2 lg:flex lg:h-10 lg:w-full lg:items-center lg:gap-2 lg:rounded-xl lg:px-3 lg:text-[12px] lg:font-bold lg:uppercase lg:tracking-widest lg:text-blue-100 lg:transition-colors lg:hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''}`} aria-label={sidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} title={sidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}>
+          {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{sidebarCollapsed ? 'Mở rộng' : 'Thu gọn'}</span>
+        </button>
 
         {/* Desktop Nav Links */}
-        <div className="hidden lg:flex h-full items-center space-x-1">
+        <div className="hidden lg:mt-2 lg:flex lg:h-auto lg:w-full lg:flex-col lg:items-stretch lg:space-y-1">
           {managementNavItems.map((item) => (
             <Link
               key={item.id}
               to={item.path}
-              className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
+              className={`flex h-10 items-center gap-2 rounded-xl px-3 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${
                 isActive(item.path) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
-              {item.label}
+              {item.icon}<span className={sidebarCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
             </Link>
           ))}
 
           {/* THỰC ĐƠN DROPDOWN */}
-          <div className="relative group h-full">
+          <div className="group relative h-auto w-full">
             <button
-              className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
+              onClick={() => setIsCatalogMenuOpen(open => !open)}
+              className={`flex h-10 w-full items-center justify-start gap-2 rounded-xl px-3 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${
                 ['/products', '/toppings'].includes(location.pathname) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
-              Thực đơn <ChevronDown size={14} className="ml-1 opacity-60 group-hover:rotate-180 transition-transform"/>
+              <Utensils size={18} /><span className={sidebarCollapsed ? 'lg:hidden' : ''}>Thực đơn</span><ChevronDown size={14} className={`ml-auto opacity-60 group-hover:rotate-180 transition-transform ${sidebarCollapsed ? 'lg:hidden' : ''}`}/>
             </button>
 
             {/* Dropdown Menu */}
-            <div className="absolute top-full left-0 w-56 bg-white rounded-b-lg shadow-2xl border-t border-blue-500 hidden group-hover:block z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-1">
+            <div className={`absolute bottom-0 left-full z-[100] ml-0 max-h-[calc(100vh-2rem)] w-56 overflow-y-auto rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xl ${isCatalogMenuOpen ? 'block' : 'hidden'} group-hover:block animate-in fade-in slide-in-from-left-2`}>
                <Link to="/products" className="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-50">
                   <Utensils size={16} className="mr-3 text-blue-500"/>
                   <div>
@@ -197,17 +202,18 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           </div>
 
           {/* KHÁCH HÀNG DROPDOWN */}
-          <div className="relative group h-full">
+          <div className="group relative h-auto w-full">
             <button
-              className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
+              onClick={() => setIsCustomerMenuOpen(open => !open)}
+              className={`flex h-10 w-full items-center justify-start gap-2 rounded-xl px-3 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${
                 ['/customers', '/promotions'].includes(location.pathname) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
-              Khách hàng <ChevronDown size={14} className="ml-1 opacity-60 group-hover:rotate-180 transition-transform"/>
+              <Users size={18} /><span className={sidebarCollapsed ? 'lg:hidden' : ''}>Khách hàng</span><ChevronDown size={14} className={`ml-auto opacity-60 group-hover:rotate-180 transition-transform ${sidebarCollapsed ? 'lg:hidden' : ''}`}/>
             </button>
 
             {/* Dropdown Menu */}
-            <div className="absolute top-full left-0 w-56 bg-white rounded-b-lg shadow-2xl border-t border-blue-500 hidden group-hover:block z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-1">
+            <div className={`absolute bottom-0 left-full z-[100] ml-0 max-h-[calc(100vh-2rem)] w-56 overflow-y-auto rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xl ${isCustomerMenuOpen ? 'block' : 'hidden'} group-hover:block animate-in fade-in slide-in-from-left-2`}>
                <Link to="/customers" className="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-50">
                   <Users size={16} className="mr-3 text-blue-500"/>
                   <div>
@@ -226,17 +232,18 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           </div>
 
           {/* NHÂN VIÊN DROPDOWN */}
-          <div className="relative group h-full">
+          <div className="group relative h-auto w-full">
             <button
-              className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
+              onClick={() => setIsEmployeeMenuOpen(open => !open)}
+              className={`flex h-10 w-full items-center justify-start gap-2 rounded-xl px-3 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${
                 ['/employees', '/attendance', '/schedule', '/shifts'].some(path => isActive(path)) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
-              Nhân viên <ChevronDown size={14} className="ml-1 opacity-60 group-hover:rotate-180 transition-transform"/>
+              <Users size={18} /><span className={sidebarCollapsed ? 'lg:hidden' : ''}>Nhân viên</span><ChevronDown size={14} className={`ml-auto opacity-60 group-hover:rotate-180 transition-transform ${sidebarCollapsed ? 'lg:hidden' : ''}`}/>
             </button>
 
             {/* Dropdown Menu */}
-            <div className="absolute top-full left-0 w-56 bg-white rounded-b-lg shadow-2xl border-t border-blue-500 hidden group-hover:block z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-1">
+            <div className={`absolute bottom-0 left-full z-[100] ml-0 max-h-[calc(100vh-2rem)] w-56 overflow-y-auto rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xl ${isEmployeeMenuOpen ? 'block' : 'hidden'} group-hover:block animate-in fade-in slide-in-from-left-2`}>
                <Link to="/employees" className="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-50">
                   <Users size={16} className="mr-3 text-blue-500"/>
                   <div>
@@ -271,15 +278,14 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
             <Link
               key={item.id}
               to={item.path}
-              className={`px-3 h-full flex items-center text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${
+              className={`flex h-10 items-center gap-2 rounded-xl px-3 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${
                 isActive(item.path) ? 'bg-blue-700 shadow-inner' : ''
               }`}
             >
-              {item.label}
+              {item.icon}<span className={sidebarCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
             </Link>
           ))}
         </div>
-      </div>
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
@@ -315,21 +321,11 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
         </div>
       )}
 
-      <div className="flex items-center space-x-2 sm:space-x-4">
-        {/* Search Box */}
-        <div className="relative hidden lg:block">
-          <span className="absolute inset-y-0 left-0 pl-2 flex items-center">
-            <Search className="h-3.5 w-3.5 text-blue-200" />
-          </span>
-          <input
-            type="text"
-            className="bg-blue-600/50 border-none rounded text-xs py-1.5 pl-8 pr-2 w-48 placeholder-blue-200 text-white focus:ring-1 focus:ring-white outline-none"
-            placeholder="Tìm món, hóa đơn..."
-          />
+      <div className="hidden flex-1 flex-col items-stretch gap-1 text-white lg:flex" data-sidebar-tools>
+        <div className="w-full">
+          <NotificationBell {...notificationCenter} historyPath="/notifications" showLabel={!sidebarCollapsed} menuPlacement="right" />
         </div>
-
-        <div className="flex items-center space-x-3 relative">
-          <NotificationBell {...notificationCenter} historyPath="/notifications" />
+        <div className="flex flex-col items-stretch gap-1">
           {/* Notifications */}
           <div className="relative hidden">
             <button
@@ -396,7 +392,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           </div>
 
           {/* Settings Icon & Dropdown */}
-          {userRole === 'admin' && <div className="relative">
+          {userRole === 'admin' && <div className="group relative">
             <button
               onClick={() => {
                 setIsSettingsOpen(!isSettingsOpen);
@@ -405,22 +401,21 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                 setIsHelpOpen(false);
                 setIsUserMenuOpen(false);
               }}
-              className={`p-1 hover:bg-blue-600 rounded transition-colors ${isSettingsOpen || ['/settings', '/settings/receipt', '/print-templates'].some(path => isActive(path)) ? 'bg-blue-700' : ''}`}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 lg:w-full ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${isSettingsOpen || ['/settings', '/settings/receipt', '/print-templates'].some(path => isActive(path)) ? 'bg-blue-700' : ''}`}
               title="Thiết lập"
             >
-              <Settings size={18} />
+              <Settings size={18} /><span className={sidebarCollapsed ? 'lg:hidden' : ''}>Thiết lập</span>
             </button>
 
-            {isSettingsOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-2">
+            {(
+              <div className={`absolute bottom-0 left-full z-50 ml-0 max-h-[calc(100vh-2rem)] w-72 overflow-y-auto rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xl animate-in fade-in slide-in-from-left-2 ${isSettingsOpen ? 'block' : 'hidden'} group-hover:block`}>
                 <div className="p-3 border-b bg-gray-50 flex items-center text-[12px] font-bold text-gray-700 uppercase">
                   <Settings className="h-4 w-4 mr-2 text-blue-600" /> Cấu hình chủ quán
                 </div>
                 <div className="p-1">
                    {[
-                     { icon: <Settings className="h-4 w-4" />, label: "Cấu hình nhà hàng", path: '/settings' },
-                     { icon: <Printer className="h-4 w-4" />, label: "Hóa đơn & in bill", path: '/settings/receipt' },
-                     { icon: <Printer className="h-4 w-4" />, label: "Mẫu in", path: '/print-templates' },
+                     { icon: <Settings className="h-4 w-4" />, label: "Nhà hàng & tài chính", path: '/settings' },
+                     { icon: <Printer className="h-4 w-4" />, label: "Hóa đơn & in ấn", path: '/settings/receipt' },
                      { icon: <Store className="h-4 w-4" />, label: "Quản lý chi nhánh", path: '/branches' },
                    ].map((item, i) => (
                      <Link
@@ -435,6 +430,15 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                        <ChevronRight className="h-3 w-3 text-gray-300 group-hover:text-blue-400" />
                      </Link>
                    ))}
+                   <div className="mt-1 border-t border-gray-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400">Sắp ra mắt</div>
+                   <div className="flex items-center justify-between px-3 py-2 text-[13px] font-bold uppercase text-gray-400">
+                     <span className="flex items-center"><ShieldCheck className="mr-3 h-4 w-4" /> Bảo mật & hệ thống</span>
+                     <span className="text-[9px]">Sắp ra mắt</span>
+                   </div>
+                   <div className="flex items-center justify-between px-3 py-2 text-[13px] font-bold uppercase text-gray-400">
+                     <span className="flex items-center"><Settings2 className="mr-3 h-4 w-4" /> Chốt sổ & khóa dữ liệu</span>
+                     <span className="text-[9px]">Sắp ra mắt</span>
+                   </div>
                 </div>
 
                 <div className="p-1 border-t bg-gray-50 text-center">
@@ -451,7 +455,7 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           </div>}
 
           {/* Help & Support */}
-          <div className="relative">
+          <div className="group relative">
             <button
               onClick={() => {
                 setIsHelpOpen(!isHelpOpen);
@@ -459,14 +463,14 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                 setIsSettingsOpen(false);
                 setIsUserMenuOpen(false);
               }}
-              className={`p-1 hover:bg-blue-600 rounded transition-colors ${isHelpOpen ? 'bg-blue-700' : ''}`}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 lg:w-full ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${isHelpOpen ? 'bg-blue-700' : ''}`}
               title="Hướng dẫn"
             >
-              <HelpCircle size={18} />
+              <HelpCircle size={18} /><span className={sidebarCollapsed ? 'lg:hidden' : ''}>Hỗ trợ</span>
             </button>
 
-            {isHelpOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-2">
+            {(
+              <div className={`absolute bottom-0 left-full z-50 ml-0 max-h-[calc(100vh-2rem)] w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xl animate-in fade-in slide-in-from-left-2 ${isHelpOpen ? 'block' : 'hidden'} group-hover:block`}>
                 <div className="p-3 border-b bg-gray-50 flex items-center text-sm font-bold text-gray-700 uppercase tracking-tighter italic">
                    <HelpCircle className="h-4 w-4 mr-2 text-blue-600" /> Hỗ trợ kỹ thuật
                 </div>
@@ -489,19 +493,31 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
             )}
           </div>
 
-          <div className="h-6 w-[1px] bg-blue-400 mx-1"></div>
+          {/* QR Code for management and staff login */}
+          <div className="group relative">
+            <button
+              onClick={() => setIsQRModalOpen(open => !open)}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-bold uppercase tracking-widest text-blue-100 transition-colors hover:bg-blue-600 lg:w-full ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''}`}
+              title="Mã QR đăng nhập quản lý và nhân viên"
+            >
+              <QrCode size={18} /><span className={sidebarCollapsed ? 'lg:hidden' : ''}>Mã QR</span>
+            </button>
+            {(
+              <div className={`absolute bottom-0 left-full z-50 ml-0 max-h-[calc(100vh-2rem)] w-80 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 text-center text-gray-800 shadow-2xl animate-in fade-in slide-in-from-left-2 ${isQRModalOpen ? 'block' : 'hidden'} group-hover:block`}>
+                <button onClick={() => setIsQRModalOpen(false)} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600" aria-label="Đóng mã QR"><X size={20} /></button>
+                <h3 className="mb-4 flex items-center justify-center text-sm font-black uppercase tracking-tight"><QrCode className="mr-2 text-blue-600" size={20}/>QR ĐĂNG NHẬP</h3>
+                <div className="inline-block rounded-xl border-2 border-dashed border-blue-200 bg-white p-4">
+                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(ADMIN_LOGIN_URL)}`} alt="QR Code" className="mx-auto h-48 w-48" />
+                </div>
+                <p className="mt-4 text-[10px] font-bold uppercase italic tracking-widest leading-tight text-gray-500">Dùng điện thoại quét mã<br/>để mở trang đăng nhập hệ thống</p>
+                <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="mb-1 text-[9px] font-black uppercase text-gray-400">ĐỊA CHỈ ĐĂNG NHẬP</p><p className="break-all font-mono text-xs text-blue-600">{ADMIN_LOGIN_URL}</p></div>
+              </div>
+            )}
+          </div>
 
-          {/* QR Code for Customer */}
-          <button
-            onClick={() => setIsQRModalOpen(true)}
-            className="p-1 hover:bg-blue-600 rounded transition-colors text-white"
-            title="Mã QR cho khách"
-          >
-            <QrCode size={18} />
-          </button>
-
+          <div className="absolute inset-x-4 bottom-0 flex flex-col items-stretch gap-1 border-t border-blue-400/30 bg-[#0070f4] pt-3">
           {/* User Profile & Dropdown */}
-          <div className="relative">
+          <div className="group relative">
             <button
               onClick={() => {
                 setIsUserMenuOpen(!isUserMenuOpen);
@@ -509,23 +525,23 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                 setIsNotificationsOpen(false);
                 setIsHelpOpen(false);
               }}
-              className={`flex items-center space-x-2 hover:bg-blue-600 px-2 py-1 rounded transition-colors ${isUserMenuOpen || location.pathname === '/profile' ? 'bg-blue-700' : ''}`}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 transition-colors hover:bg-blue-600 lg:w-full lg:justify-start ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${isUserMenuOpen || location.pathname === '/profile' ? 'bg-blue-700' : ''}`}
             >
               <div className="w-7 h-7 bg-blue-300 rounded-full flex items-center justify-center text-blue-700">
                 <User size={16} />
               </div>
-              <span className="text-[13px] font-medium hidden sm:block">{userName || 'Admin'}</span>
+              <span className={`hidden max-w-[132px] truncate text-[12px] font-bold uppercase tracking-widest sm:block ${sidebarCollapsed ? 'lg:hidden' : ''}`} title={userName || 'Admin'}>{userName || 'Quản trị viên'}</span>
             </button>
 
-            {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden text-gray-800 animate-in fade-in slide-in-from-top-2">
+            {(
+              <div className={`absolute bottom-0 left-full z-50 ml-0 max-h-[calc(100vh-2rem)] w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xl animate-in fade-in slide-in-from-left-2 ${isUserMenuOpen ? 'block' : 'hidden'} group-hover:block`}>
                 <div className="p-4 border-b flex items-center bg-gray-50">
                   <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
                     <User className="h-6 w-6 text-blue-500" />
                   </div>
                   <div>
                     <p className="text-sm font-bold">{userName || 'Quản trị viên'}</p>
-                    <p className="text-[10px] text-orange-500 font-medium">Chưa bật xác thực 2 lớp</p>
+                    <p className="text-[10px] text-orange-500 font-medium">Xác thực 2 lớp — Sắp ra mắt</p>
                   </div>
                 </div>
 
@@ -543,10 +559,26 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
                 </div>
 
                 <div className="p-1 border-t">
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <span className="text-sm text-gray-600 flex items-center"><Globe className="h-4 w-4 mr-3 text-gray-400" /> Ngôn ngữ</span>
-                    <span className="text-[10px] font-bold text-gray-400 flex items-center uppercase">Tiếng Việt <ChevronRight className="h-3 w-3 ml-1" /></span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsLanguageMenuOpen(open => !open)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 hover:bg-blue-50 rounded"
+                  >
+                    <span className="flex items-center"><Globe className="h-4 w-4 mr-3 text-gray-400" /> Ngôn ngữ</span>
+                    <span className="text-[10px] font-bold text-gray-400 flex items-center uppercase">Tiếng Việt <ChevronRight className={`h-3 w-3 ml-1 transition-transform ${isLanguageMenuOpen ? 'rotate-90' : ''}`} /></span>
+                  </button>
+                  {isLanguageMenuOpen && (
+                    <div className="mx-3 mb-1 rounded-lg bg-gray-50 p-1 text-xs">
+                      <div className="flex items-center justify-between rounded px-2 py-1.5 text-gray-700">
+                        <span>Tiếng Việt</span>
+                        <span className="font-bold text-blue-600">Đang dùng</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded px-2 py-1.5 text-gray-400">
+                        <span>English</span>
+                        <span className="font-bold uppercase">Sắp ra mắt</span>
+                      </div>
+                    </div>
+                  )}
                   <button
                     onClick={onLogout}
                     className="w-full flex items-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded font-medium mt-1 transition-colors"
@@ -559,38 +591,8 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole }) => {
           </div>
         </div>
       </div>
-
-      {/* QR Modal */}
-      {isQRModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm p-4 text-left">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center relative animate-in zoom-in duration-200">
-            <button
-              onClick={() => setIsQRModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <X size={20} />
-            </button>
-            <h3 className="text-gray-800 font-black uppercase mb-4 tracking-tighter flex items-center justify-center">
-              <QrCode className="mr-2 text-blue-600" size={20}/>
-              QR ĐẶT MÓN TẠI BÀN
-            </h3>
-            <div className="bg-white p-4 border-2 border-dashed border-blue-200 rounded-xl inline-block">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(CUSTOMER_WEB_URL)}`}
-                alt="QR Code"
-                className="w-48 h-48 mx-auto"
-              />
-            </div>
-            <p className="mt-4 text-[10px] text-gray-500 font-bold uppercase italic tracking-widest leading-tight">
-              Dùng điện thoại quét mã<br/>để truy cập menu và đặt món
-            </p>
-            <div className="mt-3 py-2 px-3 bg-gray-50 rounded-lg border border-gray-100">
-               <p className="text-[9px] text-gray-400 uppercase font-black mb-1">Địa chỉ nội bộ</p>
-              <p className="text-xs font-mono text-blue-600 break-all">{CUSTOMER_WEB_URL}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
+      </div>
 
     </nav>
   );

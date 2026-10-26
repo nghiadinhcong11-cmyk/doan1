@@ -2,6 +2,8 @@
 import { ChevronLeft, ChevronRight, Plus, Users, Calendar as CalendarIcon, Clock, Filter, Loader2, X, Search, Trash2, MapPin, Store } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { Feedback, notifyFeedback } from '../../../components/ui';
+import { fetchBranchList } from '../../../api/branchQuery';
+import { getCachedJson } from '../../../api/queryCache';
 
 interface Schedule {
   id: string;
@@ -73,14 +75,10 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
       const data = await res.json();
       setSchedules(data);
 
-      const resEmp = await fetch(`${API_URL}/api/Employee`);
-      if (!resEmp.ok) throw new Error('employee request failed');
-      const dataEmp = await resEmp.json();
+      const dataEmp = await getCachedJson<any[]>(`${API_URL}/api/Employee`);
       setEmployees(dataEmp);
 
-      const resBranch = await fetch(`${API_URL}/api/Branch`);
-      if (!resBranch.ok) throw new Error('branch request failed');
-      const dataBranch = await resBranch.json();
+      const dataBranch = await fetchBranchList();
       setBranches(userRole === 'manager'
         ? dataBranch.filter((branch: any) => branch.id === assignedBranchId)
         : dataBranch);
@@ -184,11 +182,11 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
             </h2>
 
             <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-inner">
-               <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-white rounded-lg transition-all text-gray-400 hover:text-blue-600"><ChevronLeft size={20}/></button>
+               <button onClick={() => changeWeek(-1)} className="rounded border border-gray-300 p-1.5 text-gray-400 transition-all hover:bg-white hover:text-blue-600"><ChevronLeft size={20}/></button>
                <span className="px-6 text-[10px] font-black text-gray-700 uppercase tracking-widest">
                   {weekDays[0].toLocaleDateString('vi-VN', {day:'2-digit', month:'2-digit'})} — {weekDays[6].toLocaleDateString('vi-VN', {day:'2-digit', month:'2-digit'})}
                </span>
-               <button onClick={() => changeWeek(1)} className="p-2 hover:bg-white rounded-lg transition-all text-gray-400 hover:text-blue-600"><ChevronRight size={20}/></button>
+               <button onClick={() => changeWeek(1)} className="rounded border border-gray-300 p-1.5 text-gray-400 transition-all hover:bg-white hover:text-blue-600"><ChevronRight size={20}/></button>
             </div>
          </div>
 
@@ -228,7 +226,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                   });
                   setIsModalOpen(true);
                 }}
-                className="bg-[#0070f4] text-white px-8 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all flex items-center"
+                className="flex min-h-0 items-center rounded bg-[#0070f4] px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95"
               >
                  <Plus size={18} className="mr-2" /> XẾP CA LÀM
               </button>
@@ -296,7 +294,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                                           <div className="flex justify-between items-start mb-1">
                                              <span className="uppercase tracking-widest italic opacity-80">Ca {s.shiftName}</span>
                                              {!readOnly && (
-                                               <button disabled={deletingIds.has(s.id)} onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity bg-white p-0.5 rounded-full shadow-sm disabled:cursor-wait disabled:opacity-40">
+                                       <button disabled={deletingIds.has(s.id)} onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="rounded border border-gray-200 bg-white p-1 text-blue-400 opacity-0 shadow-sm transition-opacity group-hover/item:opacity-100 hover:text-blue-600 disabled:cursor-wait disabled:opacity-40">
                                                   <X size={10}/>
                                                </button>
                                              )}
@@ -311,7 +309,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                                           setNewSchedule({...newSchedule, employeeId: emp.id, date: dateStr});
                                           setIsModalOpen(true);
                                        }}
-                                       className="w-full mt-3 py-2 border-2 border-dashed border-gray-100 rounded-2xl text-gray-200 opacity-0 group-hover/cell:opacity-100 hover:border-blue-200 hover:text-blue-500 transition-all flex items-center justify-center bg-transparent"
+                                    className="mt-3 flex w-full items-center justify-center rounded border border-dashed border-gray-300 bg-white py-1.5 text-gray-300 opacity-0 transition-all group-hover/cell:opacity-100 hover:border-blue-200 hover:text-blue-500"
                                     >
                                        <Plus size={16}/>
                                     </button>
@@ -329,8 +327,8 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
 
       {/* Modal FORM */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex justify-center items-center p-4 backdrop-blur-md animate-in fade-in duration-200">
-           <form onSubmit={handleSave} className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-white">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/60 px-4 pb-10 pt-10 backdrop-blur-sm animate-in fade-in duration-200">
+           <form onSubmit={handleSave} className="w-full max-w-3xl overflow-hidden rounded-[2.5rem] bg-white shadow-2xl animate-in zoom-in-95 duration-200">
               <div className="bg-[#0070f4] p-8 text-white flex justify-between items-center">
                  <div className="flex items-center space-x-3">
                     <CalendarIcon size={24}/>
@@ -339,12 +337,12 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                        <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Hệ thống phân lịch thông minh</p>
                     </div>
                  </div>
-                 <button type="button" onClick={() => setIsModalOpen(false)} className="hover:rotate-90 transition-transform bg-white/10 p-2 rounded-full"><X size={24}/></button>
+                 <button type="button" onClick={() => setIsModalOpen(false)} className="rounded border border-white/20 bg-white/10 p-1.5 transition-transform hover:rotate-90"><X size={24}/></button>
               </div>
-              <div className="p-10 space-y-8">
+              <div className="space-y-6 p-10">
                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Nhân viên trực ca *</label>
-                    <select className="w-full border-b-2 border-gray-100 py-2 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent text-sm" value={newSchedule.employeeId} onChange={e => {
+                    <select className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={newSchedule.employeeId} onChange={e => {
                        setNewSchedule({...newSchedule, employeeId: e.target.value});
                     }} required>
                        <option value="">-- CHỌN NHÂN SỰ --</option>
@@ -354,13 +352,13 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
 
                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Ngày làm việc *</label>
-                    <input type="date" className="w-full border-b-2 border-gray-100 py-2 outline-none font-black text-gray-700 focus:border-blue-500 transition-all text-sm" value={newSchedule.date} onChange={e => setNewSchedule({...newSchedule, date: e.target.value})} required/>
+                    <input type="date" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={newSchedule.date} onChange={e => setNewSchedule({...newSchedule, date: e.target.value})} required/>
                  </div>
 
                  <div className="grid grid-cols-2 gap-10">
                     <div className="space-y-2">
                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Buổi làm</label>
-                       <select className="w-full border-b-2 border-gray-100 py-2 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent text-sm" value={newSchedule.shiftName} onChange={e => {
+                       <select className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={newSchedule.shiftName} onChange={e => {
                           const val = e.target.value;
                           let start = '08:00', end = '12:00';
                           if (val === 'Chiều') { start = '13:00'; end = '17:00'; }
@@ -373,13 +371,13 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                     <div className="space-y-2">
                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Khung giờ</label>
                        <div className="flex items-center space-x-3 pt-2">
-                          <input type="text" className="w-full border-b-2 border-gray-100 py-1 text-center text-[11px] font-black text-gray-700 outline-none focus:border-blue-500" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})}/>
+                          <input type="text" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-3 py-3 text-center text-sm font-bold text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={newSchedule.startTime} onChange={e => setNewSchedule({...newSchedule, startTime: e.target.value})}/>
                           <span className="text-gray-300">—</span>
-                          <input type="text" className="w-full border-b-2 border-gray-100 py-1 text-center text-[11px] font-black text-gray-700 outline-none focus:border-blue-500" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})}/>
+                          <input type="text" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-3 py-3 text-center text-sm font-bold text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})}/>
                        </div>
                     </div>
                  </div>
-                 <button type="submit" disabled={isSaving} className="w-full py-5 bg-[#0070f4] text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 mt-6 disabled:cursor-wait disabled:opacity-60">{isSaving ? 'ĐANG LƯU...' : 'XÁC NHẬN LƯU LỊCH BIỂU'}</button>
+                 <button type="submit" disabled={isSaving} className="mt-6 w-full rounded-full bg-[#0070f4] py-4 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-2xl shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-wait disabled:opacity-60">{isSaving ? 'ĐANG LƯU...' : 'XÁC NHẬN LƯU LỊCH BIỂU'}</button>
               </div>
            </form>
         </div>

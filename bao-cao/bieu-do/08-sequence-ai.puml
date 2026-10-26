@@ -1,0 +1,72 @@
+@startuml
+title Hình 3.12 - Sequence xử lý yêu cầu của trợ lý ảo
+actor "Admin hoặc Customer/Guest" as User
+participant "Web Chat UI" as UI
+participant "AiController" as Controller
+participant "AiOrchestrator" as Orchestrator
+participant "Phân tích intent\nvà tham số" as Intent
+participant "Embedding Pilot\n(local, feature flag)" as Pilot
+participant "AiToolRegistry" as Registry
+participant "AiPermissionService" as Permission
+participant "IAiTool" as Tool
+participant "Application Service" as Service
+database "PostgreSQL" as DB
+
+User -> UI : Nhập yêu cầu
+UI -> Controller : POST /api/Ai/chat
+Controller -> Orchestrator : ChatAsync(message, userContext)
+Orchestrator -> Orchestrator : Kiểm tra identity, role, branch và feature flag
+Orchestrator -> Intent : Chuẩn hóa câu hỏi
+Intent -> Pilot : Phân tích intent và trích xuất tham số
+Pilot --> Intent : Intent, tool đề xuất, arguments
+Intent --> Orchestrator : Kết quả phân tích
+
+alt Cần làm rõ hoặc ngoài phạm vi
+  Orchestrator --> Controller : Câu hỏi làm rõ / từ chối an toàn
+  Controller --> UI : Hiển thị phản hồi
+else Có intent hợp lệ
+  Orchestrator -> Registry : Resolve tool từ intent
+  Registry --> Orchestrator : Tool hoặc tool không tồn tại
+  Orchestrator -> Permission : Kiểm tra role, risk và branch scope
+  Permission --> Orchestrator : Allowed / Denied
+  alt Bị từ chối
+    Orchestrator --> Controller : Từ chối thực thi
+    Controller --> UI : Hiển thị lỗi an toàn
+  else Read tool
+    Orchestrator -> Tool : Execute(arguments, context)
+    Tool -> Service : Gọi application service
+    Service -> DB : Đọc dữ liệu
+    DB --> Service : Kết quả
+    Service --> Tool : DTO
+    Tool --> Orchestrator : Kết quả nghiệp vụ
+    Orchestrator --> Controller : Phản hồi
+    Controller --> UI : Hiển thị kết quả
+  else Write tool
+    Orchestrator -> Tool : Tạo preview, chưa mutation
+    Tool --> Orchestrator : Preview + confirmation token
+    Orchestrator --> Controller : Yêu cầu xác nhận
+    Controller --> UI : Hiển thị Xác nhận / Hủy
+    User -> UI : Xác nhận
+    UI -> Controller : Gửi confirmation token
+    Controller -> Orchestrator : Confirm(token, context)
+    Orchestrator -> Permission : Kiểm tra lại quyền
+    Permission --> Orchestrator : Allowed / Denied
+    Orchestrator -> Tool : Confirm và thực thi
+    Tool -> Service : Thực hiện mutation
+    Service -> DB : Ghi dữ liệu
+    DB --> Service : Thành công / lỗi nghiệp vụ
+    Service --> Tool : Kết quả
+    Tool --> Orchestrator : Phản hồi
+    Orchestrator --> Controller : Phản hồi
+    Controller --> UI : Hiển thị kết quả
+  end
+end
+
+note over Intent, Pilot
+Phân tích intent là bước nghiệp vụ riêng:
+phân loại mục đích, nhận diện đối tượng,
+trích xuất tham số và kiểm tra ranh giới hỗ trợ.
+Pilot local chỉ cung cấp quyết định ngữ nghĩa;
+không được tự truy cập database.
+end note
+@enduml

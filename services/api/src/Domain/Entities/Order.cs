@@ -28,6 +28,9 @@ namespace RestaurantPOS.Domain.Entities
         public string Status { get; set; } = "Đang xử lý"; // Đang xử lý, Hoàn thành, Đã hủy
         public string? Note { get; set; }
         public string? TableName { get; set; } // Tên bàn
+        /// <summary>Server-validated table identity; nullable for historical orders.</summary>
+        public Guid? TableId { get; set; }
+        public RestaurantTable? Table { get; set; }
         public string? CreatedBy { get; set; } // Người tạo hóa đơn
         public Guid BranchId { get; set; }    // ID chi nhánh
         public Branch? Branch { get; set; }

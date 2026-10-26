@@ -65,6 +65,7 @@ public sealed class AdminEmbeddingPilot : IDisposable
          string.Equals(_environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase)) &&
         _configuration.GetValue<bool>("AI:AdminEmbeddingPilot:Enabled");
 
+    //phan tich y dinh
     public async Task<AdminEmbeddingPilotResult> DecideAsync(string text, AiUserContext context, CancellationToken cancellationToken)
     {
         EnterOperation();

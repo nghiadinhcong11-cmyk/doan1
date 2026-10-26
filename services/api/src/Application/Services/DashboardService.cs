@@ -57,12 +57,18 @@ namespace RestaurantPOS.Application.Services
             }
         }
 
-        public async Task<object> GetSummaryAsync(string? branchId)
+        public async Task<object> GetSummaryAsync(string? branchId, string period = "today")
         {
             if (!string.IsNullOrWhiteSpace(branchId) && !Guid.TryParse(branchId, out _))
                 throw new ArgumentException("branchId không hợp lệ", nameof(branchId));
 
-            string cacheKey = string.IsNullOrEmpty(branchId) ? DashboardCacheKey : $"{DashboardCacheKey}_{branchId}";
+            period = period.Trim().ToLowerInvariant();
+            if (period is not ("today" or "week" or "month"))
+                throw new ArgumentException("period không hợp lệ", nameof(period));
+
+            string cacheKey = string.IsNullOrEmpty(branchId)
+                ? $"{DashboardCacheKey}_{period}"
+                : $"{DashboardCacheKey}_{branchId}_{period}";
 
             if (_cache.TryGetValue(cacheKey, out object? cachedData) && cachedData != null)
             {
@@ -78,13 +84,26 @@ namespace RestaurantPOS.Application.Services
             var nowVn = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, VietnamZone);
 
             var todayStartVn = new DateTime(nowVn.Year, nowVn.Month, nowVn.Day, 0, 0, 0);
-            var todayEndVn = todayStartVn.AddDays(1);
+            var periodStartVn = period switch
+            {
+                "week" => todayStartVn.AddDays(-6),
+                "month" => todayStartVn.AddMonths(-11).AddDays(1 - todayStartVn.AddMonths(-11).Day),
+                _ => todayStartVn
+            };
+            var periodEndVn = todayStartVn.AddDays(1);
+            var previousPeriodStartVn = period switch
+            {
+                "week" => periodStartVn.AddDays(-7),
+                "month" => periodStartVn.AddMonths(-12),
+                _ => periodStartVn.AddDays(-1)
+            };
+            var previousPeriodEndVn = periodStartVn;
 
-            var startUtc = TimeZoneInfo.ConvertTimeToUtc(todayStartVn, VietnamZone);
-            var endUtc = TimeZoneInfo.ConvertTimeToUtc(todayEndVn, VietnamZone);
+            var startUtc = TimeZoneInfo.ConvertTimeToUtc(periodStartVn, VietnamZone);
+            var endUtc = TimeZoneInfo.ConvertTimeToUtc(periodEndVn, VietnamZone);
 
-            var yesterdayStartUtc = startUtc.AddDays(-1);
-            var yesterdayEndUtc = startUtc;
+            var previousPeriodStartUtc = TimeZoneInfo.ConvertTimeToUtc(previousPeriodStartVn, VietnamZone);
+            var previousPeriodEndUtc = TimeZoneInfo.ConvertTimeToUtc(previousPeriodEndVn, VietnamZone);
 
             Guid? scopedBranchId = null;
             IQueryable<RestaurantPOS.Domain.Entities.Order> ordersQuery = _context.Orders.AsNoTracking();
@@ -97,12 +116,12 @@ namespace RestaurantPOS.Application.Services
             // 1. Lấy toàn bộ đơn hàng trong ngày hôm nay (Theo giờ VN)
             // Revenue is defined as the total PaidAmount of orders with status "Hoàn thành"
             // where PaidAmount > 0.
-            var ordersToday = await ordersQuery
+            var ordersInPeriod = await ordersQuery
                 .Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0)
                 .Select(o => new { o.Id, o.CreatedAt, o.PaidAmount, o.BranchId, o.PaymentMethod })
                 .ToListAsync();
 
-            var todayRevenue = ordersToday.Sum(o => o.PaidAmount);
+            var periodRevenue = ordersInPeriod.Sum(o => o.PaidAmount);
 
             // Chi phí đã ghi nhận theo chi nhánh. Đây là cost recording, không phải recipe/stock consumption.
             var expensesQuery = _context.Expenses.AsNoTracking()
@@ -115,7 +134,7 @@ namespace RestaurantPOS.Application.Services
             var totalExpenses = expensesByBranchId.Values.Sum();
 
             // Giá vốn được tính từ CostPrice của Product/Topping trong các món đã hoàn thành.
-            var completedOrderIds = ordersToday.Select(o => o.Id).ToList();
+            var completedOrderIds = ordersInPeriod.Select(o => o.Id).ToList();
             var costDetails = await _context.OrderDetails.AsNoTracking()
                 .Where(d => completedOrderIds.Contains(EF.Property<Guid>(d, "OrderId")))
                 .Select(d => new
@@ -140,28 +159,25 @@ namespace RestaurantPOS.Application.Services
             var costOfGoodsSold = costDetails.Sum(d =>
                 d.Quantity * (d.ProductId.HasValue && productCosts.TryGetValue(d.ProductId.Value, out var productCost) ? productCost : 0m)
                 + d.Quantity * (d.ToppingId.HasValue && toppingCosts.TryGetValue(d.ToppingId.Value, out var toppingCost) ? toppingCost : 0m));
-            var netProfit = todayRevenue - totalExpenses - costOfGoodsSold;
+            var netProfit = periodRevenue - totalExpenses - costOfGoodsSold;
 
-            var yearStartVn = new DateTime(nowVn.Year, 1, 1);
-            var yearStartUtc = TimeZoneInfo.ConvertTimeToUtc(yearStartVn, VietnamZone);
-            var revenueHistoryStartUtc = yesterdayStartUtc < yearStartUtc ? yesterdayStartUtc : yearStartUtc;
             var revenueHistory = await ordersQuery
-                .Where(o => o.CreatedAt >= revenueHistoryStartUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0)
+                .Where(o => o.CreatedAt >= previousPeriodStartUtc && o.CreatedAt < endUtc && o.Status == "Hoàn thành" && o.PaidAmount > 0)
                 .Select(o => new { o.CreatedAt, o.PaidAmount })
                 .ToListAsync();
-            var yesterdayRevenue = revenueHistory
-                .Where(o => o.CreatedAt >= yesterdayStartUtc && o.CreatedAt < yesterdayEndUtc)
+            var previousPeriodRevenue = revenueHistory
+                .Where(o => o.CreatedAt >= previousPeriodStartUtc && o.CreatedAt < previousPeriodEndUtc)
                 .Sum(o => o.PaidAmount);
 
-            var revenueTrendState = yesterdayRevenue > 0
+            var revenueTrendState = previousPeriodRevenue > 0
                 ? "percentage"
-                : todayRevenue > 0 ? "from_zero" : "no_change";
-            decimal revenueTrend = yesterdayRevenue > 0
-                ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+                : periodRevenue > 0 ? "from_zero" : "no_change";
+            decimal revenueTrend = previousPeriodRevenue > 0
+                ? ((periodRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100
                 : 0m;
 
             // 2. Biểu đồ giờ
-            var hourlyDict = ordersToday
+            var hourlyDict = ordersInPeriod
                 .Select(o => new { Hour = ToVietnamTime(o.CreatedAt).Hour, o.PaidAmount })
                 .GroupBy(o => o.Hour)
                 .ToDictionary(g => g.Key, g => g.Sum(o => o.PaidAmount));
@@ -176,7 +192,7 @@ namespace RestaurantPOS.Application.Services
             var last7DaysStartVn = nowVn.Date.AddDays(-6);
             var last7DaysStartUtc = TimeZoneInfo.ConvertTimeToUtc(last7DaysStartVn, VietnamZone);
 
-            var weekOrders = revenueHistory.Where(o => o.CreatedAt >= last7DaysStartUtc);
+            var weekOrders = revenueHistory.Where(o => o.CreatedAt >= startUtc);
 
             var weeklyRevenue = Enumerable.Range(0, 7).Select(i => {
                 var date = last7DaysStartVn.AddDays(i);
@@ -198,22 +214,16 @@ namespace RestaurantPOS.Application.Services
                 return new { date = $"{dayLabel} {date:dd/MM}", amount = dayAmount };
             }).ToList();
 
-            // 4. Biểu đồ tháng (Trong năm), derived from the same history query.
-            var yearOrders = revenueHistory.Where(o => o.CreatedAt >= yearStartUtc).ToList();
-
-            var monthlyRevenue = Enumerable.Range(1, 12).Select(m => {
-                var monthAmount = yearOrders
-                    .Where(o => ToVietnamTime(o.CreatedAt).Month == m)
+            // 4. Biểu đồ 12 tháng gần nhất.
+            var monthlyRevenue = Enumerable.Range(0, 12).Select(i => {
+                var month = new DateTime(nowVn.Year, nowVn.Month, 1).AddMonths(-11 + i);
+                var monthAmount = revenueHistory
+                    .Where(o => ToVietnamTime(o.CreatedAt).Year == month.Year && ToVietnamTime(o.CreatedAt).Month == month.Month)
                     .Sum(o => o.PaidAmount);
-                return new { month = $"Tháng {m:D2}", amount = monthAmount };
+                return new { month = $"{month:MM/yyyy}", amount = monthAmount };
             }).ToList();
 
-            int firstMonthWithData = yearOrders.Any() ? yearOrders.Min(o => ToVietnamTime(o.CreatedAt).Month) : nowVn.Month;
-            monthlyRevenue = monthlyRevenue
-                .Where(m => int.Parse(m.month.Replace("Tháng ", "")) >= firstMonthWithData && int.Parse(m.month.Replace("Tháng ", "")) <= nowVn.Month)
-                .ToList();
-
-            // 5. Thống kê doanh thu theo chi nhánh (Hôm nay), derived from ordersToday.
+            // 5. Thống kê doanh thu theo chi nhánh trong cùng khoảng thời gian.
             var branchesQuery = _context.Branches.AsNoTracking().Where(b => b.IsActive);
             if (scopedBranchId.HasValue)
             {
@@ -223,7 +233,7 @@ namespace RestaurantPOS.Application.Services
             var branchesForDashboard = await branchesQuery
                 .Select(b => new { b.Id, b.Name })
                 .ToListAsync();
-            var revenueByBranchId = ordersToday
+            var revenueByBranchId = ordersInPeriod
                 .GroupBy(o => o.BranchId)
                 .ToDictionary(g => g.Key, g => new
                 {
@@ -261,7 +271,7 @@ namespace RestaurantPOS.Application.Services
                 .OrderByDescending(x => x.value)
                 .ToListAsync();
 
-            var paymentMethods = ordersToday
+            var paymentMethods = ordersInPeriod
                 .Where(o => !string.IsNullOrWhiteSpace(o.PaymentMethod))
                 .GroupBy(o => o.PaymentMethod!)
                 .Select(g => new { name = g.Key, value = g.Sum(o => o.PaidAmount) })
@@ -282,6 +292,7 @@ namespace RestaurantPOS.Application.Services
                 .OrderByDescending(x => x.quantity).Take(5).ToList();
 
             var recentOrders = await ordersQuery
+                .Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc)
                 .OrderByDescending(o => o.CreatedAt).Take(5)
                 .Select(o => new
                 {
@@ -312,11 +323,16 @@ namespace RestaurantPOS.Application.Services
 
             var result = new
             {
-                todayRevenue = todayRevenue,
+                period = period,
+                periodStart = startUtc,
+                periodEnd = endUtc,
+                todayRevenue = periodRevenue,
+                averageOrderValue = ordersInPeriod.Count > 0 ? Math.Round(periodRevenue / ordersInPeriod.Count, 0) : 0m,
+                profitMargin = periodRevenue > 0 ? Math.Round(netProfit / periodRevenue * 100, 2) : 0m,
                 revenueTrend = Math.Round(revenueTrend, 1),
                 revenueTrendState = revenueTrendState,
                 generatedAt = nowUtc,
-                totalOrders = ordersToday.Count,
+                totalOrders = ordersInPeriod.Count,
                 customerCount = await ordersQuery.Where(o => o.CreatedAt >= startUtc && o.CreatedAt < endUtc && o.CustomerName != "Khách lẻ").Select(o => o.CustomerName).Distinct().CountAsync(),
                 topProducts = topProducts,
                 chartData = chartData,

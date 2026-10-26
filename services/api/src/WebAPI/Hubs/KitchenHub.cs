@@ -9,7 +9,7 @@ namespace RestaurantPOS.WebAPI.Hubs
 {
     [Authorize(Roles = "admin,manager,employee,cashier,kitchen")]
     public class KitchenHub : Hub
-    {
+    {   //xac thuc va tham gia nhom
         public override async Task OnConnectedAsync()
         {
             var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;

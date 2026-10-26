@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronDown, Image as ImageIcon, Download, Upload, HelpCircle, Camera, Utensils, Settings2 } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { getCachedJson, invalidateCachedJson } from '../../../api/queryCache';
 import { notifyFeedback } from '../../../components/ui';
 
 interface Product {
@@ -18,6 +19,7 @@ interface Product {
   sizesJson?: string;
   toppingsJson?: string;
   description?: string;
+  availabilityStatus?: 'Available' | 'TemporarilyUnavailable' | 'OutOfStock' | string;
 }
 
 interface ProductOption {
@@ -25,15 +27,59 @@ interface ProductOption {
   price: number;
 }
 
+interface Topping {
+  id: string;
+  name: string;
+  price: number;
+}
+
+interface Branch {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+const csvEscape = (value: unknown) => {
+  const text = value == null ? '' : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const parseCsvLine = (line: string) => {
+  const values: string[] = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"' && line[index + 1] === '"' && quoted) {
+      value += '"';
+      index += 1;
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else if (character === ',' && !quoted) {
+      values.push(value.trim());
+      value = '';
+    } else {
+      value += character;
+    }
+  }
+  values.push(value.trim());
+  return values;
+};
+
 const ProductManagement = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('selectedBranchId') || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [groups, setGroups] = useState<string[]>(['Cà phê', 'Trà trái cây', 'Đồ ăn']);
   const [isManageGroupsMode, setIsManageGroupsMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,14 +89,14 @@ const ProductManagement = () => {
 
   // Options State
   const [sizes, setSizes] = useState<ProductOption[]>([]);
-  const [availableToppings, setAvailableToppings] = useState<any[]>([]);
+  const [availableToppings, setAvailableToppings] = useState<Topping[]>([]);
   const [selectedToppingIds, setSelectedToppingIds] = useState<string[]>([]);
   const productRequestGeneration = useRef(0);
   const productAbortController = useRef<AbortController | null>(null);
   const toppingRequestGeneration = useRef(0);
   const toppingAbortController = useRef<AbortController | null>(null);
-  const productQueryRef = useRef({ searchTerm, filterGroup, filterCategory, filterStatus });
-  productQueryRef.current = { searchTerm, filterGroup, filterCategory, filterStatus };
+  const productQueryRef = useRef({ searchTerm, filterGroup, filterCategory, filterStatus, selectedBranchId });
+  productQueryRef.current = { searchTerm, filterGroup, filterCategory, filterStatus, selectedBranchId };
   const searchEffectInitialized = useRef(false);
   const productSearchTimer = useRef<number | null>(null);
   const productRefreshTimer = useRef<number | null>(null);
@@ -84,8 +130,23 @@ const ProductManagement = () => {
     }
   };
 
+  const fetchBranches = async () => {
+    try {
+      const data = await getCachedJson<Branch[]>(`${API_URL}/api/Branch/management`);
+      const activeBranches = data.filter(branch => branch.isActive !== false);
+      setBranches(activeBranches);
+      const currentBranchIsVisible = activeBranches.some(branch => branch.id === selectedBranchId);
+      if ((!selectedBranchId || !currentBranchIsVisible) && activeBranches[0]?.id) {
+        setSelectedBranchId(activeBranches[0].id);
+        localStorage.setItem('selectedBranchId', activeBranches[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+    }
+  };
+
   const fetchProducts = async () => {
-    const { searchTerm: currentSearch, filterGroup: currentGroup, filterCategory: currentCategory, filterStatus: currentStatus } = productQueryRef.current;
+    const { searchTerm: currentSearch, filterGroup: currentGroup, filterCategory: currentCategory, filterStatus: currentStatus, selectedBranchId: currentBranchId } = productQueryRef.current;
     const generation = ++productRequestGeneration.current;
     productAbortController.current?.abort();
     const controller = new AbortController();
@@ -99,15 +160,17 @@ const ProductManagement = () => {
       if (currentCategory) params.append('category', currentCategory);
       if (currentStatus === 'active') params.append('isActive', 'true');
       if (currentStatus === 'inactive') params.append('isActive', 'false');
+      if (currentBranchId) params.append('branchId', currentBranchId);
 
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
 
-      const response = await fetch(url, { signal: controller.signal });
-      const data: Product[] = await response.json();
+      const data = await getCachedJson<Product[]>(url, { signal: controller.signal });
       if (generation !== productRequestGeneration.current) return;
       setProducts(data);
+      setLoadError(null);
+      setSelectedProductIds(currentIds => currentIds.filter(id => data.some(product => product.id === id)));
 
       const uniqueGroups = Array.from(new Set(data.map(p => p.group).filter((g): g is string => !!g)));
       if (uniqueGroups.length > 0) {
@@ -117,7 +180,10 @@ const ProductManagement = () => {
         });
       }
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === productRequestGeneration.current) console.error(err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === productRequestGeneration.current) {
+        console.error(err);
+        setLoadError('Không thể tải danh sách món. Vui lòng thử lại.');
+      }
     } finally {
       if (generation === productRequestGeneration.current) setLoading(false);
       if (productAbortController.current === controller) productAbortController.current = null;
@@ -125,6 +191,7 @@ const ProductManagement = () => {
   };
 
   useEffect(() => {
+    void fetchBranches();
     void fetchToppings();
     return () => toppingAbortController.current?.abort();
   }, []);
@@ -135,15 +202,29 @@ const ProductManagement = () => {
       productSearchTimer.current = null;
     }
     void fetchProducts();
-  }, [filterGroup, filterCategory, filterStatus]);
+  }, [filterGroup, filterCategory, filterStatus, selectedBranchId]);
 
   useEffect(() => {
-    const handleCatalogChanged = () => void fetchProducts();
+    const handleCatalogChanged = () => { invalidateCachedJson('/api/Product'); void fetchProducts(); };
+    const handleBranchChanged = () => {
+      const branchId = localStorage.getItem('selectedBranchId') || '';
+      setSelectedBranchId(branchId);
+    };
+    const handleAvailabilityChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; availabilityStatus?: string; branchId?: string }>).detail;
+      if (!detail?.id || !detail.availabilityStatus || detail.branchId !== productQueryRef.current.selectedBranchId) return;
+      invalidateCachedJson('/api/Product');
+      setProducts(previous => previous.map(product => product.id === detail.id ? { ...product, availabilityStatus: detail.availabilityStatus } : product));
+    };
     window.addEventListener('product-price-updated', handleCatalogChanged);
     window.addEventListener('catalog-item-created', handleCatalogChanged);
+    window.addEventListener('branch:changed', handleBranchChanged);
+    window.addEventListener('product-availability-changed', handleAvailabilityChanged);
     return () => {
       window.removeEventListener('product-price-updated', handleCatalogChanged);
       window.removeEventListener('catalog-item-created', handleCatalogChanged);
+      window.removeEventListener('branch:changed', handleBranchChanged);
+      window.removeEventListener('product-availability-changed', handleAvailabilityChanged);
     };
   }, []);
 
@@ -221,6 +302,7 @@ const ProductManagement = () => {
         setIsModalOpen(false);
         setEditingProduct(null);
         resetForm();
+        invalidateCachedJson('/api/Product');
         fetchProducts();
       } else if (response.status !== 403) {
         const errorData = await response.json();
@@ -288,6 +370,130 @@ const ProductManagement = () => {
     }
   };
 
+  const handleExportProducts = () => {
+    const headers = ['code', 'name', 'category', 'group', 'price', 'costPrice', 'isActive', 'description'];
+    const rows = products.map(product => [
+      product.code,
+      product.name,
+      product.category,
+      product.group,
+      product.price,
+      product.costPrice ?? '',
+      product.isActive === false ? 'false' : 'true',
+      product.description ?? ''
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `thuc-don-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    notifyFeedback(`Đã xuất ${products.length} món ra file CSV.`);
+  };
+
+  const handleImportProducts = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      notifyFeedback('File CSV quá lớn. Vui lòng chọn file dưới 2 MB.');
+      return;
+    }
+
+    const lines = (await file.text()).replace(/^\ufeff/, '').split(/\r?\n/).filter(line => line.trim());
+    if (lines.length < 2) {
+      notifyFeedback('File CSV cần có dòng tiêu đề và ít nhất một món.');
+      return;
+    }
+    const headers = parseCsvLine(lines[0]).map(header => header.toLowerCase());
+    const requiredHeaders = ['name', 'category', 'price'];
+    if (requiredHeaders.some(header => !headers.includes(header))) {
+      notifyFeedback('CSV phải có các cột bắt buộc: name, category, price.');
+      return;
+    }
+
+    let created = 0;
+    let failed = 0;
+    for (const line of lines.slice(1)) {
+      const values = parseCsvLine(line);
+      const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
+      const price = Number(row.price);
+      if (!row.name || !row.category || !Number.isFinite(price) || price <= 0) {
+        failed += 1;
+        continue;
+      }
+      const response = await fetch(`${API_URL}/api/Product`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: row.code || '',
+          name: row.name,
+          category: row.category,
+          group: row.group || groups[0] || 'Chưa phân loại',
+          price,
+          costPrice: Number(row.costPrice) || 0,
+          isActive: row.isActive.toLowerCase() !== 'false',
+          description: row.description || ''
+        })
+      });
+      if (response.ok) created += 1;
+      else failed += 1;
+    }
+    notifyFeedback(`Đã nhập ${created} món${failed ? `, ${failed} dòng bị bỏ qua hoặc lỗi` : ''}.`);
+    invalidateCachedJson('/api/Product');
+    await fetchProducts();
+  };
+
+  const handleBulkGlobalStatus = async (isActive: boolean) => {
+    if (selectedProductIds.length === 0) return;
+    const results = await Promise.all(selectedProductIds.map(async id => {
+      const product = products.find(item => item.id === id);
+      if (!product || product.isActive === isActive) return { ok: true } as Response;
+      return fetch(`${API_URL}/api/Product/${id}/global-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive })
+      });
+    }));
+    const succeeded = results.filter(response => response.ok).length;
+    setSelectedProductIds([]);
+    notifyFeedback(`Đã cập nhật ${succeeded}/${results.length} món. Bộ lọc sẽ được làm mới.`);
+    invalidateCachedJson('/api/Product');
+    await fetchProducts();
+  };
+
+  const handleBulkAvailability = async (status: 'Available' | 'TemporarilyUnavailable' | 'OutOfStock') => {
+    if (!selectedBranchId || selectedProductIds.length === 0) return;
+    const results = await Promise.all(selectedProductIds.map(id => fetch(
+      `${API_URL}/api/Product/${id}/availability?branchId=${encodeURIComponent(selectedBranchId)}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }
+    )));
+    const succeeded = results.filter(response => response.ok).length;
+    setSelectedProductIds([]);
+    notifyFeedback(`Đã cập nhật trạng thái chi nhánh cho ${succeeded}/${results.length} món.`);
+    invalidateCachedJson('/api/Product');
+    await fetchProducts();
+  };
+
+  const handleAvailability = async (id: string, status: 'Available' | 'TemporarilyUnavailable' | 'OutOfStock') => {
+    if (!selectedBranchId) {
+      notifyFeedback('Vui lòng chọn chi nhánh trước khi đổi trạng thái món.');
+      return;
+    }
+    const response = await fetch(`${API_URL}/api/Product/${id}/availability?branchId=${encodeURIComponent(selectedBranchId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (!response.ok) {
+      notifyFeedback('Không thể cập nhật trạng thái món tại chi nhánh.');
+      return;
+    }
+    invalidateCachedJson('/api/Product');
+    await fetchProducts();
+  };
+
   const handleEditGroup = (oldName: string) => {
     const newName = prompt(`Sửa tên nhóm "${oldName}" thành:`, oldName);
     if (newName && newName !== oldName) {
@@ -305,6 +511,7 @@ const ProductManagement = () => {
           if (productRefreshTimer.current !== null) window.clearTimeout(productRefreshTimer.current);
           productRefreshTimer.current = window.setTimeout(() => {
             productRefreshTimer.current = null;
+            invalidateCachedJson('/api/Product');
             void fetchProducts();
           }, 500);
         }
@@ -334,6 +541,7 @@ const ProductManagement = () => {
         method: 'DELETE'
       });
       if (response.ok) {
+        invalidateCachedJson('/api/Product');
         fetchProducts();
       }
     } catch (err) {
@@ -341,18 +549,23 @@ const ProductManagement = () => {
     }
   };
 
-  const handleToggleStatus = async (id: string) => {
+  const handleGlobalStatus = async (id: string, isActive: boolean) => {
     try {
-      const response = await fetch(`${API_URL}/api/Product/${id}/toggle-status`, {
-        method: 'PATCH'
+      const response = await fetch(`${API_URL}/api/Product/${id}/global-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive })
       });
       if (response.ok) {
+        invalidateCachedJson('/api/Product');
         fetchProducts();
       }
     } catch (err) {
       notifyFeedback('Lỗi khi cập nhật trạng thái');
     }
   };
+
+  const isAdmin = localStorage.getItem('userRole') === 'admin';
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#f0f2f5] text-[13px]">
@@ -475,7 +688,40 @@ const ProductManagement = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex space-x-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <label className="flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600">
+              <span>Chi nhánh:</span>
+              <select
+                value={selectedBranchId}
+                onChange={event => {
+                  setSelectedBranchId(event.target.value);
+                  localStorage.setItem('selectedBranchId', event.target.value);
+                  setSelectedProductIds([]);
+                }}
+                className="max-w-[150px] bg-transparent outline-none"
+                disabled={branches.length === 0}
+              >
+                {branches.length === 0 && <option value="">Không có dữ liệu</option>}
+                {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              </select>
+            </label>
+            {selectedProductIds.length > 0 && (
+              <>
+                {isAdmin && <button onClick={() => void handleBulkGlobalStatus(true)} className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-100">
+                  Mở kinh doanh toàn hệ thống
+                </button>
+                }
+                {isAdmin && <button onClick={() => void handleBulkGlobalStatus(false)} className="bg-red-50 border border-red-200 text-red-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-100">
+                  Ngừng kinh doanh toàn hệ thống
+                </button>}
+                <button onClick={() => void handleBulkAvailability('Available')} className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-emerald-100">
+                  Bật bán tại chi nhánh
+                </button>
+                <button onClick={() => void handleBulkAvailability('TemporarilyUnavailable')} className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-amber-100">
+                  Tạm hết tại chi nhánh
+                </button>
+              </>
+            )}
             <button
               onClick={() => {
                 if (localStorage.getItem('userRole') !== 'admin') {
@@ -488,10 +734,11 @@ const ProductManagement = () => {
             >
               <Plus size={16} className="mr-1" /> Thêm mới
             </button>
-            <button className="bg-white border border-gray-300 px-3 py-1.5 rounded flex items-center hover:bg-gray-50 text-xs font-bold text-gray-600 shadow-sm">
+            <button onClick={() => importInputRef.current?.click()} className="bg-white border border-gray-300 px-3 py-1.5 rounded flex items-center hover:bg-gray-50 text-xs font-bold text-gray-600 shadow-sm">
               <Upload size={14} className="mr-1 text-gray-400" /> Nhập file
             </button>
-            <button className="bg-white border border-gray-300 px-3 py-1.5 rounded flex items-center hover:bg-gray-50 text-xs font-bold text-gray-600 shadow-sm">
+            <input ref={importInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={event => void handleImportProducts(event)} />
+            <button onClick={handleExportProducts} disabled={products.length === 0} className="bg-white border border-gray-300 px-3 py-1.5 rounded flex items-center hover:bg-gray-50 text-xs font-bold text-gray-600 shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
               <Download size={14} className="mr-1 text-gray-400" /> Xuất file
             </button>
           </div>
@@ -502,7 +749,14 @@ const ProductManagement = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-[#f9fafb] border-b text-gray-500 font-bold sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-2 w-10"><input type="checkbox" /></th>
+                <th className="px-4 py-2 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Chọn tất cả món đang hiển thị"
+                    checked={products.length > 0 && products.every(product => product.id && selectedProductIds.includes(product.id))}
+                    onChange={event => setSelectedProductIds(event.target.checked ? products.flatMap(product => product.id ? [product.id] : []) : [])}
+                  />
+                </th>
                 <th className="px-4 py-2 w-16 uppercase text-[10px]">Ảnh</th>
                 <th className="px-4 py-2 w-32 uppercase text-[10px]">Mã món</th>
                 <th className="px-4 py-2 uppercase text-[10px]">Tên món</th>
@@ -513,6 +767,11 @@ const ProductManagement = () => {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-20"><Loader2 className="animate-spin inline mr-2 text-blue-600"/> Đang tải...</td></tr>
+              ) : loadError ? (
+                <tr><td colSpan={6} className="text-center py-20">
+                  <p className="font-bold text-red-600">{loadError}</p>
+                  <button onClick={() => { invalidateCachedJson('/api/Product'); void fetchProducts(); }} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Thử lại</button>
+                </td></tr>
               ) : products.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-32 bg-gray-50/50">
@@ -525,7 +784,13 @@ const ProductManagement = () => {
                         <p className="text-xs text-gray-400 font-medium">Bắt đầu bằng cách nhấn nút "Thêm mới" để tạo món ăn đầu tiên của bạn.</p>
                       </div>
                       <button
-                        onClick={() => { resetForm(); setEditingProduct(null); setIsModalOpen(true); }}
+                        onClick={() => {
+                          if (localStorage.getItem('userRole') !== 'admin') {
+                            notifyFeedback('Bạn không có quyền thực hiện chức năng này.');
+                            return;
+                          }
+                          resetForm(); setEditingProduct(null); setIsModalOpen(true);
+                        }}
                         className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center"
                       >
                         <Plus size={16} className="mr-1" /> TẠO MÓN NGAY
@@ -539,7 +804,20 @@ const ProductManagement = () => {
                     className={`hover:bg-blue-50 cursor-pointer transition-colors ${expandedRow === p.id ? 'bg-blue-50' : ''}`}
                     onClick={() => setExpandedRow(expandedRow === p.id ? null : p.id!)}
                   >
-                    <td className="px-4 py-3"><input type="checkbox" onClick={e => e.stopPropagation()}/></td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Chọn món ${p.name}`}
+                        checked={Boolean(p.id && selectedProductIds.includes(p.id))}
+                        onClick={e => e.stopPropagation()}
+                        onChange={event => {
+                          if (!p.id) return;
+                          setSelectedProductIds(current => event.target.checked
+                            ? [...new Set([...current, p.id!])]
+                            : current.filter(id => id !== p.id));
+                        }}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                        <div className="w-10 h-10 bg-gray-100 rounded border flex items-center justify-center overflow-hidden">
                           {p.imageUrl && p.imageUrl !== 'string' ? (
@@ -574,11 +852,17 @@ const ProductManagement = () => {
                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Nhóm món</p><p className="font-bold">{p.group}</p></div>
                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Giá bán</p><p className="font-black text-blue-700 text-base">{p.price.toLocaleString()} đ</p></div>
                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Loại món</p><p className="font-bold">{p.category}</p></div>
-                                   <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Trạng thái</p><p className={p.isActive ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>{p.isActive ? 'Đang bán' : 'Ngừng bán'}</p></div>
+                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Toàn hệ thống</p><p className={p.isActive ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>{p.isActive ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</p></div>
+                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Tại chi nhánh</p><p className={p.availabilityStatus === 'Available' ? 'text-green-600 font-bold' : 'text-amber-600 font-bold'}>{p.availabilityStatus === 'Available' ? 'Đang bán' : p.availabilityStatus === 'OutOfStock' ? 'Hết món' : 'Tạm hết'}</p></div>
                                 </div>
                                 <div className="mt-8 flex justify-end space-x-2">
                                    <button onClick={(e) => { e.stopPropagation(); openEditModal(p); }} className="bg-blue-600 text-white px-5 py-2 rounded-full font-bold flex items-center hover:bg-blue-700 shadow-lg shadow-blue-500/20"><Edit2 size={14} className="mr-2"/> Cập nhật</button>
-                                   <button onClick={(e) => { e.stopPropagation(); handleToggleStatus(p.id!); }} className="border border-gray-300 px-5 py-2 rounded-full font-bold flex items-center hover:bg-gray-50">{p.isActive ? 'Ngừng bán' : 'Cho phép bán'}</button>
+                                    {isAdmin && <button onClick={(e) => { e.stopPropagation(); void handleGlobalStatus(p.id!, !p.isActive); }} className="border border-red-200 text-red-700 px-5 py-2 rounded-full font-bold flex items-center hover:bg-red-50">{p.isActive ? 'Ngừng KD toàn hệ thống' : 'Mở KD toàn hệ thống'}</button>}
+                                    <select value={p.availabilityStatus || 'Available'} onClick={e => e.stopPropagation()} onChange={e => void handleAvailability(p.id!, e.target.value as 'Available' | 'TemporarilyUnavailable' | 'OutOfStock')} className="border border-gray-300 px-3 py-2 rounded-full font-bold text-xs bg-white">
+                                      <option value="Available">Chi nhánh: Đang bán</option>
+                                      <option value="TemporarilyUnavailable">Chi nhánh: Tạm hết</option>
+                                      <option value="OutOfStock">Chi nhánh: Hết món</option>
+                                    </select>
                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id!); }} className="border border-red-200 text-red-600 px-5 py-2 rounded-full font-bold flex items-center hover:bg-red-50"><Trash2 size={14} className="mr-2"/> Xóa món</button>
                                 </div>
                              </div>

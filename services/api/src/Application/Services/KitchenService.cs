@@ -29,7 +29,7 @@ namespace RestaurantPOS.Application.Services
             _notificationService = notificationService;
             _logger = logger;
         }
-
+            //xac dinh mon chua gui, yeu cau che bien
         public async Task<OrderRequest> SendToKitchenAsync(Guid orderId)
         {
             var strategy = _context.Database.CreateExecutionStrategy();

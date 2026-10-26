@@ -29,9 +29,11 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// Lấy số liệu tổng hợp dashboard: Doanh thu theo giờ/tuần/tháng, cơ cấu chi nhánh, top món bán chạy, nhân sự
         /// </summary>
         /// <param name="branchId">Tùy chọn lọc theo chi nhánh cụ thể (hoặc null nếu xem toàn chuỗi)</param>
+        /// <param name="period">Khoảng thời gian: today, week hoặc month (12 tháng gần nhất).</param>
+        /// <param name="forceRefresh">Xóa cache tổng hợp trước khi tải lại khi người dùng yêu cầu làm mới thủ công.</param>
         [HttpGet("summary")]
         [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-        public async Task<IActionResult> GetSummary([FromQuery] string? branchId = null)
+        public async Task<IActionResult> GetSummary([FromQuery] string? branchId = null, [FromQuery] string period = "today", [FromQuery] bool forceRefresh = false)
         {
             var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
             if (role != "admin" && role != "manager") return Forbid();
@@ -50,7 +52,10 @@ namespace RestaurantPOS.WebAPI.Controllers
 
             try
             {
-                var summary = await _dashboardService.GetSummaryAsync(branchId);
+                if (forceRefresh)
+                    _dashboardService.InvalidateSummaryCache();
+
+                var summary = await _dashboardService.GetSummaryAsync(branchId, period);
                 return Ok(summary);
             }
             catch (Exception ex)

@@ -259,7 +259,7 @@ public sealed class InventoryService(ApplicationDbContext context, IDashboardSer
         await _context.SaveChangesAsync();
         return Map(receipt);
     }
-
+    //xac nhan phieu nhap, cap nhat so luong ton
     public async Task<StockReceiptResponse> ConfirmReceiptAsync(Guid id, InventoryUserContext user)
     {
         RequireManagement(user);
@@ -393,7 +393,7 @@ public sealed class InventoryService(ApplicationDbContext context, IDashboardSer
         await _context.SaveChangesAsync();
         return Map(issue);
     }
-
+    //kiem tra ton kho, xuat phieu
     public async Task<StockIssueResponse> ConfirmIssueAsync(Guid id, InventoryUserContext user)
     {
         RequireManagement(user);

@@ -101,14 +101,14 @@ const PrintTemplates = () => {
             </div>
           ) : (
             filteredTemplates.map(t => (
-              <div key={t.id} className="bg-white rounded-[2rem] shadow-xl shadow-blue-500/5 border border-gray-100 overflow-hidden flex flex-col hover:border-blue-300 transition-all group">
-                <div className="p-6 flex items-start justify-between">
-                  <div className="flex items-center">
+              <div key={t.id} className="min-w-0 overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-xl shadow-blue-500/5 transition-all hover:border-blue-300">
+                <div className="flex min-w-0 items-start justify-between gap-3 p-5">
+                  <div className="flex min-w-0 items-center">
                     <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mr-4 shadow-inner">
                       <Printer size={24} />
                     </div>
-                    <div>
-                      <h3 className="font-black text-gray-800 uppercase tracking-tight">{t.name}</h3>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-black text-gray-800 uppercase tracking-tight" title={t.name}>{t.name}</h3>
                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{t.type}</p>
                     </div>
                   </div>
@@ -117,19 +117,35 @@ const PrintTemplates = () => {
                   )}
                 </div>
 
-                <div className="flex-1 px-6 py-10 bg-gray-50/50 flex flex-col items-center justify-center border-y border-gray-100 relative">
-                   <FileText size={48} className="text-gray-200" />
-                   <div className="absolute inset-0 bg-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <button
-                        onClick={() => handlePreview(t)}
-                        className="bg-white text-blue-600 px-6 py-2 rounded-xl shadow-xl text-[10px] font-black uppercase tracking-widest flex items-center hover:scale-105 transition-transform"
-                      >
-                         <Eye size={14} className="mr-2" /> Xem trước
-                      </button>
-                   </div>
+                <div className="flex min-h-[230px] min-w-0 items-center justify-center border-y border-gray-100 bg-gray-50/50 p-3">
+                  <button type="button" onClick={() => handlePreview(t)} className="w-full min-w-0 cursor-zoom-in p-1 transition-transform hover:scale-[1.02]" title="Bấm để xem mẫu in lớn">
+                    <div className="mx-auto w-full max-w-[180px] overflow-hidden bg-white p-3 text-left font-mono text-[7px] leading-tight text-black shadow-md ring-1 ring-gray-200">
+                      <div className="mb-3 space-y-0.5 text-center">
+                        <p className="text-[10px] font-bold uppercase">DOAN RESTAURANT</p>
+                        <p>Địa chỉ: 123 Đường Số 1, Tân Phong, Q7</p>
+                        <p>SĐT: 0987.654.321</p>
+                      </div>
+                      <p className="mb-2 border-y py-1 text-center text-[9px] font-bold uppercase">{t.name}</p>
+                      <div className="mb-2 space-y-0.5">
+                        <p>Mã đơn: HD20260723-0001</p>
+                        <p>Ngày: 23/07/2026</p>
+                      </div>
+                      <div className="mb-2 border-b pb-2">
+                        <div className="flex justify-between border-b pb-1 font-bold"><span>Tên món</span><span>SL&nbsp;&nbsp;&nbsp; Tiền</span></div>
+                        <div className="flex justify-between py-1"><span>Cà phê muối</span><span>2&nbsp;&nbsp;70,000</span></div>
+                        <div className="flex justify-between"><span>Bạc xỉu</span><span>1&nbsp;&nbsp;30,000</span></div>
+                      </div>
+                      <div className="space-y-0.5 text-right">
+                        <p>Tổng cộng: <b>100,000</b></p>
+                        <p>VAT (8%): <b>8,000</b></p>
+                        <p className="border-t pt-1 font-bold">THANH TOÁN: 108,000</p>
+                      </div>
+                      <p className="mt-4 text-center italic opacity-50">Cám ơn quý khách. Hẹn gặp lại!</p>
+                    </div>
+                  </button>
                 </div>
 
-                <div className="p-4 bg-white flex justify-between items-center px-6">
+                <div className="flex items-center justify-between gap-3 bg-white px-5 py-4">
                   <span className="text-[10px] text-gray-400 font-bold italic">Cập nhật: {t.lastUpdated}</span>
                   <div className="flex space-x-1">
                     <button

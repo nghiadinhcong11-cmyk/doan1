@@ -2,6 +2,7 @@
 import { Search, Calendar, User, MapPin, Banknote, RotateCcw, CreditCard, ArrowRight, Download, Filter, Loader2, CheckCircle2, Clock, AlertCircle, Store } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { Feedback } from '../../../components/ui';
+import { fetchBranchList } from '../../../api/branchQuery';
 
 interface Shift {
   id: string;
@@ -40,15 +41,13 @@ const ShiftManagement = () => {
       const url = `${API_URL}/api/Shift?fromDate=${fromDate}&toDate=${toDate}`;
       const [resShifts, resBranches] = await Promise.all([
         fetch(url),
-        isAdmin ? fetch(`${API_URL}/api/Branch`) : Promise.resolve(null)
+        isAdmin ? fetchBranchList() : Promise.resolve(null)
       ]);
       if (!resShifts.ok) throw new Error('shift request failed');
       const dataShifts = await resShifts.json();
       setShifts(Array.isArray(dataShifts) ? dataShifts : []);
       if (resBranches) {
-        if (!resBranches.ok) throw new Error('branch request failed');
-        const dataBranches = await resBranches.json();
-        setBranches(Array.isArray(dataBranches) ? dataBranches : []);
+        setBranches(Array.isArray(resBranches) ? resBranches : []);
       }
     } catch (err) {
       setPageError('Không thể tải dữ liệu chốt ca. Vui lòng thử lại.');
@@ -80,14 +79,14 @@ const ShiftManagement = () => {
         </div>
 
         <div className="flex items-center space-x-3">
-           <div className="flex items-center bg-white p-2 rounded-xl shadow-sm border border-gray-100 space-x-2">
+           <div className="flex items-center space-x-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
               <div className="flex items-center space-x-2">
                  <span className="text-[10px] font-black text-gray-400 uppercase">Từ:</span>
                  <input
                     type="date"
                     value={fromDate}
                     onChange={(e) => setFromDate(e.target.value)}
-                    className="text-[11px] font-bold text-gray-700 outline-none border-none bg-gray-50 rounded px-2 py-1"
+                    className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                  />
               </div>
               <div className="flex items-center space-x-2">
@@ -96,25 +95,25 @@ const ShiftManagement = () => {
                     type="date"
                     value={toDate}
                     onChange={(e) => setToDate(e.target.value)}
-                    className="text-[11px] font-bold text-gray-700 outline-none border-none bg-gray-50 rounded px-2 py-1"
+                    className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                  />
               </div>
            </div>
 
-           <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-100">
+           <div className="flex rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
               <button
                 onClick={() => setFilterBranch('all')}
-                className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${filterBranch === 'all' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}
+                className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${filterBranch === 'all' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}
               >Tất cả</button>
               {branches.map(b => (
                 <button
                   key={b.id}
                   onClick={() => setFilterBranch(b.id)}
-                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${filterBranch === b.id ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}
+                  className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${filterBranch === b.id ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400'}`}
                 >{b.name}</button>
               ))}
            </div>
-           <button disabled={loading} onClick={fetchData} className="bg-white p-2.5 rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 text-gray-400 transition-all disabled:cursor-wait disabled:opacity-50">
+           <button disabled={loading} onClick={fetchData} className="rounded border border-gray-300 bg-white p-1.5 text-gray-500 shadow-sm transition-all hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50">
               <RotateCcw size={18} />
            </button>
         </div>

@@ -152,9 +152,9 @@ const CustomerManagement = () => {
         <div className="space-y-6">
           <div>
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 ml-1">Phân hạng khách hàng</p>
-            <div className="space-y-1">
+              <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50 p-2">
               {['all', 'Khách VIP', 'Khách quen', 'Khách lẻ'].map(group => (
-                <label key={group} className="flex items-center cursor-pointer py-2 px-3 rounded-xl transition-all group hover:bg-blue-50">
+                <label key={group} className="group flex cursor-pointer items-center rounded-xl px-3 py-2.5 transition-all hover:bg-blue-50">
                   <input
                     type="radio"
                     name="group"
@@ -184,7 +184,7 @@ const CustomerManagement = () => {
             <Search className="absolute left-4 top-3 h-4 w-4 text-gray-300" />
             <input
               type="text"
-              className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-black text-xs transition-all"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-4 text-sm font-bold outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               placeholder="Nhập tên, số điện thoại khách..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -197,11 +197,11 @@ const CustomerManagement = () => {
                 setNewCustomer({ fullName: '', phoneNumber: '', totalSpending: 0 });
                 setIsModalOpen(true);
               }}
-              className="bg-[#0070f4] text-white px-8 py-2.5 rounded-xl flex items-center font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all"
+              className="flex min-h-0 items-center rounded bg-[#0070f4] px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95"
             >
               <Plus size={18} className="mr-2" /> THÊM HỘI VIÊN
             </button>
-            <button className="bg-white border-2 border-gray-100 px-6 py-2.5 rounded-xl flex items-center hover:bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest transition-all">
+            <button className="flex min-h-0 items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 shadow-sm transition-all hover:bg-gray-50">
               <Download size={14} className="mr-2" /> Xuất file
             </button>
           </div>
@@ -273,7 +273,7 @@ const CustomerManagement = () => {
                   type="button"
                   onClick={() => { const nextPage = page - 1; setPage(nextPage); void fetchCustomers(searchTerm, nextPage); }}
                   disabled={page === 1 || loading}
-                  className="rounded-lg border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="rounded border border-gray-300 p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Trang trước"
                 >
                   <ChevronLeft size={16} />
@@ -282,7 +282,7 @@ const CustomerManagement = () => {
                   type="button"
                   onClick={() => { const nextPage = page + 1; setPage(nextPage); void fetchCustomers(searchTerm, nextPage); }}
                   disabled={!hasNextPage || loading}
-                  className="rounded-lg border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="rounded border border-gray-300 p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Trang sau"
                 >
                   <ChevronRight size={16} />
@@ -295,8 +295,8 @@ const CustomerManagement = () => {
 
       {/* ADD/EDIT MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex justify-center items-center p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <form onSubmit={handleSave} className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-white">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/60 px-4 pb-10 pt-10 backdrop-blur-sm animate-in fade-in duration-200">
+          <form onSubmit={handleSave} className="w-full max-w-3xl overflow-hidden rounded-[2.5rem] bg-white shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-[#0070f4] p-8 text-white flex justify-between items-center">
               <div>
                  <h3 className="font-black text-xl uppercase italic tracking-tighter">Hồ sơ hội viên</h3>
@@ -304,7 +304,7 @@ const CustomerManagement = () => {
               </div>
               <button type="button" onClick={() => setIsModalOpen(false)} className="bg-white/10 p-2 rounded-full hover:rotate-90 transition-transform"><X size={24}/></button>
             </div>
-            <div className="p-10 space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar">
+            <div className="max-h-[78vh] space-y-6 overflow-y-auto p-10 no-scrollbar">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2 col-span-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Họ và tên khách hàng *</label>
@@ -312,7 +312,7 @@ const CustomerManagement = () => {
                     <User className="absolute left-0 top-2.5 text-gray-300 group-focus-within:text-blue-500 transition-colors" size={18} />
                     <input
                         type="text"
-                        className="w-full border-b-2 border-gray-100 pl-8 py-2.5 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         placeholder="VD: NGUYỄN VĂN A"
                         value={newCustomer.fullName}
                         onChange={e => setNewCustomer({...newCustomer, fullName: e.target.value})}
@@ -327,7 +327,7 @@ const CustomerManagement = () => {
                     <Phone className="absolute left-0 top-2.5 text-gray-300 group-focus-within:text-blue-500 transition-colors" size={18} />
                     <input
                         type="tel"
-                        className="w-full border-b-2 border-gray-100 pl-8 py-2.5 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         placeholder="09xx xxx xxx"
                         value={newCustomer.phoneNumber}
                         onChange={e => setNewCustomer({...newCustomer, phoneNumber: e.target.value.replace(/\D/g, '')})}
@@ -342,7 +342,7 @@ const CustomerManagement = () => {
                     <Mail className="absolute left-0 top-2.5 text-gray-300 group-focus-within:text-blue-500 transition-colors" size={18} />
                     <input
                         type="email"
-                        className="w-full border-b-2 border-gray-100 pl-8 py-2.5 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         placeholder="email@example.com"
                         value={newCustomer.email}
                         onChange={e => setNewCustomer({...newCustomer, email: e.target.value})}
@@ -353,7 +353,7 @@ const CustomerManagement = () => {
                 <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Giới tính</label>
                     <select
-                        className="w-full border-b-2 border-gray-100 py-2.5 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent appearance-none"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         value={newCustomer.gender}
                         onChange={e => setNewCustomer({...newCustomer, gender: e.target.value})}
                     >
@@ -367,7 +367,7 @@ const CustomerManagement = () => {
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Ngày sinh</label>
                     <input
                         type="date"
-                        className="w-full border-b-2 border-gray-100 py-2.5 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         value={newCustomer.birthday}
                         onChange={e => setNewCustomer({...newCustomer, birthday: e.target.value})}
                     />
@@ -379,7 +379,7 @@ const CustomerManagement = () => {
                     <MapPin className="absolute left-0 top-2.5 text-gray-300 group-focus-within:text-blue-500 transition-colors" size={18} />
                     <input
                         type="text"
-                        className="w-full border-b-2 border-gray-100 pl-8 py-2.5 outline-none font-black text-gray-700 focus:border-blue-500 transition-all bg-transparent"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         placeholder="Địa chỉ..."
                         value={newCustomer.address}
                         onChange={e => setNewCustomer({...newCustomer, address: e.target.value})}
@@ -396,7 +396,7 @@ const CustomerManagement = () => {
                  </div>
               </div>
 
-              <button type="submit" className="w-full py-5 bg-[#0070f4] text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl shadow-blue-500/30 hover:bg-blue-700 active:scale-95 mt-6">XÁC NHẬN LƯU HỒ SƠ</button>
+              <button type="submit" className="mt-6 w-full rounded-full bg-[#0070f4] py-4 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-2xl shadow-blue-500/30 hover:bg-blue-700 active:scale-95">XÁC NHẬN LƯU HỒ SƠ</button>
             </div>
           </form>
         </div>

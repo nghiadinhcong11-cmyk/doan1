@@ -9,6 +9,13 @@ export interface ReceiptSettingsModel {
   showPaymentMethod?: boolean;
   showOrderNote?: boolean;
   showThankYou?: boolean;
+  showSupplier?: boolean;
+  showWarehouse?: boolean;
+  showUnit?: boolean;
+  showUnitPrice?: boolean;
+  showPreparedBy?: boolean;
+  showApprovedBy?: boolean;
+  showSignatures?: boolean;
   thankYouText?: string;
   fontFamily?: string;
   fontSize?: number;

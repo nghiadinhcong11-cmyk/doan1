@@ -218,6 +218,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
                     // Branch and optional table come exclusively from the signed guest session.
                     // A direct session without a table is explicitly takeaway.
+                    order.TableId = table?.Id;
                     order.TableName = table?.Name ?? "Mang về";
                     order.BranchId = guestContext.BranchId;
                     order.BranchName = branch.Name;
@@ -390,6 +391,38 @@ namespace RestaurantPOS.WebAPI.Controllers
             };
         }
 
+        [HttpPost("{id:guid}/transfer-table")]
+        [Authorize(Roles = "admin,manager,employee,cashier")]
+        public async Task<IActionResult> TransferOrder(Guid id, [FromBody] TransferOrderDto request)
+        {
+            if (request is null || request.TargetTableId == Guid.Empty)
+                return BadRequest(new { success = false, message = "Bàn đích không hợp lệ." });
+
+            var existingOrder = await _orderService.GetOrderByIdAsync(id);
+            if (existingOrder is null)
+                return NotFound();
+            if (!HasBranchAccess(existingOrder.BranchId))
+                return Forbid();
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+            Guid? allowedBranchId = IsBranchScopedRole(role)
+                ? (Guid.TryParse(User.FindFirst("branchId")?.Value, out var branchId) ? branchId : null)
+                : null;
+            if (IsBranchScopedRole(role) && !allowedBranchId.HasValue)
+                return Forbid();
+
+            var result = await _orderService.TransferOrderAsync(id, request.TargetTableId, allowedBranchId);
+            if (!result.Success)
+                return Conflict(new { success = false, message = result.Message });
+
+            return Ok(new
+            {
+                success = true,
+                message = result.Message,
+                order = result.Order
+            });
+        }
+
         /// <summary>
         /// Gửi các món mới gọi xuống màn hình Nhà bếp (tự động tính chênh lệch SentQuantity)
         /// </summary>
@@ -430,6 +463,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         [HttpPost("{id:guid}/payment")]
         [Authorize(Roles = "admin,manager,cashier")]
+        //kiem tra thanh toan
         public async Task<IActionResult> PayOrder(Guid id, [FromBody] OrderPaymentDto request)
         {
             if (request.Amount <= 0)

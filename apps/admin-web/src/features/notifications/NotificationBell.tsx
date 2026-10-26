@@ -22,25 +22,31 @@ interface Props {
   error: string | null;
   historyPath: string;
   showPending?: boolean;
+  showLabel?: boolean;
+  label?: string;
+  menuPlacement?: 'above' | 'right';
   markRead: (id: string, branchId?: string | null) => Promise<void>;
   markAllRead: () => Promise<void>;
 }
 
-export default function NotificationBell({ notifications, pendingNotifications, unreadCount, pendingCount, loadingNotifications, loadingPending, error, historyPath, showPending = true, markRead: onMarkRead, markAllRead: onMarkAllRead }: Props) {
+export default function NotificationBell({ notifications, pendingNotifications, unreadCount, pendingCount, loadingNotifications, loadingPending, error, historyPath, showPending = true, showLabel = false, label = 'Thông báo', menuPlacement = 'above', markRead: onMarkRead, markAllRead: onMarkAllRead }: Props) {
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const badgeCount = unreadCount + (showPending ? pendingCount : 0);
   const markRead = async (item: NotificationItem) => {
     try { setMutationError(null); await onMarkRead(item.id, item.branchId); } catch (reason) { setMutationError(reason instanceof Error ? reason.message : 'Không thể cập nhật thông báo.'); }
   };
   const markAll = async () => {
     try { setMutationError(null); await onMarkAllRead(); } catch (reason) { setMutationError(reason instanceof Error ? reason.message : 'Không thể cập nhật thông báo.'); }
   };
-  return <div className="relative">
-    <button type="button" onClick={() => setOpen(value => !value)} className={`relative rounded-xl p-2 transition-colors hover:bg-blue-600 ${open ? 'bg-blue-700' : ''}`} aria-label={`${unreadCount} thông báo chưa đọc, ${pendingCount} đơn cần xử lý`}>
+  return <div className="relative" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <button type="button" onClick={() => setOpen(value => !value)} className={`relative flex items-center gap-2 rounded-xl p-2 transition-colors hover:bg-blue-600 lg:w-full ${showLabel ? 'lg:justify-start lg:px-3' : 'lg:justify-center'} ${open ? 'bg-blue-700' : ''}`} aria-label={`${unreadCount} thông báo chưa đọc, ${pendingCount} đơn cần xử lý`}>
       <Bell size={20} />
-      {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-[#0070f4] bg-red-500 px-0.5 text-[9px] font-black">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+      {showLabel && <span className="hidden text-[12px] font-bold uppercase tracking-widest lg:inline">{label}</span>}
+      {badgeCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-[#0070f4] bg-red-500 px-0.5 text-[9px] font-black">{badgeCount > 99 ? '99+' : badgeCount}</span>}
     </button>
-    {open && <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-2xl border border-gray-100 bg-white text-gray-800 shadow-2xl">
+    {(open || hovered) && <div className={`absolute z-[100] max-h-[calc(100vh-2rem)] w-[min(22rem,calc(100vw-1rem))] overflow-y-auto rounded-2xl border border-gray-100 bg-white text-gray-800 shadow-2xl ${menuPlacement === 'right' ? 'bottom-0 left-full ml-0' : 'bottom-full right-0 mb-2'}`}>
       <div className="flex items-center justify-between border-b bg-gray-50 p-4"><div className="flex items-center font-black text-sm"><BellRing className="mr-2 h-4 w-4 text-blue-600" /> Thông báo</div><Link to={historyPath} onClick={() => setOpen(false)} className="text-[10px] font-black uppercase text-blue-600">Xem tất cả</Link></div>
       {error && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">{error}</div>}
       {mutationError && <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">{mutationError}</div>}

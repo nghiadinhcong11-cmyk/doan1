@@ -1,0 +1,35 @@
+@startuml
+title Hình 3.7 - Activity quy trình thanh toán và Loyalty
+|Khách hàng / Thu ngân|
+start
+:Chọn đơn cần thanh toán;
+:Chọn phương thức thanh toán;
+|POS / Customer Web|
+:Gửi yêu cầu thanh toán;
+|Backend - OrderService|
+:Đọc Order.TotalAmount đã lưu;
+if (Đơn tồn tại và còn thanh toán?) then (Có)
+  if (Số tiền thanh toán khớp tổng backend?) then (Có)
+    :Cập nhật PaidAmount,
+PaymentMethod và PaymentAt;
+    :Cập nhật trạng thái đơn;
+    |LoyaltyService|
+    if (Đơn đã hoàn tất và có khách hàng?) then (Có)
+      :Tính điểm theo cấu hình;
+      :Ghi LoyaltyTransaction;
+      :Cập nhật số dư điểm;
+    else (Không)
+      :Không phát sinh điểm;
+    endif
+    |Backend - OrderService|
+    :Lưu transaction và trả kết quả;
+    |POS / Customer Web|
+    :Hiển thị hóa đơn và điểm Loyalty;
+  else (Không)
+    :Từ chối số tiền không khớp;
+  endif
+else (Không)
+  :Từ chối đơn không hợp lệ;
+endif
+stop
+@enduml

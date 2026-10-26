@@ -230,6 +230,30 @@ namespace RestaurantPOS.Application.Services
                 throw new ArgumentException($"Số lượng món không được vượt quá {MAX_QUANTITY}.");
             }
 
+            // Resolve the table identity on the server. TableName is retained for
+            // display/backward compatibility, but it is not the merge key.
+            if (order.TableId.HasValue)
+            {
+                var claimedTable = await _context.Tables.AsNoTracking()
+                    .FirstOrDefaultAsync(table => table.Id == order.TableId.Value &&
+                        table.BranchId == order.BranchId && table.IsActive);
+                if (claimedTable is null)
+                    throw new ArgumentException("Bàn của đơn hàng không hợp lệ hoặc không thuộc chi nhánh.");
+                order.TableName = claimedTable.Name;
+            }
+            else if (!string.IsNullOrWhiteSpace(order.TableName) && order.TableName != "Mang về")
+            {
+                var matchingTables = await _context.Tables.AsNoTracking()
+                    .Where(table => table.BranchId == order.BranchId && table.IsActive && table.Name == order.TableName)
+                    .Select(table => new { table.Id, table.Name })
+                    .Take(2)
+                    .ToListAsync();
+                if (matchingTables.Count > 1)
+                    throw new ArgumentException("Không thể xác định duy nhất bàn của đơn hàng.");
+                if (matchingTables.Count == 1)
+                    order.TableId = matchingTables[0].Id;
+            }
+
             // Shared menu visibility and order acceptance are separate
             // boundaries. An order must contain products available at its branch.
             if (!deferAvailabilityValidation)
@@ -247,7 +271,10 @@ namespace RestaurantPOS.Application.Services
                     .Include(o => o.Details)
                     .FirstOrDefaultAsync(o =>
                         (order.Id != Guid.Empty ? o.Id == order.Id :
-                            o.TableName == order.TableName && o.BranchId == order.BranchId)
+                            o.BranchId == order.BranchId &&
+                            (order.TableId.HasValue
+                                ? (o.TableId == order.TableId.Value || (o.TableId == null && o.TableName == order.TableName))
+                                : o.TableName == order.TableName))
                         && o.Status == "Đang xử lý");
 
                 if (existingOrder != null)
@@ -259,7 +286,11 @@ namespace RestaurantPOS.Application.Services
                     existingOrder.CustomerPhone = order.CustomerPhone;
                     existingOrder.CustomerEmail = order.CustomerEmail;
                     existingOrder.CustomerId = order.CustomerId;
-                    existingOrder.CreatedBy = order.CreatedBy;
+                    // A later QR round has no staff creator; it must not turn an
+                    // already accepted order back into a pending web order.
+                    if (!string.IsNullOrWhiteSpace(order.CreatedBy))
+                        existingOrder.CreatedBy = order.CreatedBy;
+                    existingOrder.TableId ??= order.TableId;
                     existingOrder.BranchName = order.BranchName;
                     existingOrder.Note = order.Note;
 
@@ -357,7 +388,7 @@ namespace RestaurantPOS.Application.Services
             _dashboardCacheInvalidator?.InvalidateSummaryCache();
             return order;
         }
-
+        //tinh toan gia tri tai chinh
         private async Task RecalculateOrderFinancials(Order order)
         {
             var settings = await _settingService.GetSettingsAsync(order.BranchId);
@@ -623,6 +654,88 @@ namespace RestaurantPOS.Application.Services
             });
         }
 
+        public async Task<(bool Success, string Message, Order? Order)> TransferOrderAsync(
+            Guid id,
+            Guid targetTableId,
+            Guid? allowedBranchId)
+        {
+            if (targetTableId == Guid.Empty)
+                return (false, "Bàn đích không hợp lệ.", null);
+
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+
+                var order = await _context.Orders
+                    .Include(o => o.Details)
+                    .FirstOrDefaultAsync(o => o.Id == id);
+                if (order is null)
+                    return (false, "Không tìm thấy đơn hàng.", (Order?)null);
+
+                if (order.BranchId == Guid.Empty ||
+                    !await _context.Branches.AsNoTracking().AnyAsync(branch => branch.Id == order.BranchId && branch.IsActive))
+                    return (false, "Đơn hàng không thuộc chi nhánh đang hoạt động.", (Order?)null);
+
+                if (allowedBranchId.HasValue && order.BranchId != allowedBranchId.Value)
+                    return (false, "Bạn không có quyền chuyển đơn của chi nhánh khác.", (Order?)null);
+
+                if (OrderStatusPolicy.IsTerminal(order.Status))
+                    return (false, "Đơn đã hoàn thành hoặc đã hủy nên không thể chuyển bàn.", order);
+
+                var targetTable = await _context.Tables
+                    .FirstOrDefaultAsync(table =>
+                        table.Id == targetTableId &&
+                        table.BranchId == order.BranchId &&
+                        table.IsActive);
+                if (targetTable is null)
+                    return (false, "Bàn đích không tồn tại hoặc không thuộc chi nhánh của đơn.", (Order?)null);
+
+                if (string.Equals(order.TableName, targetTable.Name, StringComparison.Ordinal))
+                    return (false, "Bàn đích phải khác bàn hiện tại.", order);
+
+                // Claim the destination atomically so two concurrent transfers cannot use the same table.
+                var claimedTarget = await _context.Tables
+                    .Where(table =>
+                        table.Id == targetTableId &&
+                        table.IsActive &&
+                        table.Status == "Trống")
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(table => table.Status, "Có khách"));
+                if (claimedTarget != 1)
+                    return (false, "Bàn đích không còn trống.", order);
+
+                var sourceTable = string.IsNullOrWhiteSpace(order.TableName)
+                    ? null
+                    : await _context.Tables.FirstOrDefaultAsync(table =>
+                        table.BranchId == order.BranchId &&
+                        table.IsActive &&
+                        table.Name == order.TableName);
+
+                order.TableName = targetTable.Name;
+                await _context.SaveChangesAsync();
+
+                if (sourceTable is not null && sourceTable.Id != targetTable.Id)
+                {
+                    var sourceStillHasActiveOrder = await _context.Orders.AnyAsync(candidate =>
+                        candidate.Id != order.Id &&
+                        candidate.BranchId == order.BranchId &&
+                        candidate.TableName == sourceTable.Name &&
+                        !OrderStatusPolicy.IsTerminal(candidate.Status));
+
+                    if (!sourceStillHasActiveOrder)
+                    {
+                        sourceTable.Status = "Trống";
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                await transaction.CommitAsync();
+                _dashboardCacheInvalidator?.InvalidateSummaryCache();
+                return (true, $"Đã chuyển đơn sang {targetTable.Name}.", order);
+            });
+        }
+
+        //xac thuc tong tien va cap nhat thanh toan
         public async Task<(PaymentAttemptResult Result, Order? Order)> PayOrderAsync(
             Guid id,
             decimal amount,

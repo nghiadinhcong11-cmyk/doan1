@@ -115,7 +115,7 @@ const EmployeeProfile = ({ userName, onLogout }: { userName: string, onLogout: (
               <CheckCircle2 className="text-blue-600 mt-1" size={18} />
               <div>
                  <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Hồ sơ đã xác thực</p>
-                 <p className="text-[11px] text-blue-600 mt-1 leading-relaxed italic">Thông tin cá nhân và lịch làm việc của bạn được quản lý bởi hệ thống KiotViet Restaurant. Vui lòng liên hệ Quản trị viên nếu cần thay đổi thông tin.</p>
+                <p className="text-[11px] text-blue-600 mt-1 leading-relaxed italic">Thông tin cá nhân và lịch làm việc của bạn được quản lý bởi DOAN Restaurant POS. Vui lòng liên hệ Quản trị viên nếu cần thay đổi thông tin.</p>
               </div>
            </div>
         </div>

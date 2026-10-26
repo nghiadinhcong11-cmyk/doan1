@@ -1,0 +1,46 @@
+@startuml
+title Hình 3.9 - Activity xử lý yêu cầu của trợ lý ảo
+|Người dùng|
+start
+:Nhập câu hỏi hoặc yêu cầu;
+|Web Chat UI / AiController|
+:Gửi message và user context;
+|AiOrchestrator|
+:Kiểm tra identity, role, branch và feature flag;
+|Phân tích intent|
+:Chuẩn hóa câu hỏi;
+:Phân loại intent;
+:Nhận diện đối tượng và trích xuất tham số;
+if (Intent và tham số đủ rõ?) then (Có)
+  |AiToolRegistry|
+  :Xác định tool từ intent;
+  |AiPermissionService|
+  :Kiểm tra role, risk và branch scope;
+  if (Được phép?) then (Có)
+    if (Tool chỉ đọc?) then (Có)
+      |AI Tool|
+      :Gọi Application Service;
+      :Nhận DTO kết quả;
+    else (Ghi dữ liệu)
+      :Tạo preview và confirmation token;
+      |Người dùng|
+      :Xác nhận hoặc hủy;
+      if (Đã xác nhận?) then (Có)
+        |AI Tool|
+        :Gọi Application Service để mutation;
+      else (Không)
+        :Kết thúc không ghi dữ liệu;
+      endif
+    endif
+    |AiOrchestrator|
+    :Định dạng phản hồi an toàn;
+  else (Không)
+    :Từ chối thực thi;
+  endif
+else (Không)
+  :Hỏi làm rõ hoặc từ chối ngoài phạm vi;
+endif
+|Người dùng|
+:Nhận phản hồi;
+stop
+@enduml

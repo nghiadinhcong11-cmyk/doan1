@@ -1,0 +1,73 @@
+@startuml
+title Hình 3.1 - Use Case tổng quát hệ thống quản lý nhà hàng đa chi nhánh
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Quản trị hệ thống" as AdminGroup
+actor "Nhân sự vận hành" as OperationsGroup
+actor "Khách hàng và\nkhách vãng lai" as CustomerGroup
+
+rectangle "Restaurant Management System" {
+  usecase "Xác thực và quản lý\nphiên truy cập" as UCAuth
+  usecase "Quản lý chi nhánh, nhân sự\nvà cấu hình hệ thống" as UCAdmin
+  usecase "Quản lý catalog\nmón và topping" as UCCatalog
+  usecase "Quản lý bàn\nvà đặt bàn" as UCTable
+  usecase "Tạo và cập nhật\nđơn hàng" as UCOrder
+  usecase "Tiếp nhận đơn\ntrực tuyến" as UCAccept
+  usecase "Gửi món và yêu cầu\nxuống bếp" as UCSendKitchen
+  usecase "Cập nhật trạng thái\nOrderRequest trên KDS" as UCKitchen
+  usecase "Thanh toán và\nlập hóa đơn" as UCPayment
+  usecase "Quản lý kho\nvà chứng từ" as UCInventory
+  usecase "Báo cáo doanh thu\nvà KPI" as UCReport
+  usecase "Xem menu và\nđặt món QR" as UCQR
+  usecase "Loyalty và lịch sử\ngiao dịch" as UCLoyalty
+  usecase "Sử dụng trợ lý ảo\ntheo quyền được cấp" as UCAI
+}
+
+AdminGroup --> UCAuth
+AdminGroup --> UCAdmin
+AdminGroup --> UCCatalog
+AdminGroup --> UCReport
+AdminGroup --> UCAI
+
+OperationsGroup --> UCAuth
+OperationsGroup --> UCTable
+OperationsGroup --> UCOrder
+OperationsGroup --> UCAccept
+OperationsGroup --> UCSendKitchen
+OperationsGroup --> UCKitchen
+OperationsGroup --> UCPayment
+OperationsGroup --> UCInventory
+OperationsGroup --> UCReport
+
+CustomerGroup --> UCAuth
+CustomerGroup --> UCQR
+CustomerGroup --> UCLoyalty
+CustomerGroup --> UCAI
+
+UCQR ..> UCOrder : <<include>>
+UCOrder ..> UCSendKitchen : <<include>>
+UCOrder ..> UCPayment : <<extend>>
+UCSendKitchen ..> UCKitchen : <<include>>
+
+note right of OperationsGroup
+Nhóm này bao gồm quản lý chi nhánh,
+thu ngân, nhân viên và nhân viên bếp.
+Các quyền cụ thể được phân rã ở
+các sơ đồ Use Case chi tiết.
+end note
+
+note right of CustomerGroup
+Bao gồm khách hàng đã đăng nhập
+và khách vãng lai sử dụng QR.
+Hai vai trò có phạm vi chức năng
+khác nhau, được thể hiện ở sơ đồ phân rã.
+end note
+
+note bottom
+Việc gom actor chỉ nhằm trình bày hệ thống ở mức tổng quát,
+giảm số lượng đường nối và giúp sơ đồ dễ đọc. Không được hiểu
+là các vai trò có cùng quyền hạn. Authorization và branch scope
+vẫn được kiểm tra ở backend theo role và phạm vi chi nhánh.
+end note
+@enduml

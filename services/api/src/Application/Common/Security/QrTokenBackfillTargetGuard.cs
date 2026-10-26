@@ -2,7 +2,7 @@ namespace RestaurantPOS.Application.Common.Security;
 
 public static class QrTokenBackfillTargetGuard
 {
-    public const string AuthorizedDevProjectRef = "qfkgjxwbshjgsxsvkpkp";
+    public const string AuthorizedDevProjectRef = "lizpcvayxcuwjgrxsvfe";
 
     public static bool IsAuthorized(string? explicitProjectRef, string? host, string? username)
     {

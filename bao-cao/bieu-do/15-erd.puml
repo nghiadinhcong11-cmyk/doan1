@@ -1,0 +1,108 @@
+@startuml
+title Hình 3.14 - ERD các bảng nghiệp vụ chính
+hide circle
+skinparam linetype ortho
+
+entity Branch {
+  * Id : uuid <<PK>>
+  --
+  Name : varchar
+}
+entity Customer {
+  * Id : uuid <<PK>>
+  --
+  UserId : uuid
+  LoyaltyPoints : int
+}
+entity Employee {
+  * Id : uuid <<PK>>
+  --
+  UserId : uuid
+  BranchId : uuid <<FK>>
+}
+entity Product {
+  * Id : uuid <<PK>>
+  --
+  CategoryId : uuid <<FK>>
+  Name : varchar
+  Price : decimal
+}
+entity ProductBranchAvailability {
+  * ProductId : uuid <<PK,FK>>
+  * BranchId : uuid <<PK,FK>>
+  --
+  IsAvailable : boolean
+}
+entity Order {
+  * Id : uuid <<PK>>
+  --
+  BranchId : uuid <<FK>>
+  CustomerId : uuid <<FK>>
+  SubTotal : decimal?
+  VatAmount : decimal?
+  ServiceFeeAmount : decimal?
+  TotalAmount : decimal
+  Status : varchar
+}
+entity OrderDetail {
+  * Id : uuid <<PK>>
+  --
+  OrderId : uuid <<FK>>
+  ProductId : uuid? <<FK>>
+  ToppingId : uuid? <<FK>>
+  Quantity : int
+  SentQuantity : int
+  UnitPrice : decimal
+}
+entity OrderRequest {
+  * Id : uuid <<PK>>
+  --
+  OrderId : uuid <<FK>>
+  RequestNumber : int
+  Status : varchar
+}
+entity OrderRequestItem {
+  * Id : uuid <<PK>>
+  --
+  OrderRequestId : uuid <<FK>>
+  ProductId : uuid? <<FK>>
+  Quantity : int
+}
+entity LoyaltyTransaction {
+  * Id : uuid <<PK>>
+  --
+  CustomerId : uuid <<FK>>
+  OrderId : uuid <<FK>>
+  Points : int
+  Type : varchar
+}
+entity SystemSetting {
+  * Id : uuid <<PK>>
+  --
+  BranchId : uuid <<FK>>
+  Key : varchar
+  Value : varchar
+  --
+  UNIQUE(BranchId, Key)
+}
+entity ReceiptSettings {
+  * Id : uuid <<PK>>
+  --
+  BranchId : uuid <<FK>>
+}
+
+Branch ||--o{ Employee
+Branch ||--o{ ProductBranchAvailability
+Product ||--o{ ProductBranchAvailability
+Branch ||--o{ Order
+Customer |o--o{ Order
+Order ||--|{ OrderDetail
+Product |o--o{ OrderDetail
+Order ||--o{ OrderRequest
+OrderRequest ||--|{ OrderRequestItem
+Product |o--o{ OrderRequestItem
+Customer ||--o{ LoyaltyTransaction
+Order ||--o{ LoyaltyTransaction
+Branch ||--o{ SystemSetting
+Branch ||--o| ReceiptSettings
+@enduml

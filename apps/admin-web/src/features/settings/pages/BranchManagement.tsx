@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Plus, Search, Store, MapPin, Phone, Globe, Edit2, Trash2, CheckCircle2, X, Loader2, Save, Lock, Unlock } from 'lucide-react';
+import { Plus, Search, Store, MapPin, Phone, Globe, Edit2, Trash2, CheckCircle2, X, Loader2, Save, Lock, Unlock, Settings, FileText, Printer, ShieldCheck, ChevronRight } from 'lucide-react';
 import { API_URL } from '../../../config';
+import { getCachedJson } from '../../../api/queryCache';
 import { notifyFeedback } from '../../../components/ui';
 import type { BranchManagementRecord } from '../branchTypes';
 
@@ -35,12 +36,7 @@ const BranchManagement = () => {
   const fetchBranches = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/Branch/management`);
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        notifyFeedback(data?.message || `Không thể tải danh sách chi nhánh (${response.status})`);
-        return;
-      }
+      const data = await getCachedJson<Branch[]>(`${API_URL}/api/Branch/management`);
       setBranches(data);
       const requestedBranchId = new URLSearchParams(window.location.search).get('branchId');
       if (requestedBranchId && data.some((branch: Branch) => branch.id === requestedBranchId)) {
@@ -226,7 +222,7 @@ const BranchManagement = () => {
   });
 
   return (
-    <div className="flex h-[calc(100vh-48px)] bg-[#f8f9fa] text-[13px] font-sans">
+    <div className="flex h-full min-h-0 bg-[#f8f9fa] text-[13px] font-sans">
       <div className="w-64 bg-white border-r p-5 space-y-8 shadow-sm">
         <h2 className="font-black text-lg text-gray-800 uppercase italic tracking-tighter">Cơ cấu tổ chức</h2>
 

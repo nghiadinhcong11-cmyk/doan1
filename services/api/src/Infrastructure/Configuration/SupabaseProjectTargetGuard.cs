@@ -12,12 +12,11 @@ public static class SupabaseProjectTargetGuard
 {
     public const string TestMode = "Test";
     public const string MainMode = "Main";
-    public const string TestProjectRef = "eorboopkwgmvainlxzkz";
-    public const string MainProjectRef = "qfkgjxwbshjgsxsvkpkp";
+    public const string TestProjectRef = "lizpcvayxcuwjgrxsvfe";
     public const string TestPoolerHost = "aws-0-ap-northeast-1.pooler.supabase.com";
     public const int TestPoolerPort = 5432;
     public const string TestDatabase = "postgres";
-    public const string TestUsername = "postgres.eorboopkwgmvainlxzkz";
+    public const string TestUsername = "postgres.lizpcvayxcuwjgrxsvfe";
 
     public static void Validate(NpgsqlConnectionStringBuilder connection, IConfiguration configuration, bool isDevelopment)
     {

@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using RestaurantPOS.AI.Diagnostics;
 using RestaurantPOS.AI.Models;
 using RestaurantPOS.AI.Security;
@@ -100,6 +103,12 @@ public sealed class AiOrchestrator : IAiOrchestrator
                 (!context.IsGuest && context.Role == RoleNames.Customer && (!context.CustomerId.HasValue || context.CustomerId == Guid.Empty)))
                 return new AiResponse { Success = false, Error = "AI access is not authorized for this identity." };
 
+            // Social messages do not represent a business intent and must not be
+            // sent through the embedding/tool classifier. Otherwise a greeting
+            // can be misclassified as an unsupported admin request.
+            if (TryGetSocialResponse(request.Message, context, out var socialResponse))
+                return new AiResponse { Success = true, Message = socialResponse };
+
             phase = "EMBEDDING_DECISION";
             if (context.Role == RoleNames.Admin)
             {
@@ -164,6 +173,53 @@ public sealed class AiOrchestrator : IAiOrchestrator
         }
     }
 
+    private static bool TryGetSocialResponse(string text, AiUserContext context, out string response)
+    {
+        var normalized = FoldForSocial(text).Trim();
+        if (Regex.IsMatch(normalized, "^(?:(?:xin )?chao(?: ban)?|hello(?: there)?|hi(?: there)?|hey|alo|good morning|good afternoon|good evening)[.!?]*$", RegexOptions.CultureInvariant))
+        {
+            response = string.Equals(context.Role, RoleNames.Admin, StringComparison.OrdinalIgnoreCase)
+                ? "Chào bạn! Mình là trợ lý AI quản trị. Mình có thể hỗ trợ doanh thu, tổng quan kinh doanh, đơn hàng, món bán chạy và một số thao tác quản trị."
+                : "Chào bạn! Mình có thể hỗ trợ xem thực đơn hoặc kiểm tra các đơn hàng của bạn.";
+            return true;
+        }
+
+        if (Regex.IsMatch(normalized, "^(?:ban khoe khong|ban co khoe khong|khoe khong)[.!?]*$", RegexOptions.CultureInvariant))
+        {
+            response = "Mình vẫn hoạt động tốt và sẵn sàng hỗ trợ bạn. Bạn muốn xem thông tin gì?";
+            return true;
+        }
+
+        if (Regex.IsMatch(normalized, "^(?:cam on|cam on ban|thanks|thank you)[.!?]*$", RegexOptions.CultureInvariant))
+        {
+            response = "Không có gì. Khi cần, bạn cứ gửi yêu cầu cho mình nhé.";
+            return true;
+        }
+
+        if (Regex.IsMatch(normalized, "^(?:tam biet|hen gap lai|bye)[.!?]*$", RegexOptions.CultureInvariant))
+        {
+            response = "Tạm biệt bạn. Mình luôn sẵn sàng hỗ trợ khi bạn quay lại.";
+            return true;
+        }
+
+        response = string.Empty;
+        return false;
+    }
+
+    private static string FoldForSocial(string text)
+    {
+        var mapped = text.Replace('\u0111', 'd').Replace('\u0110', 'D');
+        var decomposed = mapped.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (var character in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+                builder.Append(character);
+        }
+        return builder.ToString().ToLowerInvariant();
+    }
+
+    //dieu phoi va kiem soat quyen thuc thi
     private async Task<AiResponse> ExecuteAsync(AiPilotToolDecision decision, AiUserContext context,
         Guid correlationId, Stopwatch stopwatch, bool admin, CancellationToken token)
     {

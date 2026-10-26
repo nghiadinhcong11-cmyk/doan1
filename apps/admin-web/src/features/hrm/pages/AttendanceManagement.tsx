@@ -1,7 +1,8 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Calendar, Clock, LogIn, LogOut, Loader2, User, CheckCircle2, AlertCircle, Filter, Download, QrCode, X, Printer, MapPin, Building2, Save, ChevronRight } from 'lucide-react';
+import { Search, Calendar, Clock, LogIn, LogOut, Loader2, User, CheckCircle2, AlertCircle, Filter, Download, QrCode, X, Printer, MapPin, Building2, Save, ChevronRight, RefreshCw } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { Feedback } from '../../../components/ui';
+import { fetchBranchList } from '../../../api/branchQuery';
 
 interface AttendanceRecord {
   id: string;
@@ -57,10 +58,8 @@ const AttendanceManagement = () => {
 
   const fetchBranches = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/Branch`);
-      if (!response.ok) throw new Error('branch request failed');
-      const data = await response.json();
-      setBranches(data);
+      const data = await fetchBranchList();
+      setBranches(data as Branch[]);
 
       const savedBranchId = localStorage.getItem('attendance_qr_branch_id');
       if (savedBranchId) {
@@ -134,7 +133,7 @@ const AttendanceManagement = () => {
            <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Lọc theo cơ sở</p>
               <select
-                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-gray-700"
+                className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 value={filterBranch}
                 onChange={(e) => setFilterBranch(e.target.value)}
               >
@@ -146,9 +145,9 @@ const AttendanceManagement = () => {
            {/* Status Filter */}
            <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Trạng thái vào ca</p>
-              <div className="space-y-2">
+              <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50 p-2">
                  {['all', 'Đúng giờ', 'Muộn'].map(s => (
-                   <label key={s} className="flex items-center cursor-pointer group">
+                   <label key={s} className="group flex cursor-pointer items-center rounded-xl px-3 py-2.5 transition-all hover:bg-blue-50">
                       <input
                         type="radio"
                         className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
@@ -175,7 +174,7 @@ const AttendanceManagement = () => {
                    <div className="bg-white p-2 rounded-2xl shadow-sm border border-blue-100 group relative overflow-hidden">
                       <img src={generateAttendanceQr()} alt="QR" className="w-full h-auto" />
                       <div className="absolute inset-0 bg-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                         <button onClick={() => setIsQrModalOpen(true)} className="bg-white p-2 rounded-full shadow-md text-blue-600 hover:scale-110 transition-transform">
+                         <button onClick={() => setIsQrModalOpen(true)} className="rounded border border-gray-200 bg-white p-1.5 text-blue-600 shadow-md transition-transform hover:scale-110">
                             <QrCode size={18} />
                          </button>
                       </div>
@@ -186,7 +185,7 @@ const AttendanceManagement = () => {
                       </p>
                       <button
                         onClick={() => setIsQrModalOpen(true)}
-                        className="mt-2 text-[9px] text-blue-500 font-black uppercase tracking-widest hover:underline decoration-2 underline-offset-4"
+                        className="mt-2 rounded border border-blue-200 bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-blue-500 transition hover:bg-blue-50"
                       >
                         [ Đổi cơ sở / Tạo lại ]
                       </button>
@@ -199,7 +198,7 @@ const AttendanceManagement = () => {
                   </p>
                   <button
                     onClick={handleActivateQr}
-                    className="w-full mt-4 py-3 bg-[#0070f4] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                    className="mt-4 w-full rounded bg-[#0070f4] py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-700 active:scale-95"
                   >
                     KÍCH HOẠT QR
                   </button>
@@ -216,17 +215,17 @@ const AttendanceManagement = () => {
             <Search className="absolute left-4 top-3 h-4 w-4 text-gray-300" />
             <input
               type="text"
-              className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-4 text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               placeholder="Nhập tên nhân viên cần tra cứu..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="flex space-x-3">
-            <button disabled={loading} onClick={fetchAttendances} className="bg-white border-2 border-gray-100 text-gray-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95 disabled:cursor-wait disabled:opacity-50">
-              LÀM MỚI
+            <button type="button" disabled={loading} onClick={() => void fetchAttendances()} className="inline-flex min-h-0 items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-all hover:bg-gray-50 active:scale-95 disabled:cursor-wait disabled:opacity-50">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> LÀM MỚI
             </button>
-            <button className="bg-white border-2 border-gray-100 text-gray-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95 flex items-center">
+            <button className="flex min-h-0 items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-all hover:bg-gray-50 active:scale-95">
               <Download size={14} className="mr-2 text-gray-400"/> XUẤT FILE
             </button>
           </div>
@@ -305,10 +304,10 @@ const AttendanceManagement = () => {
 
       {/* QR ATTENDANCE MODAL */}
       {isQrModalOpen && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex justify-center items-center p-4 backdrop-blur-md animate-in fade-in duration-300">
-           <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full text-center shadow-2xl relative overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/60 px-4 pb-10 pt-10 backdrop-blur-sm animate-in fade-in duration-300">
+           <div className="relative w-full max-w-lg overflow-hidden rounded-[2.5rem] bg-white p-10 text-center shadow-2xl">
               <div className="absolute top-0 left-0 w-full h-3 bg-[#0070f4]"></div>
-              <button onClick={() => setIsQrModalOpen(false)} className="absolute top-6 right-6 text-gray-300 hover:text-gray-800 hover:rotate-90 transition-all"><X size={32}/></button>
+              <button onClick={() => setIsQrModalOpen(false)} className="absolute right-6 top-6 rounded border border-gray-200 p-1.5 text-gray-300 transition-all hover:rotate-90 hover:text-gray-800"><X size={32}/></button>
 
               <span className="bg-blue-50 text-[#0070f4] text-[10px] font-black px-6 py-2 rounded-full uppercase tracking-[0.2em] border border-blue-100 italic">Security Point</span>
               <h3 className="text-3xl font-black text-gray-800 uppercase tracking-tighter mt-8 mb-8 italic">MÃ QR CHẤM CÔNG</h3>
@@ -317,7 +316,7 @@ const AttendanceManagement = () => {
                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left ml-4 opacity-70">Xác nhận cơ sở phát hành</label>
                  <div className="relative">
                     <select
-                      className="w-full border-2 border-gray-100 rounded-2xl py-4 px-6 outline-none focus:border-blue-500 font-black text-gray-700 bg-gray-50 appearance-none transition-all shadow-inner"
+                      className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       value={selectedBranchForQr?.id}
                       onChange={(e) => {
                          const b = branches.find(x => x.id === e.target.value);
@@ -336,15 +335,15 @@ const AttendanceManagement = () => {
               <div className="bg-gray-50 p-8 rounded-[3rem] border-4 border-white shadow-2xl mb-10 group relative transition-all hover:bg-white">
                  <img src={generateAttendanceQr()} alt="QR Attendance" className="w-full aspect-square" />
                  <div className="absolute inset-0 bg-blue-600/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-[3rem] flex items-center justify-center">
-                    <button className="bg-white text-blue-600 p-4 rounded-full shadow-2xl active:scale-90 transition-all"><Download size={28}/></button>
+                    <button className="rounded border border-gray-200 bg-white p-3 text-blue-600 shadow-2xl transition-all active:scale-90"><Download size={28}/></button>
                  </div>
               </div>
 
               <div className="flex space-x-4">
-                 <button className="flex-1 py-5 bg-gray-100 text-gray-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center justify-center active:scale-95">
+                 <button className="flex flex-1 items-center justify-center rounded bg-gray-100 py-1.5 text-xs font-bold uppercase tracking-widest text-gray-600 transition-all hover:bg-gray-200 active:scale-95">
                     <Save size={18} className="mr-2" /> TẢI VỀ
                  </button>
-                 <button className="flex-[2] py-5 bg-[#0070f4] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center justify-center active:scale-95">
+                 <button className="flex flex-[2] items-center justify-center rounded bg-[#0070f4] py-1.5 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95">
                     <Printer size={18} className="mr-2" /> IN NHÃN QR
                  </button>
               </div>

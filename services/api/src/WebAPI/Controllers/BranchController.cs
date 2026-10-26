@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using RestaurantPOS.Application.Services;
+using System.Security.Claims;
 
 namespace RestaurantPOS.WebAPI.Controllers
 {
@@ -54,10 +55,17 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         /// <summary>Lấy danh sách đầy đủ cho màn hình quản trị chi nhánh.</summary>
         [HttpGet("management")]
-        [Authorize(Roles = "admin")]
+        [Authorize(Roles = "admin,manager")]
         public async Task<IActionResult> GetManagementBranches()
         {
-            var branches = await _context.Branches
+            var query = _context.Branches.AsQueryable();
+            if (!User.IsInRole("admin"))
+            {
+                if (!Guid.TryParse(User.FindFirstValue("branchId"), out var managerBranchId)) return Forbid();
+                query = query.Where(branch => branch.Id == managerBranchId);
+            }
+
+            var branches = await query
                 .OrderByDescending(b => b.IsMain)
                 .ThenBy(b => b.Name)
                 .Select(b => new BranchManagementDto
@@ -112,6 +120,9 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try
             {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                return await strategy.ExecuteAsync(async () =>
+                {
                 var existingProductIds = await _context.Products
                     .AsNoTracking()
                     .Select(product => product.Id)
@@ -147,6 +158,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 await transaction.CommitAsync();
                 _dashboardService?.InvalidateSummaryCache();
                 return Ok(branch);
+                });
             }
             catch (Exception ex)
             {

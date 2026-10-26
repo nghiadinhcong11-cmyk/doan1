@@ -3,6 +3,7 @@ import { Plus, Search, Filter, MoreVertical, Edit2, Trash2, Loader2, X, ChevronD
 import { API_URL } from '../../../config';
 import { useRef } from 'react';
 import { Feedback, FormField, notifyFeedback } from '../../../components/ui';
+import { fetchBranchList } from '../../../api/branchQuery';
 
 interface Employee {
   id?: string;
@@ -100,10 +101,8 @@ const EmployeeManagement = () => {
 
   const fetchBranches = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/Branch`);
-      if (!response.ok) throw new Error('branch request failed');
-      const data = await response.json();
-      setBranches(data);
+      const data = await fetchBranchList();
+      setBranches(data as Branch[]);
     } catch (err) {
       setListError('Không thể tải danh sách chi nhánh. Vui lòng thử lại.');
     }
@@ -317,13 +316,13 @@ const EmployeeManagement = () => {
           {/* Status Filter */}
           <div>
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Lọc trạng thái</p>
-            <div className="space-y-1">
+            <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50 p-2">
               {[
                 { id: 'active', label: 'Đang làm việc' },
                 { id: 'inactive', label: 'Đã nghỉ việc' },
                 { id: 'all', label: 'Tất cả nhân viên' }
               ].map(s => (
-                <label key={s.id} className="flex items-center cursor-pointer py-2 px-3 rounded-xl transition-all group hover:bg-blue-50">
+                <label key={s.id} className="group flex cursor-pointer items-center rounded-xl px-3 py-2.5 transition-all hover:bg-blue-50">
                   <input
                     type="radio"
                     name="status"
@@ -341,7 +340,7 @@ const EmployeeManagement = () => {
           <div className="space-y-3 pt-6 border-t">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Cơ sở trực thuộc</p>
             <select
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-gray-700 transition-all disabled:opacity-50"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
               value={filterBranch}
               onChange={(e) => setFilterBranch(e.target.value)}
               disabled={userRole === 'manager'}
@@ -355,7 +354,7 @@ const EmployeeManagement = () => {
           <div className="space-y-3 pt-6 border-t">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Phòng ban</p>
             <select
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2.5 px-3 outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-gray-700 transition-all"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               value={filterDept}
               onChange={(e) => setFilterDept(e.target.value)}
             >
@@ -385,7 +384,7 @@ const EmployeeManagement = () => {
             <Search className="absolute left-4 top-3 h-4 w-4 text-gray-300" />
             <input
               type="text"
-              className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-bold text-xs transition-all"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-4 text-sm font-bold outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               placeholder="Tìm theo mã, tên nhân viên, SĐT..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -393,7 +392,7 @@ const EmployeeManagement = () => {
           </div>
           <button
             onClick={() => { resetForm(); setEditingEmployee(null); setIsModalOpen(true); }}
-            className="bg-[#0070f4] text-white px-8 py-2.5 rounded-xl flex items-center font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95"
+            className="flex min-h-0 items-center rounded bg-[#0070f4] px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95"
           >
             <Plus size={18} className="mr-2" /> THÊM NHÂN VIÊN
           </button>
@@ -462,9 +461,9 @@ const EmployeeManagement = () => {
                                           <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1">{e.position} — {e.department}</p>
                                        </div>
                                        <div className="flex space-x-2">
-                                          <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="bg-white text-gray-700 px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest border border-gray-200 shadow-sm hover:bg-gray-50 transition-all">Sửa hồ sơ</button>
-                                          <button disabled={e.id === currentEmployeeId || isEmployeeActionPending(e.id)} title={e.id === currentEmployeeId ? 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập' : undefined} onClick={(ev) => { ev.stopPropagation(); handleToggleStatus(e.id!); }} className="bg-white text-orange-600 px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest border border-orange-100 shadow-sm hover:bg-orange-50 transition-all disabled:cursor-not-allowed disabled:opacity-40">{e.isActive ? 'Cho nghỉ' : 'Kích hoạt'}</button>
-                                          <button disabled={e.id === currentEmployeeId || isEmployeeActionPending(e.id)} title={e.id === currentEmployeeId ? 'Không thể tự xóa tài khoản đang đăng nhập' : undefined} onClick={(ev) => { ev.stopPropagation(); handleDeleteEmployee(e.id!); }} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all disabled:cursor-not-allowed disabled:opacity-40">Xóa vĩnh viễn</button>
+                                          <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-50">Sửa hồ sơ</button>
+                                          <button disabled={e.id === currentEmployeeId || isEmployeeActionPending(e.id)} title={e.id === currentEmployeeId ? 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập' : undefined} onClick={(ev) => { ev.stopPropagation(); handleToggleStatus(e.id!); }} className="rounded border border-orange-200 bg-white px-3 py-1.5 text-xs font-bold text-orange-600 shadow-sm transition-all hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-40">{e.isActive ? 'Cho nghỉ' : 'Kích hoạt'}</button>
+                                          <button disabled={e.id === currentEmployeeId || isEmployeeActionPending(e.id)} title={e.id === currentEmployeeId ? 'Không thể tự xóa tài khoản đang đăng nhập' : undefined} onClick={(ev) => { ev.stopPropagation(); handleDeleteEmployee(e.id!); }} className="rounded bg-red-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">Xóa vĩnh viễn</button>
                                        </div>
                                     </div>
                                     {e.id === currentEmployeeId && <p className="mb-5 text-[10px] font-bold text-orange-600">Không thể tự vô hiệu hóa hoặc xóa tài khoản đang đăng nhập.</p>}
@@ -493,7 +492,7 @@ const EmployeeManagement = () => {
       {/* MODAL FORM */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-start pt-10 overflow-y-auto pb-10 px-4 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+           <div className="w-full max-w-4xl overflow-hidden rounded-[2.5rem] bg-white shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
               <div className="bg-[#0070f4] p-6 text-white flex justify-between items-center">
                  <div>
                     <h3 className="font-black text-xl uppercase italic tracking-tighter">Hồ sơ nhân sự</h3>
@@ -611,8 +610,8 @@ const EmployeeManagement = () => {
                     </ul>
 
                     <div className="mt-auto space-y-4 pt-10">
-                       <button onClick={() => setIsModalOpen(false)} type="button" className="w-full py-4 bg-white border-2 border-gray-200 rounded-2xl font-black text-gray-400 hover:text-gray-600 hover:bg-white transition-all uppercase text-[10px] tracking-[0.2em] active:scale-95 shadow-sm">BỎ QUA</button>
-                       <button type="submit" disabled={isSaving} className="w-full py-5 bg-[#0070f4] text-white rounded-2xl font-black shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all uppercase text-[10px] tracking-[0.2em] active:scale-95 disabled:cursor-wait disabled:opacity-60">{isSaving ? 'ĐANG LƯU...' : 'LƯU HỒ SƠ'}</button>
+                       <button onClick={() => setIsModalOpen(false)} type="button" className="w-full rounded-full border-2 border-gray-200 bg-white py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 shadow-sm transition-all hover:bg-white hover:text-gray-600 active:scale-95">BỎ QUA</button>
+                       <button type="submit" disabled={isSaving} className="w-full rounded-full bg-[#0070f4] py-4 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-wait disabled:opacity-60">{isSaving ? 'ĐANG LƯU...' : 'LƯU HỒ SƠ'}</button>
                     </div>
                  </div>
               </form>

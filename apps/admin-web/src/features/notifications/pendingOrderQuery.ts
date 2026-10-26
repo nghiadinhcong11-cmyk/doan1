@@ -30,11 +30,11 @@ let pendingWebOrdersInFlight: {
  * Coalesces simultaneous count/list reads only. The result is not cached after
  * completion, so logout or branch changes cannot reuse another scope's data.
  */
-async function fetchPendingWebOrderSnapshot(signal?: AbortSignal): Promise<PendingOrderCandidate[]> {
-  const selectedBranchId = localStorage.getItem('selectedBranchId') || '';
+async function fetchPendingWebOrderSnapshot(signal?: AbortSignal, includeAllBranches = false): Promise<PendingOrderCandidate[]> {
+  const selectedBranchId = includeAllBranches ? '' : (localStorage.getItem('selectedBranchId') || '');
   // The token is used only as an in-memory equality boundary so a logout/login
   // cannot join another user's active request. It is never persisted or logged.
-  const scopeKey = `${selectedBranchId}|${localStorage.getItem('adminToken') || ''}`;
+  const scopeKey = `${includeAllBranches ? 'all' : selectedBranchId}|${localStorage.getItem('adminToken') || ''}`;
   if (pendingWebOrdersInFlight?.scopeKey === scopeKey) return pendingWebOrdersInFlight.promise;
 
   const params = new URLSearchParams({ status: 'Đang xử lý,Đổi quà' });
@@ -59,8 +59,8 @@ async function fetchPendingWebOrderSnapshot(signal?: AbortSignal): Promise<Pendi
  * Reads the server's order list and applies the same actionable-order definition
  * used by POS: pending status with no employee assigned yet.
  */
-export async function fetchPendingWebOrderCount(signal?: AbortSignal): Promise<number> {
-  return selectPendingWebOrders(await fetchPendingWebOrderSnapshot(signal)).length;
+export async function fetchPendingWebOrderCount(signal?: AbortSignal, includeAllBranches = false): Promise<number> {
+  return selectPendingWebOrders(await fetchPendingWebOrderSnapshot(signal, includeAllBranches)).length;
 }
 
 /**
@@ -68,8 +68,8 @@ export async function fetchPendingWebOrderCount(signal?: AbortSignal): Promise<n
  * a replaceable view of server state, not an append-only event log; this keeps
  * merged orders and completed orders from producing stale or duplicate items.
  */
-export async function fetchPendingWebOrderNotifications(signal?: AbortSignal): Promise<PendingWebOrderNotification[]> {
-  return selectPendingOrderNotifications(await fetchPendingWebOrderSnapshot(signal))
+export async function fetchPendingWebOrderNotifications(signal?: AbortSignal, includeAllBranches = false): Promise<PendingWebOrderNotification[]> {
+  return selectPendingOrderNotifications(await fetchPendingWebOrderSnapshot(signal, includeAllBranches))
     .map(order => {
       const isGift = order.status === 'Đổi quà';
       const amount = typeof order.totalAmount === 'number' ? order.totalAmount : 0;

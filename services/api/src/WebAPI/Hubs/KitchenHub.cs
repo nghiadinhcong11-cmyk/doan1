@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Authorization;
 using RestaurantPOS.Application.Services;
+using RestaurantPOS.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -9,7 +11,15 @@ namespace RestaurantPOS.WebAPI.Hubs
 {
     [Authorize(Roles = "admin,manager,employee,cashier,kitchen")]
     public class KitchenHub : Hub
-    {   //xac thuc va tham gia nhom
+    {
+        private readonly ApplicationDbContext _context;
+
+        public KitchenHub(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        //xac thuc va tham gia nhom
         public override async Task OnConnectedAsync()
         {
             var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
@@ -43,6 +53,17 @@ namespace RestaurantPOS.WebAPI.Hubs
                 {
                     await Groups.AddToGroupAsync(Context.ConnectionId, $"branch:{connectedBranchId}:role:{role}");
                 }
+            }
+            else if (isAdmin && !hasRequestedBranch)
+            {
+                // Global admins receive branch-scoped notifications from every
+                // active branch. Managers and staff never enter this path.
+                var branchIds = await _context.Branches.AsNoTracking()
+                    .Where(branch => branch.IsActive)
+                    .Select(branch => branch.Id)
+                    .ToListAsync();
+                foreach (var branchId in branchIds)
+                    await Groups.AddToGroupAsync(Context.ConnectionId, $"branch:{branchId}");
             }
 
             await base.OnConnectedAsync();

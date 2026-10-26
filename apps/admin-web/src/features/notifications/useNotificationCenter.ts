@@ -55,9 +55,9 @@ export const useNotificationCenter = (role: NotificationRole) => {
   const requestGeneration = useRef(0);
 
   const branchQuery = useCallback(() => {
-    if (role !== 'admin') return '';
-    const branchId = branchScope();
-    return branchId ? `&branchId=${encodeURIComponent(branchId)}` : '';
+    // Admin is global-scope and must receive notifications from every branch.
+    // Branch-scoped roles are restricted server-side by their authenticated branch.
+    return '';
   }, []);
 
   const refreshNotifications = useCallback(async () => {
@@ -88,7 +88,11 @@ export const useNotificationCenter = (role: NotificationRole) => {
     const generation = requestGeneration.current;
     setLoadingPending(true);
     try {
-      const [count, list] = await Promise.all([fetchPendingWebOrderCount(), fetchPendingWebOrderNotifications()]);
+      const includeAllBranches = role === 'admin';
+      const [count, list] = await Promise.all([
+        fetchPendingWebOrderCount(undefined, includeAllBranches),
+        fetchPendingWebOrderNotifications(undefined, includeAllBranches)
+      ]);
       if (generation !== requestGeneration.current) return;
       setPendingCount(count);
       setPendingNotifications(list);
@@ -101,7 +105,7 @@ export const useNotificationCenter = (role: NotificationRole) => {
   }, [role]);
 
   const markRead = useCallback(async (id: string, itemBranchId?: string | null) => {
-    const branchId = itemBranchId || (role === 'admin' ? branchScope() : '');
+    const branchId = role === 'admin' ? '' : (itemBranchId || '');
     const suffix = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
     const response = await fetch(`${API_URL}/api/Notification/${id}/read${suffix}`, { method: 'PATCH' });
     if (!response.ok) throw new Error('Không thể đánh dấu thông báo đã đọc.');
@@ -110,7 +114,7 @@ export const useNotificationCenter = (role: NotificationRole) => {
   }, [role]);
 
   const markAllRead = useCallback(async () => {
-    const branchId = role === 'admin' ? branchScope() : '';
+    const branchId = '';
     const suffix = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
     const response = await fetch(`${API_URL}/api/Notification/read-all${suffix}`, { method: 'POST' });
     if (!response.ok) throw new Error('Không thể đánh dấu tất cả thông báo.');
@@ -132,13 +136,10 @@ export const useNotificationCenter = (role: NotificationRole) => {
     // fallback for missed events and is intentionally kept low-frequency to reduce API/DB traffic.
     const notificationTimer = window.setInterval(() => { if (!disposed && document.visibilityState === 'visible') void refreshNotifications(); }, 60000);
     const pendingTimer = window.setInterval(() => { if (!disposed && document.visibilityState === 'visible') void refreshPending(); }, 60000);
-    const selectedBranch = role === 'admin' ? branchScope() : '';
-    const connectionUrl = `${API_URL}/kitchenHub${selectedBranch ? `?branchId=${encodeURIComponent(selectedBranch)}` : ''}`;
+    const connectionUrl = `${API_URL}/kitchenHub`;
     const connection = new signalR.HubConnectionBuilder().withUrl(connectionUrl, { accessTokenFactory: () => localStorage.getItem('adminToken') || '' }).withAutomaticReconnect().build();
     const onNotification = (notification: NotificationItem) => {
       if (disposed) return;
-      const selectedBranch = branchScope();
-      if (notification.branchId && selectedBranch && notification.branchId !== selectedBranch) return;
       setNotifications(previous => {
         if (previous.some(item => item.id === notification.id)) return previous;
         setUnreadCount(count => count + 1);
@@ -147,8 +148,6 @@ export const useNotificationCenter = (role: NotificationRole) => {
     };
     const onPendingChanged = (payload?: { branchId?: string | null }) => {
       if (disposed) return;
-      const selectedBranch = branchScope();
-      if (payload?.branchId && selectedBranch && payload.branchId !== selectedBranch && role !== 'admin') return;
       void refreshPending();
     };
     const onProductAvailabilityChanged = (payload: { id: string; availabilityStatus: string; branchId: string }) => {

@@ -6,6 +6,7 @@ public class ReceiptSettings
 {
     public const string InvoiceDocumentType = "Invoice";
     public const string StockReceiptDocumentType = "StockReceipt";
+    public const string GiftRedemptionDocumentType = "GiftRedemption";
 
     public Guid Id { get; set; }
     public Guid? BranchId { get; set; }

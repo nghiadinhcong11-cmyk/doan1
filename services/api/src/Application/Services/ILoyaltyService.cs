@@ -13,6 +13,9 @@ namespace RestaurantPOS.Application.Services
         /// <summary>Sử dụng điểm để giảm giá cho hóa đơn.</summary>
         Task<LoyaltyTransaction?> RedeemPointsAsync(Guid customerId, Guid orderId, int points);
 
+        /// <summary>Đổi điểm lấy quà trong một yêu cầu đổi quà.</summary>
+        Task<LoyaltyTransaction?> RedeemGiftAsync(Guid customerId, Guid orderId, Guid promotionId, string? processedBy = null, Guid? processedByEmployeeId = null);
+
         /// <summary>Hoàn lại điểm nếu hóa đơn bị hủy/hoàn tiền.</summary>
         Task<LoyaltyTransaction?> RefundPointsAsync(Guid orderId);
 

@@ -10,6 +10,7 @@ namespace RestaurantPOS.Application.Common.Orders;
 public static class OrderStatusPolicy
 {
     public const string InProgress = "Đang xử lý";
+    public const string GiftPending = "Đổi quà";
     public const string LegacyPending = "Pending";
     public const string Completed = "Hoàn thành";
     public const string LegacyCompleted = "Completed";
@@ -20,6 +21,7 @@ public static class OrderStatusPolicy
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [InProgress] = InProgress,
+            [GiftPending] = GiftPending,
             [LegacyPending] = LegacyPending,
             [Completed] = Completed,
             [LegacyCompleted] = LegacyCompleted,
@@ -51,6 +53,7 @@ public static class OrderStatusPolicy
     public static bool IsInProgress(string? status) =>
         TryNormalize(status, out var normalizedStatus) &&
         (string.Equals(normalizedStatus, InProgress, StringComparison.Ordinal) ||
+         string.Equals(normalizedStatus, GiftPending, StringComparison.Ordinal) ||
          string.Equals(normalizedStatus, LegacyPending, StringComparison.Ordinal));
 
     public static bool IsCompleted(string? status) =>

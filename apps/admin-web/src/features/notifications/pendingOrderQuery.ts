@@ -3,7 +3,6 @@ import { PENDING_ORDER_STATUS } from '../orders/orderClassification';
 import {
   assertSuccessfulOrderListResponse,
   selectPendingOrderNotifications,
-  selectPendingWebOrders,
   type PendingOrderCandidate,
 } from '../orders/orderListSelectors';
 
@@ -17,6 +16,11 @@ export interface PendingWebOrderNotification {
   message: string;
   type: 'order' | 'gift';
   link: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  totalAmount?: number | null;
+  status?: string | null;
+  details?: Array<{ productName?: string | null; quantity?: number; unitPrice?: number; options?: string | null }>;
   isRead: false;
   isPendingOrder: true;
 }
@@ -24,30 +28,39 @@ export interface PendingWebOrderNotification {
 let pendingWebOrdersInFlight: {
   scopeKey: string;
   promise: Promise<PendingOrderCandidate[]>;
+  forceRefresh: boolean;
 } | null = null;
 
 /**
  * Coalesces simultaneous count/list reads only. The result is not cached after
  * completion, so logout or branch changes cannot reuse another scope's data.
  */
-async function fetchPendingWebOrderSnapshot(signal?: AbortSignal, includeAllBranches = false): Promise<PendingOrderCandidate[]> {
+async function fetchPendingWebOrderSnapshot(signal?: AbortSignal, includeAllBranches = false, forceRefresh = false): Promise<PendingOrderCandidate[]> {
   const selectedBranchId = includeAllBranches ? '' : (localStorage.getItem('selectedBranchId') || '');
   // The token is used only as an in-memory equality boundary so a logout/login
   // cannot join another user's active request. It is never persisted or logged.
   const scopeKey = `${includeAllBranches ? 'all' : selectedBranchId}|${localStorage.getItem('adminToken') || ''}`;
-  if (pendingWebOrdersInFlight?.scopeKey === scopeKey) return pendingWebOrdersInFlight.promise;
+  // A realtime invalidation can arrive while the initial snapshot is still in
+  // flight. Reusing that older request would lose the newly-created order from
+  // the notification bell, so event-driven refreshes must read a fresh snapshot.
+  if (pendingWebOrdersInFlight?.scopeKey === scopeKey &&
+      (!forceRefresh || pendingWebOrdersInFlight.forceRefresh)) {
+    return pendingWebOrdersInFlight.promise;
+  }
 
   const params = new URLSearchParams({ status: 'Đang xử lý,Đổi quà' });
   if (selectedBranchId) params.set('branchId', selectedBranchId);
 
   const request = (async () => {
-  const response = await fetch(`${API_URL}/api/Order/pending-summary?${params.toString()}`, { signal });
+  // Realtime invalidation must read the current server snapshot, not a cached
+  // response from the previous pending-order state.
+  const response = await fetch(`${API_URL}/api/Order/pending-summary?${params.toString()}`, { signal, cache: 'no-store' });
     assertSuccessfulOrderListResponse(response, 'Pending order snapshot');
     const orders: unknown = await response.json();
     return Array.isArray(orders) ? orders as PendingOrderCandidate[] : [];
   })();
 
-  pendingWebOrdersInFlight = { scopeKey, promise: request };
+  pendingWebOrdersInFlight = { scopeKey, promise: request, forceRefresh };
   try {
     return await request;
   } finally {
@@ -59,8 +72,8 @@ async function fetchPendingWebOrderSnapshot(signal?: AbortSignal, includeAllBran
  * Reads the server's order list and applies the same actionable-order definition
  * used by POS: pending status with no employee assigned yet.
  */
-export async function fetchPendingWebOrderCount(signal?: AbortSignal, includeAllBranches = false): Promise<number> {
-  return selectPendingWebOrders(await fetchPendingWebOrderSnapshot(signal, includeAllBranches)).length;
+export async function fetchPendingWebOrderCount(signal?: AbortSignal, includeAllBranches = false, forceRefresh = false): Promise<number> {
+  return selectPendingOrderNotifications(await fetchPendingWebOrderSnapshot(signal, includeAllBranches, forceRefresh)).length;
 }
 
 /**
@@ -68,10 +81,13 @@ export async function fetchPendingWebOrderCount(signal?: AbortSignal, includeAll
  * a replaceable view of server state, not an append-only event log; this keeps
  * merged orders and completed orders from producing stale or duplicate items.
  */
-export async function fetchPendingWebOrderNotifications(signal?: AbortSignal, includeAllBranches = false): Promise<PendingWebOrderNotification[]> {
-  return selectPendingOrderNotifications(await fetchPendingWebOrderSnapshot(signal, includeAllBranches))
+export async function fetchPendingWebOrderNotifications(signal?: AbortSignal, includeAllBranches = false, targetPath = '/pos', forceRefresh = false): Promise<PendingWebOrderNotification[]> {
+  return selectPendingOrderNotifications(await fetchPendingWebOrderSnapshot(signal, includeAllBranches, forceRefresh))
     .map(order => {
-      const isGift = order.status === 'Đổi quà';
+      // Older gift requests were persisted as "Đang xử lý" before the gift
+      // status flow was introduced. Keep them actionable by using the
+      // immutable gift marker in the detail as a compatibility signal.
+      const isGift = order.status === 'Đổi quà' || order.details?.some(detail => detail.productName?.startsWith('[ĐỔI QUÀ]')) === true;
       const amount = typeof order.totalAmount === 'number' ? order.totalAmount : 0;
       return {
         id: order.id!,
@@ -80,7 +96,12 @@ export async function fetchPendingWebOrderNotifications(signal?: AbortSignal, in
           ? `Khách ${order.customerName || order.customerPhone || 'vãng lai'} muốn đổi: ${order.details?.[0]?.productName || 'Quà tặng'}`
           : `Bàn ${order.tableName || 'vãng lai'} vừa đặt món: ${amount.toLocaleString()}đ`,
         type: isGift ? 'gift' : 'order',
-        link: isGift ? '/customers' : `/pos?reviewOrderId=${order.id}`,
+        link: isGift ? `/pos?giftOrderId=${order.id}` : `${targetPath}?reviewOrderId=${order.id}`,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        totalAmount: order.totalAmount,
+        status: order.status,
+        details: order.details,
         isRead: false,
         isPendingOrder: true
       };

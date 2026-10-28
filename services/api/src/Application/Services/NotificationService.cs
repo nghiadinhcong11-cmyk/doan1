@@ -26,10 +26,11 @@ public sealed class NotificationService : INotificationService
     {
         page = Math.Clamp(page, 1, 100000);
         pageSize = Math.Clamp(pageSize, 1, 100);
+        var isGlobalAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) && !branchId.HasValue;
         var query = _context.Notifications.Where(n =>
             (n.TargetRole == null || n.TargetRole == role) &&
             (n.TargetUserId == null || n.TargetUserId == userId) &&
-            (n.BranchId == null || (branchId.HasValue && n.BranchId == branchId.Value)));
+            (n.BranchId == null || isGlobalAdmin || (branchId.HasValue && n.BranchId == branchId.Value)));
         if (!string.IsNullOrWhiteSpace(type)) query = query.Where(n => n.Type == type);
         if (from.HasValue) query = query.Where(n => n.CreatedAt >= from.Value);
         if (to.HasValue) query = query.Where(n => n.CreatedAt < to.Value.Date.AddDays(1));
@@ -86,10 +87,11 @@ public sealed class NotificationService : INotificationService
 
     public async Task<bool> MarkReadAsync(Guid id, string role, Guid userId, Guid? branchId)
     {
+        var isGlobalAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) && !branchId.HasValue;
         var notification = await _context.Notifications.FirstOrDefaultAsync(n => n.Id == id &&
             (n.TargetRole == null || n.TargetRole == role) &&
             (n.TargetUserId == null || n.TargetUserId == userId) &&
-            (n.BranchId == null || (branchId.HasValue && n.BranchId == branchId.Value)));
+            (n.BranchId == null || isGlobalAdmin || (branchId.HasValue && n.BranchId == branchId.Value)));
         if (notification == null) return false;
         if (notification.UseLegacyReadState)
         {
@@ -103,12 +105,37 @@ public sealed class NotificationService : INotificationService
         return true;
     }
 
+    public async Task<int> MarkEntityReadAsync(Guid entityId, string? entityType, string role, Guid userId, Guid? branchId)
+    {
+        var isGlobalAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) && !branchId.HasValue;
+        var query = _context.Notifications.Where(n =>
+            n.EntityId == entityId &&
+            (string.IsNullOrWhiteSpace(entityType) || n.EntityType == entityType) &&
+            (n.TargetRole == null || n.TargetRole == role) &&
+            (n.TargetUserId == null || n.TargetUserId == userId) &&
+            (n.BranchId == null || isGlobalAdmin || (branchId.HasValue && n.BranchId == branchId.Value)));
+        var notifications = await query.ToListAsync();
+        var legacy = notifications.Where(notification => notification.UseLegacyReadState && !notification.IsRead).ToList();
+        foreach (var notification in legacy) notification.IsRead = true;
+
+        var ids = notifications.Where(notification => !notification.UseLegacyReadState).Select(notification => notification.Id).ToList();
+        var existing = ids.Count == 0
+            ? new List<Guid>()
+            : await _context.NotificationReads.Where(read => read.UserId == userId && ids.Contains(read.NotificationId)).Select(read => read.NotificationId).ToListAsync();
+        foreach (var id in ids.Except(existing))
+            _context.NotificationReads.Add(new NotificationRead { NotificationId = id, UserId = userId, ReadAt = DateTime.UtcNow });
+
+        await _context.SaveChangesAsync();
+        return legacy.Count + ids.Except(existing).Count();
+    }
+
     public async Task<int> MarkAllReadAsync(string role, Guid userId, Guid? branchId, DateTime cutoffUtc)
     {
+        var isGlobalAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) && !branchId.HasValue;
         var notifications = await _context.Notifications.Where(n => n.CreatedAt <= cutoffUtc &&
             (n.TargetRole == null || n.TargetRole == role) &&
             (n.TargetUserId == null || n.TargetUserId == userId) &&
-            (n.BranchId == null || (branchId.HasValue && n.BranchId == branchId.Value))).ToListAsync();
+            (n.BranchId == null || isGlobalAdmin || (branchId.HasValue && n.BranchId == branchId.Value))).ToListAsync();
         var legacy = notifications.Where(notification => notification.UseLegacyReadState && !notification.IsRead).ToList();
         foreach (var notification in legacy) notification.IsRead = true;
         var ids = notifications.Where(notification => !notification.UseLegacyReadState).Select(notification => notification.Id).ToList();

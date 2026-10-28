@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RestaurantPOS.Application.Common.Orders;
 using RestaurantPOS.Infrastructure.Persistence;
 using System.Security.Claims;
 
@@ -52,9 +53,31 @@ public class InvoiceController : ControllerBase
         if (!string.IsNullOrWhiteSpace(paymentMethod)) query = query.Where(o => o.PaymentMethod == paymentMethod);
         if (!string.IsNullOrWhiteSpace(paymentStatus))
         {
-            query = paymentStatus.Equals("Completed", StringComparison.OrdinalIgnoreCase) || paymentStatus == "Hoàn thành"
-                ? query.Where(o => o.Status == "Hoàn thành" && o.PaidAmount >= o.TotalAmount && o.TotalAmount > 0)
-                : query.Where(o => (o.Status != "Hoàn thành" && o.Status != "Đã hủy") || (o.Status == "Hoàn thành" && o.PaidAmount < o.TotalAmount));
+            if (paymentStatus.Equals("Completed", StringComparison.OrdinalIgnoreCase) || paymentStatus == OrderStatusPolicy.Completed)
+            {
+                query = query.Where(o =>
+                    (o.Status == OrderStatusPolicy.Completed || o.Status == OrderStatusPolicy.LegacyCompleted) &&
+                    ((o.PaidAmount >= o.TotalAmount && o.TotalAmount > 0) ||
+                     (o.TotalAmount == 0 && o.Details.Any(detail => detail.ProductName != null && detail.ProductName.StartsWith("[ĐỔI QUÀ]")))));
+            }
+            else if (paymentStatus.Equals("Gift", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(o => o.Status == "Đổi quà" ||
+                    ((o.Status == OrderStatusPolicy.Completed || o.Status == OrderStatusPolicy.LegacyCompleted) &&
+                     o.TotalAmount == 0 && o.Details.Any(detail => detail.ProductName != null && detail.ProductName.StartsWith("[ĐỔI QUÀ]"))));
+            }
+            else if (paymentStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) || paymentStatus == OrderStatusPolicy.Cancelled)
+            {
+                query = query.Where(o => o.Status == OrderStatusPolicy.Cancelled || o.Status == OrderStatusPolicy.LegacyCancelled);
+            }
+            else
+            {
+                query = query.Where(o =>
+                    (o.Status != OrderStatusPolicy.Completed && o.Status != OrderStatusPolicy.LegacyCompleted &&
+                     o.Status != OrderStatusPolicy.Cancelled && o.Status != OrderStatusPolicy.LegacyCancelled) ||
+                    ((o.Status == OrderStatusPolicy.Completed || o.Status == OrderStatusPolicy.LegacyCompleted) &&
+                     o.PaidAmount < o.TotalAmount));
+            }
         }
 
         var totalItems = await query.CountAsync();

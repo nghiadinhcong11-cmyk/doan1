@@ -32,6 +32,8 @@ namespace RestaurantPOS.Domain.Entities
         public Guid? TableId { get; set; }
         public RestaurantTable? Table { get; set; }
         public string? CreatedBy { get; set; } // Người tạo hóa đơn
+        public Guid? CreatedByEmployeeId { get; set; }
+        public Guid? PaidByEmployeeId { get; set; }
         public Guid BranchId { get; set; }    // ID chi nhánh
         public Branch? Branch { get; set; }
         public string? BranchName { get; set; } // Tên chi nhánh

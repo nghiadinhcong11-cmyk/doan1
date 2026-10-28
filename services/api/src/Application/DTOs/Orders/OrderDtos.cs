@@ -172,6 +172,7 @@ namespace RestaurantPOS.Application.DTOs.Orders
     public sealed class PendingOrderSummaryDto
     {
         public Guid Id { get; set; }
+        public Guid? CustomerId { get; set; }
         public string? Status { get; set; }
         public string? CreatedBy { get; set; }
         public string? TableName { get; set; }

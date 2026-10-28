@@ -12,5 +12,6 @@ public interface INotificationService
     Task<int> GetUnreadCountAsync(string role, Guid userId, Guid? branchId);
     Task<Notification> CreateAsync(Notification notification);
     Task<bool> MarkReadAsync(Guid id, string role, Guid userId, Guid? branchId);
+    Task<int> MarkEntityReadAsync(Guid entityId, string? entityType, string role, Guid userId, Guid? branchId);
     Task<int> MarkAllReadAsync(string role, Guid userId, Guid? branchId, DateTime cutoffUtc);
 }

@@ -134,7 +134,10 @@ namespace RestaurantPOS.Application.Services
         {
             var query = _context.Orders
                 .AsNoTracking()
-                .Where(order => order.Status == "Đang xử lý" || order.Status == "Đổi quà");
+                .Where(order =>
+                    (order.Status == "Đang xử lý" || order.Status == "Đổi quà") &&
+                    !_context.LoyaltyTransactions.Any(transaction =>
+                        transaction.OrderId == order.Id && transaction.Type == "RedeemGift"));
 
             if (branchId.HasValue)
             {
@@ -146,6 +149,7 @@ namespace RestaurantPOS.Application.Services
                 .Select(order => new PendingOrderSummaryDto
                 {
                     Id = order.Id,
+                    CustomerId = order.CustomerId,
                     Status = order.Status,
                     CreatedBy = order.CreatedBy,
                     TableName = order.TableName,
@@ -215,9 +219,13 @@ namespace RestaurantPOS.Application.Services
             return await _context.Orders.Include(o => o.Details).FirstOrDefaultAsync(o => o.Id == id);
         }
 
-        public async Task<Order> CreateOrUpdateOrderAsync(Order order, bool deferAvailabilityValidation = false)
+        public async Task<Order> CreateOrUpdateOrderAsync(Order order, bool deferAvailabilityValidation = false, bool isGiftOrder = false)
         {
             const int MAX_QUANTITY = 500;
+
+            if (isGiftOrder && (order.TotalAmount != 0 || order.PaidAmount != 0 || order.Details == null || order.Details.Count != 1 ||
+                order.Details[0].ProductId.HasValue || order.Details[0].ToppingId.HasValue || order.Details[0].UnitPrice != 0))
+                throw new ArgumentException("Yêu cầu đổi quà không hợp lệ.");
 
             if (order.BranchId == Guid.Empty)
                 throw new ArgumentException("Đơn hàng phải thuộc một chi nhánh.");
@@ -260,7 +268,7 @@ namespace RestaurantPOS.Application.Services
                 await ValidateOrderProductAvailabilityAsync(order);
 
             // Logic: Nếu bàn đã có đơn "Đang xử lý", ta cập nhật đơn đó thay vì tạo mới
-            if (order.Id != Guid.Empty || (order.TableName != "Mang về" && !string.IsNullOrEmpty(order.TableName)))
+            if (!isGiftOrder && (order.Id != Guid.Empty || (order.TableName != "Mang về" && !string.IsNullOrEmpty(order.TableName))))
             {
                 // Do not let a previously materialized request graph participate in the
                 // merge. The order payload is client input, while the database graph below
@@ -292,6 +300,8 @@ namespace RestaurantPOS.Application.Services
                     existingOrder.CustomerPhone = order.CustomerPhone;
                     existingOrder.CustomerEmail = order.CustomerEmail;
                     existingOrder.CustomerId = order.CustomerId;
+                    if (order.CreatedByEmployeeId.HasValue)
+                        existingOrder.CreatedByEmployeeId = order.CreatedByEmployeeId;
                     // A later QR round has no staff creator; it must not turn an
                     // already accepted order back into a pending web order.
                     if (!string.IsNullOrWhiteSpace(order.CreatedBy))
@@ -371,7 +381,7 @@ namespace RestaurantPOS.Application.Services
             order.CreatedAt = DateTime.UtcNow;
 
             // Financial safety: Initial orders must be "Đang xử lý" and unpaid.
-            order.Status = "Đang xử lý";
+            order.Status = isGiftOrder ? "Đổi quà" : "Đang xử lý";
             order.PaidAmount = 0;
             order.PaymentMethod = null;
             order.PaymentAt = null;
@@ -545,7 +555,13 @@ namespace RestaurantPOS.Application.Services
                 .Distinct()
                 .ToArray() ?? Array.Empty<Guid>();
 
-            if (productIds.Length == 0)
+            var toppingIds = order.Details?
+                .Where(detail => detail.ToppingId.HasValue)
+                .Select(detail => detail.ToppingId!.Value)
+                .Distinct()
+                .ToArray() ?? Array.Empty<Guid>();
+
+            if (productIds.Length == 0 && toppingIds.Length == 0)
                 return false;
 
             var availableProductCount = await _context.Products
@@ -559,7 +575,19 @@ namespace RestaurantPOS.Application.Services
                         availability.Status == "Available"))
                 .CountAsync();
 
-            return availableProductCount == productIds.Length;
+            var availableToppingCount = await _context.Toppings
+                .Where(topping => toppingIds.Contains(topping.Id) &&
+                    topping.IsActive &&
+                    _context.ToppingBranchAvailabilities.Any(availability =>
+                        availability.ToppingId == topping.Id &&
+                        availability.BranchId == order.BranchId &&
+                        availability.Branch != null &&
+                        availability.Branch.IsActive &&
+                        availability.Status == "Available"))
+                .CountAsync();
+
+            return availableProductCount == productIds.Length &&
+                availableToppingCount == toppingIds.Length;
         }
 
         private static decimal GetNonNegativeDecimalSetting(
@@ -589,9 +617,9 @@ namespace RestaurantPOS.Application.Services
 
         //hàm Mã kiểm tra điều kiện và cập nhật tiếp nhận đơn web trong OrderService.
     
-        public async Task<(WebOrderAcceptResult Result, Order? Order)> AcceptWebOrderAsync(Guid id, Guid? tableId, Guid? allowedBranchId, string acceptedBy)
+        public async Task<(WebOrderAcceptResult Result, Order? Order)> AcceptWebOrderAsync(Guid id, Guid? tableId, Guid? allowedBranchId, string acceptedBy, Guid? acceptedByEmployeeId = null)
         {
-            // Supabase uses a retrying Npgsql execution strategy. The complete
+            // Npgsql uses a retrying execution strategy. The complete
             // transaction must run inside that strategy so a transient retry
             // cannot leave a user-initiated transaction unsupported.
             var strategy = _context.Database.CreateExecutionStrategy();
@@ -649,7 +677,9 @@ namespace RestaurantPOS.Application.Services
                     && (!allowedBranchId.HasValue || o.BranchId == allowedBranchId.Value))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(o => o.TableName, targetTable == null ? "Mang về" : targetTable.Name)
-                    .SetProperty(o => o.CreatedBy, acceptedBy));
+                    .SetProperty(o => o.TableId, targetTable == null ? (Guid?)null : targetTable.Id)
+                    .SetProperty(o => o.CreatedBy, acceptedBy)
+                    .SetProperty(o => o.CreatedByEmployeeId, acceptedByEmployeeId));
 
             if (claimed != 1)
                 return (WebOrderAcceptResult.Conflict, current);
@@ -753,7 +783,8 @@ namespace RestaurantPOS.Application.Services
             string paymentMethod,
             string? customerPhone = null,
             string? customerName = null,
-            bool createMember = false)
+            bool createMember = false,
+            Guid? paidByEmployeeId = null)
         {
             var strategy = _context.Database.CreateExecutionStrategy();
             return await strategy.ExecuteAsync(async () =>
@@ -787,6 +818,7 @@ namespace RestaurantPOS.Application.Services
                         .SetProperty(o => o.PaidAmount, amount)
                         .SetProperty(o => o.PaymentMethod, paymentMethod)
                         .SetProperty(o => o.PaymentAt, DateTime.UtcNow)
+                        .SetProperty(o => o.PaidByEmployeeId, paidByEmployeeId)
                         .SetProperty(o => o.Status, "Hoàn thành")
                         .SetProperty(o => o.CustomerId, customer.Id)
                         .SetProperty(o => o.CustomerPhone, customer.PhoneNumber)
@@ -798,6 +830,7 @@ namespace RestaurantPOS.Application.Services
                         .SetProperty(o => o.PaidAmount, amount)
                         .SetProperty(o => o.PaymentMethod, paymentMethod)
                         .SetProperty(o => o.PaymentAt, DateTime.UtcNow)
+                        .SetProperty(o => o.PaidByEmployeeId, paidByEmployeeId)
                         .SetProperty(o => o.Status, "Hoàn thành")
                         .SetProperty(o => o.CustomerPhone, normalizedCustomerPhone)
                         .SetProperty(o => o.CustomerName, customerName));
@@ -808,6 +841,7 @@ namespace RestaurantPOS.Application.Services
                         .SetProperty(o => o.PaidAmount, amount)
                         .SetProperty(o => o.PaymentMethod, paymentMethod)
                         .SetProperty(o => o.PaymentAt, DateTime.UtcNow)
+                        .SetProperty(o => o.PaidByEmployeeId, paidByEmployeeId)
                         .SetProperty(o => o.Status, "Hoàn thành"));
                 }
 

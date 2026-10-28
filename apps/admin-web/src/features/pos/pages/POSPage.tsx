@@ -16,6 +16,7 @@ import POSOrderActions from '../components/POSOrderActions';
 import POSProductGrid from '../components/POSProductGrid';
 import POSNotificationToast from '../components/POSNotificationToast';
 import POSAcceptOrderModal, { POSPendingOrder } from '../components/POSAcceptOrderModal';
+import POSGiftConfirmationModal, { promotionIdFromOrder } from '../components/POSGiftConfirmationModal';
 import POSTransferTableModal from '../components/POSTransferTableModal';
 import POSOpenShiftModal from '../components/POSOpenShiftModal';
 import POSCloseShiftModal from '../components/POSCloseShiftModal';
@@ -46,6 +47,31 @@ interface POSFinancialSnapshot {
   totalAmount: number;
 }
 
+const posBranchStorageKey = (baseKey: string, branchId: string | null | undefined) => `${baseKey}_${branchId || 'unselected'}`;
+
+function readPOSBranchState<T>(baseKey: string, branchId: string | null | undefined, fallback: T): T {
+  const scopedValue = localStorage.getItem(posBranchStorageKey(baseKey, branchId));
+  const legacyValue = localStorage.getItem(baseKey);
+  const savedValue = scopedValue ?? legacyValue;
+  if (!savedValue) return fallback;
+  try {
+    return JSON.parse(savedValue) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistPOSBranchState(
+  branchId: string | null | undefined,
+  tableCarts: Record<string, CartItem[]>,
+  activeOrderIds: Record<string, string>,
+  tableCustomers: Record<string, { id?: string, phone: string, name: string, email?: string, loyaltyPoints?: number, lookupStatus?: 'found' | 'not-found' | 'error', lookupError?: string, memberConsent?: boolean }>
+) {
+  localStorage.setItem(posBranchStorageKey('pos_table_carts', branchId), JSON.stringify(tableCarts));
+  localStorage.setItem(posBranchStorageKey('pos_active_order_ids', branchId), JSON.stringify(activeOrderIds));
+  localStorage.setItem(posBranchStorageKey('pos_table_customers', branchId), JSON.stringify(tableCustomers));
+}
+
 const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () => void, userName?: string, userRole?: POSUserRole, userPosition?: string }) => {
   const {
     activeShift,
@@ -69,6 +95,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   } = usePOSShift({ userRole, userName, onLogout });
 
   const [posTab, setPosTab] = useState('menu');
+  const [showMobileOrderActions, setShowMobileOrderActions] = useState(false);
   const [activeCategory, setActiveCategory] = useState('Tất cả');
   const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
@@ -108,6 +135,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   const [showNotification, setShowNotification] = useState(false);
   const [notifType, setNotifType] = useState<'order' | 'res'>('order');
   const [orderToAccept, setOrderToAccept] = useState<any>(null);
+  const [giftOrderToConfirm, setGiftOrderToConfirm] = useState<any>(null);
   const [reviewFollowUpOrderId, setReviewFollowUpOrderId] = useState<string | null>(null);
   const [isSignalRConnected, setIsSignalRConnected] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -147,7 +175,8 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
 
   useEffect(() => {
     if (!selectedHistoryOrder?.branchId) return;
-    getCachedJson(`${API_URL}/api/ReceiptSettings?branchId=${selectedHistoryOrder.branchId}&documentType=Invoice`, {
+    const isGiftOrder = selectedHistoryOrder.totalAmount === 0 && selectedHistoryOrder.details?.some((detail: { productName?: string }) => detail.productName?.startsWith('[ĐỔI QUÀ]')) === true;
+    getCachedJson(`${API_URL}/api/ReceiptSettings?branchId=${selectedHistoryOrder.branchId}&documentType=${isGiftOrder ? 'GiftRedemption' : 'Invoice'}`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }
     })
       .then(data => data && setReceiptSettings(prev => ({ ...prev, ...data })))
@@ -191,6 +220,12 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   useEffect(() => {
     const handleAction = (orderId: string) => {
         if (!orderId) return;
+        const giftOrder = pendingOrders.find(o => o.id === orderId && o.status === 'Đổi quà');
+        if (giftOrder) {
+            setGiftOrderToConfirm(giftOrder);
+            setPosTab('notifications');
+            return;
+        }
         setPosTab('menu');
         const targetOrder = pendingOrders.find(o => o.id === orderId);
         if (targetOrder) {
@@ -213,6 +248,13 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         newParams.delete('reviewOrderId');
         setSearchParams(newParams, { replace: true });
     }
+    const giftOrderId = searchParams.get('giftOrderId');
+    if (giftOrderId) {
+        handleAction(giftOrderId);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('giftOrderId');
+        setSearchParams(newParams, { replace: true });
+    }
 
     // Lắng nghe sự kiện click trực tiếp (khi đã ở sẵn trang POS)
     const handleEvent = (e: any) => {
@@ -231,45 +273,28 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   });
 
   const [tableCarts, setTableCarts] = useState<Record<string, CartItem[]>>(() => {
-    const saved = localStorage.getItem('pos_table_carts');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return { 'delivery': [] };
-      }
-    }
-    return { 'delivery': [] };
+    return readPOSBranchState('pos_table_carts', activeBranchIdRef.current, { 'delivery': [] });
   });
 
   // Giữ ID đơn thật của từng bàn/mang về để không tạo đơn trùng khi tự lưu hoặc thanh toán.
   const [activeOrderIds, setActiveOrderIds] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem('pos_active_order_ids');
-    try { return saved ? JSON.parse(saved) : {}; } catch { return {}; }
+    return readPOSBranchState('pos_active_order_ids', activeBranchIdRef.current, {});
   });
   const [financialSnapshots, setFinancialSnapshots] = useState<Record<string, POSFinancialSnapshot>>({});
   const cartRevisionsRef = useRef<Record<string, number>>({});
 
   const [tableCustomers, setTableCustomers] = useState<Record<string, { id?: string, phone: string, name: string, email?: string, loyaltyPoints?: number, lookupStatus?: 'found' | 'not-found' | 'error', lookupError?: string, memberConsent?: boolean }>>(() => {
-    const saved = localStorage.getItem('pos_table_customers');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return { 'delivery': { phone: '', name: 'Khách lẻ' } };
-      }
-    }
-    return { 'delivery': { phone: '', name: 'Khách lẻ' } };
+    return readPOSBranchState('pos_table_customers', activeBranchIdRef.current, { 'delivery': { phone: '', name: 'Khách lẻ' } });
   });
 
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
 
   useEffect(() => {
-    localStorage.setItem('pos_table_carts', JSON.stringify(tableCarts));
+    persistPOSBranchState(activeBranchIdRef.current, tableCarts, activeOrderIds, tableCustomers);
   }, [tableCarts]);
 
   useEffect(() => {
-    localStorage.setItem('pos_table_customers', JSON.stringify(tableCustomers));
+    persistPOSBranchState(activeBranchIdRef.current, tableCarts, activeOrderIds, tableCustomers);
   }, [tableCustomers]);
 
   useEffect(() => {
@@ -277,7 +302,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   }, [selectedTableId]);
 
   useEffect(() => {
-    localStorage.setItem('pos_active_order_ids', JSON.stringify(activeOrderIds));
+    persistPOSBranchState(activeBranchIdRef.current, tableCarts, activeOrderIds, tableCustomers);
   }, [activeOrderIds]);
 
   const fetchProducts = async (force = false, requestedBranchId = localStorage.getItem('selectedBranchId'), requestGeneration = branchGenerationRef.current) => {
@@ -342,12 +367,12 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     }
   };
 
-  const fetchBranchInfo = async () => {
+  const fetchBranchInfo = async (): Promise<Branch | null> => {
     const requestGeneration = branchGenerationRef.current;
     try {
       const data = await fetchBranchList();
 
-      if (requestGeneration !== branchGenerationRef.current) return;
+      if (requestGeneration !== branchGenerationRef.current) return null;
 
       if (Array.isArray(data)) {
         setAllBranches(data as Branch[]);
@@ -358,6 +383,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
           localStorage.setItem('selectedBranchId', selected.id);
           activeBranchIdRef.current = selected.id;
           await loadBranchPaymentInfo(selected);
+          return selected;
         }
       } else {
         console.error('Data returned from branch API is not an array:', data);
@@ -367,14 +393,21 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       console.error('Error fetching branch info:', err);
       setAllBranches([]);
     }
+    return null;
   };
 
   const handleSwitchBranch = (branch: Branch) => {
-    if (currentCart.length > 0) {
-      if (!window.confirm('Giỏ hàng hiện tại sẽ bị xóa khi đổi chi nhánh. Bạn có chắc chắn?')) {
+    const previousBranchId = activeBranchIdRef.current || localStorage.getItem('selectedBranchId');
+    const hasUnsavedCart = Object.values(tableCarts).some(cart => cart.length > 0);
+    if (hasUnsavedCart) {
+      if (!window.confirm('Bạn đang có món chưa gửi ở chi nhánh hiện tại. Dữ liệu sẽ được giữ lại để quay lại sau. Tiếp tục đổi chi nhánh?')) {
         return;
       }
     }
+    persistPOSBranchState(previousBranchId, tableCarts, activeOrderIds, tableCustomers);
+    const nextTableCarts = readPOSBranchState('pos_table_carts', branch.id, { 'delivery': [] });
+    const nextActiveOrderIds = readPOSBranchState('pos_active_order_ids', branch.id, {});
+    const nextTableCustomers = readPOSBranchState('pos_table_customers', branch.id, { 'delivery': { phone: '', name: 'Khách lẻ' } });
     branchGenerationRef.current += 1;
     activeBranchIdRef.current = branch.id;
     const requestGeneration = branchGenerationRef.current;
@@ -392,8 +425,9 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     setActiveCategory('Tất cả');
     setSearchTerm('');
     setSelectedTableId('delivery');
-    setTableCarts({ 'delivery': [] }); // Reset carts
-    setActiveOrderIds({});
+    setTableCarts(nextTableCarts);
+    setActiveOrderIds(nextActiveOrderIds);
+    setTableCustomers(nextTableCustomers);
     setFinancialSnapshots({});
     cartRevisionsRef.current = {};
     setIsPaymentModalOpen(false);
@@ -410,8 +444,8 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     if (isInvoiceHistoryModalOpen) void fetchInvoiceHistory();
   };
 
-  const fetchPendingOrders = async (tableSnapshot = tables) => {
-    const branchId = localStorage.getItem('selectedBranchId');
+  const fetchPendingOrders = async (tableSnapshot = tables, branchIdOverride?: string) => {
+    const branchId = branchIdOverride || localStorage.getItem('selectedBranchId');
     const generation = branchGenerationRef.current;
     const controller = new AbortController();
     pendingOrdersAbortControllerRef.current?.abort();
@@ -504,7 +538,21 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     operationalRefreshOwnerActiveRef.current = true;
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchProducts(), fetchBranchInfo(), fetchPendingOrders(), checkActiveShift()]);
+      const selectedBranch = await fetchBranchInfo();
+      if (!selectedBranch) {
+        setRefreshError('Không thể xác định chi nhánh để tải dữ liệu bán hàng.');
+        setLoading(false);
+        return;
+      }
+
+      // Resolve the branch first so every subsequent request is scoped. This
+      // prevents an initial POS load from briefly querying the global scope.
+      const branchTables = await fetchTables(selectedBranch.id) || [];
+      await Promise.all([
+        fetchProducts(false, selectedBranch.id),
+        fetchPendingOrders(branchTables, selectedBranch.id),
+        checkActiveShift()
+      ]);
       setLoading(false);
     };
     void loadData();
@@ -536,12 +584,6 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       operationalRefreshQueuedRef.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (branchInfo?.id) {
-      fetchTables();
-    }
-  }, [branchInfo?.id]);
 
   const currentCart = tableCarts[selectedTableId] || [];
   const previewTotal = calculateCartPreviewTotal(currentCart);
@@ -645,7 +687,13 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       });
 
       if (response.ok) {
-        setActiveOrderIds(prev => { const next = { ...prev }; delete next[selectedTableId]; return next; });
+        setActiveOrderIds(prev => {
+          const next = { ...prev };
+          Object.entries(next).forEach(([tableId, activeId]) => {
+            if (activeId === orderId) delete next[tableId];
+          });
+          return next;
+        });
         // Nếu đang mở bàn này, xóa giỏ hàng local
         if (tableName) {
           const table = tables.find(t => t.name === tableName);
@@ -712,24 +760,34 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     }
   }, [tables, selectedTableId]);
 
-  const updateTableStatus = async (tableId: string, status: string) => {
-    if (tableId === 'delivery') return;
+  const updateTableStatus = async (tableId: string, status: string): Promise<boolean> => {
+    if (tableId === 'delivery') return true;
     try {
-      await fetch(`${API_URL}/api/Table/${tableId}/status`, {
+      const response = await fetch(`${API_URL}/api/Table/${tableId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(status)
       });
+      if (!response.ok) {
+        console.error(`Failed to update table ${tableId} status (${response.status}).`);
+        return false;
+      }
       await fetchTables();
+      return true;
     } catch (err) {
       console.error('Error updating table status:', err);
+      return false;
     }
   };
 
   const handleSelectTable = async (tableId: string, forceFetch = false, skipSave = false) => {
     // TRƯỚC KHI ĐỔI BÀN: Lưu đơn của bàn hiện tại nếu có món
     if (!skipSave && selectedTableId && tableCarts[selectedTableId]?.length > 0) {
-       handleSaveOrder(true);
+       const savedOrderId = await handleSaveOrder(true);
+       if (!savedOrderId) {
+         notifyFeedback('Chưa thể chuyển bàn vì đơn hiện tại chưa được đồng bộ lên máy chủ.', 'warning');
+         return;
+       }
     }
 
     setSelectedTableId(tableId);
@@ -906,18 +964,33 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       if (!disposed) setIsSignalRConnected(false);
     });
 
-    void connection.start()
-      .then(() => {
-        if (!disposed) setIsSignalRConnected(true);
-      })
-      .catch(err => {
-        if (!disposed) console.warn('Kitchen status connection failed.', err);
-      });
+    // React StrictMode can dispose the first development-only effect pass while
+    // SignalR is still negotiating. Defer startup so that pass never opens a
+    // connection that is immediately stopped during negotiation.
+    let startPromise: Promise<void> | null = null;
+    const startTimer = window.setTimeout(() => {
+      if (disposed) return;
+      startPromise = connection.start();
+      void startPromise
+        .then(() => {
+          if (!disposed) setIsSignalRConnected(true);
+        })
+        .catch(err => {
+          if (!disposed) console.warn('Kitchen status connection failed.', err);
+        });
+    }, 0);
 
     return () => {
       disposed = true;
+      window.clearTimeout(startTimer);
       connection.off('RequestStatusUpdated', onRequestStatusUpdated);
-      void connection.stop().catch(err => console.warn('Kitchen status connection cleanup failed.', err));
+      const stopConnection = () => {
+        if (connection.state !== signalR.HubConnectionState.Disconnected) {
+          void connection.stop().catch(err => console.warn('Kitchen status connection cleanup failed.', err));
+        }
+      };
+      if (startPromise) void startPromise.catch(() => undefined).then(stopConnection);
+      else stopConnection();
     };
   }, []);
 
@@ -1345,6 +1418,45 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     }
   };
 
+  const handleConfirmGift = async () => {
+    if (!giftOrderToConfirm || isSaving) return;
+    const promotionId = promotionIdFromOrder(giftOrderToConfirm);
+    if (!giftOrderToConfirm.customerId || !promotionId) {
+      notifyFeedback('Yêu cầu đổi quà thiếu thông tin chương trình hoặc khách hàng.');
+      return;
+    }
+    try {
+      setIsSaving(true);
+      const response = await fetch(`${API_URL}/api/Order/${giftOrderToConfirm.id}/redeem-gift`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: giftOrderToConfirm.customerId, promotionId })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || 'Không thể xác nhận đổi quà.');
+      await fetch(`${API_URL}/api/Notification/entity-read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entityId: giftOrderToConfirm.id, entityType: 'Order' })
+      });
+      setGiftOrderToConfirm(null);
+      setPendingOrders(previous => previous.filter(order => order.id !== giftOrderToConfirm.id));
+      await fetchPendingOrders();
+      window.dispatchEvent(new CustomEvent('refresh-notifications'));
+      window.dispatchEvent(new Event(PENDING_ORDER_CHANGED_EVENT));
+      notifyFeedback('Đã xác nhận đổi quà và trừ điểm thành công.', 'success');
+    } catch (error) {
+      notifyFeedback(error instanceof Error ? error.message : 'Không thể xác nhận đổi quà.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOpenPendingRequest = (order: any) => {
+    if (order.status === 'Đổi quà') setGiftOrderToConfirm(order);
+    else setOrderToAccept(order);
+  };
+
   const preparePayment = async () => {
     if (currentCart.length === 0) {
       notifyFeedback('Vui lòng chọn món trước khi thanh toán!', 'warning');
@@ -1489,12 +1601,16 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     try {
       setRefreshError(null);
       setLoading(true);
+      const selectedBranch = await fetchBranchInfo();
+      if (!selectedBranch) {
+        setRefreshError('Không thể xác định chi nhánh để làm mới dữ liệu.');
+        return;
+      }
+      const branchTables = await fetchTables(selectedBranch.id) || [];
       await Promise.all([
-        fetchProducts(true),
-        fetchBranchInfo(),
-        fetchPendingOrders(),
-        checkActiveShift(),
-        fetchTables()
+        fetchProducts(true, selectedBranch.id),
+        fetchPendingOrders(branchTables, selectedBranch.id),
+        checkActiveShift()
       ]);
     } catch (err) {
       console.error("Manual refresh failed:", err);
@@ -1749,14 +1865,21 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
     }
   };
   const handleCancelCurrentOrder = async () => {
-    // Tìm đơn hàng hiện tại của bàn trên server bằng tham số tableName thay vì search
+    const currentOrderId = activeOrderIds[selectedTableId];
+    if (currentOrderId) {
+      await handleDeleteOrder(currentOrderId, selectedTable?.name);
+      return;
+    }
+
+    // Fallback cho dữ liệu cũ/local chưa có activeOrderId: tìm đúng bàn trên server.
     try {
       const branchId = branchInfo?.id || localStorage.getItem('selectedBranchId');
       const response = await fetch(`${API_URL}/api/Order?status=Đang xử lý&branchId=${branchId || ''}&tableName=${encodeURIComponent(selectedTable?.name || '')}`);
       const orders = await response.json();
 
-      // Tìm đơn hàng khớp chính xác bàn
-      const activeOrder = Array.isArray(orders) ? orders.find((order: any) => order.tableName === selectedTable?.name) : null;
+      const activeOrder = Array.isArray(orders)
+        ? orders.find((order: any) => order.tableName === selectedTable?.name && order.status === 'Đang xử lý')
+        : null;
 
       if (activeOrder) {
         await handleDeleteOrder(activeOrder.id, selectedTable?.name);
@@ -1778,9 +1901,9 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
   const handleViewPendingReservation = () => navigate(userRole === 'cashier' ? '/pos/reservations' : '/reservations');
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden bg-[#f8f9fa] text-gray-800 font-sans md:flex-row">
+    <div className={`pos-workspace flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden bg-[#f8f9fa] text-gray-800 font-sans md:flex-row ${userRole === 'employee' ? 'pos-workspace-staff' : ''}`}>
       {/* LEFT SIDE: Tables / Menu Selection */}
-      <div className="w-full min-w-0 h-[52%] min-h-0 flex flex-col border-b border-gray-300 bg-white md:h-full md:w-[60%] md:border-b-0 md:border-r">
+      <div className="pos-workspace-panel-left w-full min-w-0 h-[52%] min-h-0 flex flex-col border-b border-gray-300 bg-white md:h-full md:w-[60%] md:border-b-0 md:border-r">
         {/* Header Left (Blue) */}
         <POSHeader
           userRole={userRole}
@@ -1805,7 +1928,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 min-h-0 overflow-auto p-2 sm:p-4 bg-gray-50">
+        <div className="pos-product-area flex-1 min-h-0 overflow-auto p-2 sm:p-4 bg-gray-50">
           {loading ? (
             <div className="flex items-center justify-center h-full">
                <Loader2 size={32} className="animate-spin text-blue-600" />
@@ -1816,7 +1939,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
               reservations={pendingReservations}
               ordersError={pendingOrdersError}
               onRejectOrder={handleDeleteOrder}
-              onProcessOrder={setOrderToAccept}
+              onProcessOrder={handleOpenPendingRequest}
               onViewReservation={handleViewPendingReservation}
             />
           ) : posTab === 'tables' ? (
@@ -1832,7 +1955,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
         </div>
 
         {/* Footer Left */}
-        <div className="px-4 py-2 bg-white border-t flex items-center justify-between">
+        <div className="pos-staff-footer px-4 py-2 bg-white border-t flex items-center justify-between">
            <label className="flex items-center text-[11px] text-gray-500 cursor-pointer">
               <input type="checkbox" className="mr-2" defaultChecked /> Mở thực đơn khi chọn bàn
            </label>
@@ -1841,7 +1964,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       </div>
 
       {/* RIGHT SIDE: Order Details */}
-      <div className="w-full min-w-0 h-[48%] min-h-0 flex flex-col bg-white shadow-2xl md:h-full md:flex-1">
+      <div className="pos-workspace-panel-right w-full min-w-0 h-[48%] min-h-0 flex flex-col bg-white shadow-2xl md:h-full md:flex-1">
         <POSOrderHeader
           selectedTable={selectedTable}
           selectedTableId={selectedTableId}
@@ -1884,6 +2007,8 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
           isSendingToKitchen={isSendingToKitchen}
           isSaving={isSaving}
           kitchenMessage={kitchenMessage}
+          showMobileActions={showMobileOrderActions}
+          onToggleMobileActions={() => setShowMobileOrderActions(value => !value)}
           onSendToKitchen={handleSendToKitchen}
           onPayment={handlePayment}
         />
@@ -1925,6 +2050,7 @@ const POSPage = ({ onLogout, userName, userRole, userPosition }: { onLogout: () 
       )}
       <POSNotificationToast visible={showNotification} type={notifType} onView={() => { setPosTab('notifications'); setShowNotification(false); }} onClose={() => setShowNotification(false)} />
       <POSAcceptOrderModal order={orderToAccept as POSPendingOrder | null} tables={tables} isSaving={isSaving} onClose={() => setOrderToAccept(null)} onAccept={handleAcceptWebOrder} onReject={handleDeleteOrder} />
+      <POSGiftConfirmationModal order={giftOrderToConfirm} isSaving={isSaving} onClose={() => setGiftOrderToConfirm(null)} onConfirm={() => void handleConfirmGift()} onReject={() => { if (giftOrderToConfirm) void handleDeleteOrder(giftOrderToConfirm.id, giftOrderToConfirm.tableName); setGiftOrderToConfirm(null); }} />
       <POSTransferTableModal open={isTransferTableModalOpen} tables={tables} currentTableId={selectedTableId} isSaving={isSaving} onClose={() => setIsTransferTableModalOpen(false)} onTransfer={handleTransferOrder} />
 
       <POSOpenShiftModal open={isShiftModalOpen} startingCash={startingCash} onStartingCashChange={setStartingCash} onOpenShift={handleOpenShift} onLogout={onLogout} />

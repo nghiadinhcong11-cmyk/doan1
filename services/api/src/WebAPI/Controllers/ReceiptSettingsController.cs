@@ -127,5 +127,7 @@ public class ReceiptSettingsController : ControllerBase
     private static string NormalizeDocumentType(string? documentType) =>
         string.Equals(documentType, ReceiptSettings.StockReceiptDocumentType, StringComparison.OrdinalIgnoreCase)
             ? ReceiptSettings.StockReceiptDocumentType
-            : ReceiptSettings.InvoiceDocumentType;
+            : string.Equals(documentType, ReceiptSettings.GiftRedemptionDocumentType, StringComparison.OrdinalIgnoreCase)
+                ? ReceiptSettings.GiftRedemptionDocumentType
+                : ReceiptSettings.InvoiceDocumentType;
 }

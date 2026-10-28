@@ -31,7 +31,7 @@ interface Order {
   discount: number;
   paidAmount: number;
   status: string;
-  paymentMethod: string;
+  paymentMethod?: string | null;
   tableName?: string;
   createdBy?: string;
   branchName?: string;
@@ -43,16 +43,25 @@ interface Order {
 const displayStatus = (order: Pick<Order, 'status' | 'paidAmount' | 'totalAmount'>) =>
   order.totalAmount > 0 && order.paidAmount >= order.totalAmount ? 'Hoàn thành' : order.status;
 
+const isGiftOrder = (order: Pick<Order, 'status' | 'totalAmount' | 'details'>) =>
+  order.totalAmount === 0 && order.details?.some(detail => detail.productName?.startsWith('[ĐỔI QUÀ]')) === true;
+
+const displayPaymentMethod = (order: Pick<Order, 'paymentMethod' | 'status' | 'totalAmount' | 'details'>) =>
+  order.paymentMethod || (isGiftOrder(order) && order.status === 'Hoàn thành' ? 'Đổi điểm' : 'Chưa thanh toán');
+
 const InvoiceHistory = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // all, Hoàn thành, Đang xử lý, Đã hủy
+  const [filterBranch, setFilterBranch] = useState('all');
 
   const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const requestController = useRef<AbortController | null>(null);
@@ -61,6 +70,20 @@ const InvoiceHistory = () => {
   const [receiptSettings, setReceiptSettings] = useState<any>({ showLogo: true, showAddress: true, showPhone: true, showStaff: true, showPaymentMethod: true, showOrderNote: true, showThankYou: true, thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!' });
   const pageSize = 20;
 
+  const buildInvoiceParams = (requestedPage: number, requestedPageSize: number) => {
+    const params = new URLSearchParams({ page: String(requestedPage), pageSize: String(requestedPageSize) });
+    if (searchTerm.trim()) params.set('search', searchTerm.trim());
+    if (fromDate) params.set('fromDate', fromDate);
+    if (toDate) params.set('toDate', toDate);
+    if (paymentMethod) params.set('paymentMethod', paymentMethod);
+    if (filterBranch !== 'all') params.set('branchId', filterBranch);
+    if (filterStatus === 'Hoàn thành') params.set('paymentStatus', 'Completed');
+    if (filterStatus === 'Đang xử lý') params.set('paymentStatus', 'Pending');
+    if (filterStatus === 'Đổi quà') params.set('paymentStatus', 'Gift');
+    if (filterStatus === 'Đã hủy') params.set('paymentStatus', 'Cancelled');
+    return params;
+  };
+
   const fetchOrders = async (force = false) => {
     const generation = ++requestGeneration.current;
     requestController.current?.abort();
@@ -68,22 +91,73 @@ const InvoiceHistory = () => {
     requestController.current = controller;
     try {
       setLoading(true);
-      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-      if (searchTerm.trim()) params.set('search', searchTerm.trim());
-      if (fromDate) params.set('fromDate', fromDate);
-      if (toDate) params.set('toDate', toDate);
-      if (paymentMethod) params.set('paymentMethod', paymentMethod);
-      if (filterStatus === 'Hoàn thành') params.set('paymentStatus', 'Completed');
-      if (filterStatus === 'Đang xử lý') params.set('paymentStatus', 'Pending');
+      setPageError(null);
+      const params = buildInvoiceParams(page, pageSize);
       const result = await getCachedJson<{ items?: Order[]; totalPages?: number }>(`${API_URL}/api/Invoice?${params}`, { signal: controller.signal }, { force });
       if (generation !== requestGeneration.current) return;
       setOrders((result.items || []).map((order: Order) => ({ ...order, status: displayStatus(order) })));
       setTotalPages(Math.max(1, result.totalPages || 1));
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) console.error('Error fetching orders:', err);
+      if (!(err instanceof DOMException && err.name === 'AbortError') && generation === requestGeneration.current) {
+        console.error('Error fetching orders:', err);
+        setPageError('Không thể tải danh sách hóa đơn. Vui lòng thử lại.');
+      }
     } finally {
       if (generation === requestGeneration.current) setLoading(false);
       if (requestController.current === controller) requestController.current = null;
+    }
+  };
+
+  const exportInvoices = async () => {
+    setExporting(true);
+    setPageError(null);
+    try {
+      const firstPage = await getCachedJson<{ items?: Order[]; totalPages?: number }>(
+        `${API_URL}/api/Invoice?${buildInvoiceParams(1, 100)}`,
+        undefined,
+        { force: true }
+      );
+      const exportedOrders = [...(firstPage.items || [])];
+      const totalPages = Math.max(1, firstPage.totalPages || 1);
+      for (let exportPage = 2; exportPage <= totalPages; exportPage += 1) {
+        const nextPage = await getCachedJson<{ items?: Order[] }>(
+          `${API_URL}/api/Invoice?${buildInvoiceParams(exportPage, 100)}`,
+          undefined,
+          { force: true }
+        );
+        exportedOrders.push(...(nextPage.items || []));
+      }
+
+      const cell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const rows = [
+        ['Mã hóa đơn', 'Thời gian', 'Chi nhánh', 'Bàn', 'Nhân viên', 'Tiền hàng', 'Giảm giá', 'Tổng tiền', 'Thanh toán', 'Trạng thái'],
+        ...exportedOrders.map(order => [
+          order.invoiceCode,
+          new Date(order.createdAt).toLocaleString('vi-VN'),
+          order.branchName,
+          order.tableName || 'Mang về',
+          order.createdBy,
+          order.subTotal ?? '',
+          order.discount,
+          order.totalAmount,
+          displayPaymentMethod(order),
+          displayStatus(order)
+        ])
+      ];
+      const csv = `\uFEFF${rows.map(row => row.map(cell).join(',')).join('\r\n')}`;
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `hoa-don-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting invoices:', err);
+      setPageError('Không thể xuất file hóa đơn. Vui lòng thử lại.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -93,7 +167,7 @@ const InvoiceHistory = () => {
 
   useEffect(() => {
     void fetchOrders();
-  }, [fromDate, toDate, searchTerm, filterStatus, paymentMethod, page]);
+  }, [fromDate, toDate, searchTerm, filterStatus, paymentMethod, filterBranch, page]);
 
   useEffect(() => () => {
     requestGeneration.current += 1;
@@ -105,7 +179,8 @@ const InvoiceHistory = () => {
 
   useEffect(() => {
     if (!selectedOrder?.branchId) return;
-    getCachedJson(`${API_URL}/api/ReceiptSettings?branchId=${selectedOrder.branchId}&documentType=Invoice`, {
+    const documentType = isGiftOrder(selectedOrder) ? 'GiftRedemption' : 'Invoice';
+    getCachedJson(`${API_URL}/api/ReceiptSettings?branchId=${selectedOrder.branchId}&documentType=${documentType}`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }
     }).then(data => data && setReceiptSettings(data)).catch(() => undefined);
   }, [selectedOrder?.branchId]);
@@ -125,7 +200,7 @@ const InvoiceHistory = () => {
 
       return matchSearch && matchStatus;
     });
-  }, [orders, filterStatus]);
+  }, [orders, filterStatus, searchTerm]);
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#f8f9fa] text-[13px] font-sans">
@@ -197,6 +272,18 @@ const InvoiceHistory = () => {
           </div>
 
           <div>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 block">Chi nhánh</label>
+            <select
+              value={filterBranch}
+              onChange={e => { setPage(1); setFilterBranch(e.target.value); }}
+              className="w-full rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-500"
+            >
+              <option value="all">Tất cả chi nhánh</option>
+              {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
+          </div>
+
+          <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 block">Phương thức thanh toán</label>
             <select value={paymentMethod} onChange={e => { setPage(1); setPaymentMethod(e.target.value); }} className="w-full rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-500">
               <option value="">Tất cả phương thức</option>
@@ -216,11 +303,13 @@ const InvoiceHistory = () => {
             <button type="button" onClick={() => void fetchOrders(true)} disabled={loading} className="border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all flex items-center active:scale-95 disabled:cursor-wait disabled:opacity-60">
                <RefreshCw size={14} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Làm mới
             </button>
-            <button type="button" className="bg-[#0070f4] text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center active:scale-95">
-               <Download size={14} className="mr-2" /> Xuất file EXCEL
+            <button type="button" onClick={() => void exportInvoices()} disabled={exporting || loading} className="bg-[#0070f4] text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center active:scale-95 disabled:cursor-wait disabled:opacity-60">
+               <Download size={14} className={`mr-2 ${exporting ? 'animate-pulse' : ''}`} /> {exporting ? 'Đang xuất...' : 'Xuất file EXCEL'}
             </button>
           </div>
         </div>
+
+        {pageError && <div className="border-b border-red-100 bg-red-50 px-6 py-3 text-sm font-semibold text-red-700">{pageError}</div>}
 
         {/* Table */}
           <div className="flex-1 overflow-auto p-6 bg-[#f8f9fa]">
@@ -273,7 +362,7 @@ const InvoiceHistory = () => {
                     <td className="px-6 py-5 whitespace-nowrap text-sm text-right font-bold text-gray-700">{(o.subTotal ?? (o.totalAmount + (o.discount || 0))).toLocaleString()}đ</td>
                     <td className="px-6 py-5 whitespace-nowrap text-sm text-right text-gray-500">{(o.discount || 0).toLocaleString()}đ</td>
                     <td className="px-6 py-5 whitespace-nowrap text-sm text-right font-black text-gray-800 tracking-tighter">{o.totalAmount.toLocaleString()}đ</td>
-                    <td className="px-6 py-5 whitespace-nowrap text-xs font-semibold text-gray-600">{o.paymentMethod || 'Chưa thanh toán'}</td>
+                    <td className="px-6 py-5 whitespace-nowrap text-xs font-semibold text-gray-600">{displayPaymentMethod(o)}</td>
                     <td className="px-6 py-5 whitespace-nowrap text-center">
                       <span className={`px-3 py-1 text-[9px] rounded-full font-black uppercase tracking-tighter shadow-sm border ${
                         o.status === 'Hoàn thành' ? 'bg-green-50 text-green-700 border-green-100' :
@@ -317,7 +406,7 @@ const InvoiceHistory = () => {
               </div>
 
               <div className="p-8 flex justify-center overflow-auto">
-                 <ReceiptPreview settings={receiptSettings} branch={selectedBranch || { name: selectedOrder.branchName }} order={selectedOrder} />
+                 <ReceiptPreview settings={receiptSettings} branch={selectedBranch || { name: selectedOrder.branchName }} documentType={isGiftOrder(selectedOrder) ? 'GiftRedemption' : 'Invoice'} order={selectedOrder} />
               </div>
               <div className="hidden">
                  <div className="mb-6 border-b border-dashed border-gray-300 pb-5 text-center font-mono text-sm text-gray-800">
@@ -343,7 +432,7 @@ const InvoiceHistory = () => {
                        </div>
                        {receiptSettings.showPaymentMethod && <div>
                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Phương thức</p>
-                          <span className="text-xs font-semibold text-blue-600">{selectedOrder.paymentMethod || 'Chưa thanh toán'}</span>
+                          <span className="text-xs font-semibold text-blue-600">{displayPaymentMethod(selectedOrder)}</span>
                        </div>}
                     </div>
                     <div className="space-y-4 text-right">

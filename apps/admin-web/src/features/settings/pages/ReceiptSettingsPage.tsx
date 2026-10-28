@@ -7,7 +7,7 @@ import ReceiptPreview, { ReceiptBranch, ReceiptSettingsModel } from '../../../co
 const defaults: ReceiptSettingsModel = { paperWidth: 80, showLogo: true, showAddress: true, showPhone: true, showStaff: true, showPaymentMethod: true, showOrderNote: true, showThankYou: true, showSupplier: true, showWarehouse: true, showUnit: true, showUnitPrice: true, showPreparedBy: true, showApprovedBy: false, showSignatures: true, thankYouText: 'Cảm ơn quý khách và hẹn gặp lại!', fontFamily: 'font-mono', fontSize: 11 };
 
 const ReceiptSettingsPage = () => {
-  const [documentType, setDocumentType] = useState<'invoice' | 'stock-receipt'>('invoice');
+  const [documentType, setDocumentType] = useState<'invoice' | 'gift-redemption' | 'stock-receipt'>('invoice');
   const [scope, setScope] = useState<'global' | 'branch'>('branch');
   const [settings, setSettings] = useState<ReceiptSettingsModel>(defaults);
   const [branch, setBranch] = useState<ReceiptBranch | null>(null);
@@ -17,12 +17,13 @@ const ReceiptSettingsPage = () => {
   const branchId = localStorage.getItem('selectedBranchId') || '';
   const canEdit = localStorage.getItem('userRole') === 'admin';
   const authHeaders = { 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` };
+  const apiDocumentType = documentType === 'invoice' ? 'Invoice' : documentType === 'gift-redemption' ? 'GiftRedemption' : 'StockReceipt';
 
   const load = async (force = false) => {
     setLoadError(null);
     try {
       const [data, branches] = await Promise.all([
-        getCachedJson<ReceiptSettingsModel>(`${API_URL}/api/ReceiptSettings?documentType=${documentType === 'invoice' ? 'Invoice' : 'StockReceipt'}${scope === 'branch' && branchId ? `&branchId=${branchId}` : ''}`, { headers: authHeaders }, { force }),
+        getCachedJson<ReceiptSettingsModel>(`${API_URL}/api/ReceiptSettings?documentType=${apiDocumentType}${scope === 'branch' && branchId ? `&branchId=${branchId}` : ''}`, { headers: authHeaders }, { force }),
       // This admin-only page uses the management read model so receipt preview can
       // include branch tax information without widening the public Branch DTO.
         getCachedJson<ReceiptBranch[]>(`${API_URL}/api/Branch/management`, { headers: authHeaders }, { force })
@@ -39,8 +40,8 @@ const ReceiptSettingsPage = () => {
   const update = <K extends keyof ReceiptSettingsModel>(key: K, value: ReceiptSettingsModel[K]) => setSettings(prev => ({ ...prev, [key]: value }));
   const save = async () => {
     try {
-      const query = `documentType=${documentType === 'invoice' ? 'Invoice' : 'StockReceipt'}${scope === 'branch' && branchId ? `&branchId=${branchId}` : ''}`;
-      const response = await fetch(`${API_URL}/api/ReceiptSettings?${query}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }, body: JSON.stringify({ ...settings, branchId: scope === 'branch' ? branchId : null, documentType: documentType === 'invoice' ? 'Invoice' : 'StockReceipt' }) });
+      const query = `documentType=${apiDocumentType}${scope === 'branch' && branchId ? `&branchId=${branchId}` : ''}`;
+      const response = await fetch(`${API_URL}/api/ReceiptSettings?${query}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }, body: JSON.stringify({ ...settings, branchId: scope === 'branch' ? branchId : null, documentType: apiDocumentType }) });
       if (!response.ok) throw new Error('Không thể lưu cấu hình in bill.');
       invalidateCachedJson('/api/ReceiptSettings');
       setSaved(true); window.setTimeout(() => setSaved(false), 2500);
@@ -70,7 +71,7 @@ const ReceiptSettingsPage = () => {
     setLogoMessage('Đã xóa logo.');
   };
   const Toggle = ({ label, name }: { label: string; name: keyof ReceiptSettingsModel }) => <label className="flex items-center justify-between border-b border-slate-100 py-3 text-sm"><span>{label}</span><input disabled={!canEdit} type="checkbox" checked={Boolean(settings[name])} onChange={e => update(name, e.target.checked)} className="h-4 w-4 accent-blue-600" /></label>;
-  const displayToggles = documentType === 'invoice'
+  const displayToggles = documentType === 'invoice' || documentType === 'gift-redemption'
     ? [
         ['Hiển thị logo', 'showLogo'], ['Hiển thị địa chỉ', 'showAddress'], ['Hiển thị số điện thoại', 'showPhone'],
         ['Hiển thị nhân viên', 'showStaff'], ['Hiển thị phương thức thanh toán', 'showPaymentMethod'],
@@ -107,7 +108,7 @@ const ReceiptSettingsPage = () => {
 
   return <div className="min-h-full bg-slate-50 p-4 text-slate-800 md:p-7">
     {loadError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{loadError}</p>}
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-semibold tracking-tight">Cấu hình in ấn</h1><p className="mt-1 text-sm text-slate-500">Thiết lập theo loại phiếu và phạm vi áp dụng.</p></div><div className="flex flex-wrap items-center justify-end gap-3"><label className="text-sm font-semibold">Phạm vi<select disabled={!canEdit} value={scope} onChange={e => setScope(e.target.value as 'global' | 'branch')} className="ml-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="branch">Chi nhánh đang chọn</option><option value="global">Toàn hệ thống</option></select></label><label className="text-sm font-semibold">Loại phiếu<select value={documentType} onChange={e => setDocumentType(e.target.value as 'invoice' | 'stock-receipt')} className="ml-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="invoice">Hóa đơn bán hàng</option><option value="stock-receipt">Phiếu nhập kho</option></select></label><button type="button" onClick={() => void load(true)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50"><RefreshCw size={16}/> Làm mới</button>{canEdit && <button onClick={() => void save()} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700"><Save size={16}/> {saved ? 'Đã lưu' : 'Lưu cấu hình'}</button>}</div></div>
+    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-semibold tracking-tight">Cấu hình in ấn</h1><p className="mt-1 text-sm text-slate-500">Thiết lập theo loại phiếu và phạm vi áp dụng.</p></div><div className="flex flex-wrap items-center justify-end gap-3"><label className="text-sm font-semibold">Phạm vi<select disabled={!canEdit} value={scope} onChange={e => setScope(e.target.value as 'global' | 'branch')} className="ml-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="branch">Chi nhánh đang chọn</option><option value="global">Toàn hệ thống</option></select></label><label className="text-sm font-semibold">Loại phiếu<select value={documentType} onChange={e => setDocumentType(e.target.value as 'invoice' | 'gift-redemption' | 'stock-receipt')} className="ml-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="invoice">Hóa đơn bán hàng</option><option value="gift-redemption">Phiếu đổi quà</option><option value="stock-receipt">Phiếu nhập kho</option></select></label><button type="button" onClick={() => void load(true)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50"><RefreshCw size={16}/> Làm mới</button>{canEdit && <button onClick={() => void save()} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-blue-700"><Save size={16}/> {saved ? 'Đã lưu' : 'Lưu cấu hình'}</button>}</div></div>
     <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(280px,1fr)]">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-base font-bold">Thiết lập hiển thị</h2>
@@ -121,7 +122,7 @@ const ReceiptSettingsPage = () => {
           {logoMessage && <p className="mt-2 text-sm text-slate-600" role="status">{logoMessage}</p>}
         </div>
       </section>
-      <section><div className="mb-3 flex items-center gap-2 text-sm font-bold">Xem trước {documentType === 'invoice' ? 'hóa đơn' : 'phiếu nhập kho'} ({settings.paperWidth} mm)</div><div id="invoice-print" data-paper-width={settings.paperWidth} className="mx-auto w-fit">{documentType === 'invoice' ? <ReceiptPreview settings={settings} branch={branch} preview order={previewOrder} /> : stockReceiptPreview}</div><button onClick={() => window.print()} className="print-hide mx-auto mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold"><Printer size={15}/> In thử</button></section>
+      <section><div className="mb-3 flex items-center gap-2 text-sm font-bold">Xem trước {documentType === 'invoice' ? 'hóa đơn' : documentType === 'gift-redemption' ? 'phiếu đổi quà' : 'phiếu nhập kho'} ({settings.paperWidth} mm)</div><div id="invoice-print" data-paper-width={settings.paperWidth} className="mx-auto w-fit">{documentType === 'invoice' ? <ReceiptPreview settings={settings} branch={branch} preview order={previewOrder} /> : documentType === 'gift-redemption' ? <ReceiptPreview settings={settings} branch={branch} documentType="GiftRedemption" preview order={{ ...previewOrder, totalAmount: 0, paidAmount: 0, status: 'Hoàn thành', paymentMethod: 'Đổi điểm', customerName: 'Khách hàng thành viên', details: [{ productName: 'Quà mẫu', quantity: 1, unitPrice: 0, options: 'Trừ 500 điểm' }] }} /> : stockReceiptPreview}</div><button onClick={() => window.print()} className="print-hide mx-auto mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold"><Printer size={15}/> In thử</button></section>
     </div>
   </div>;
 };

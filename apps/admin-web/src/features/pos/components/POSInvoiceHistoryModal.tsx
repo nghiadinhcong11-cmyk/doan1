@@ -6,6 +6,7 @@ interface InvoiceDetail {
   productName: string;
   quantity: number;
   unitPrice: number;
+  options?: string;
 }
 
 export interface POSInvoiceRecord {
@@ -68,6 +69,9 @@ const statusOptions = [
   { id: 'Đã hủy', label: 'Đã hủy' }
 ];
 
+const isGiftOrder = (order: POSInvoiceRecord) =>
+  order.totalAmount === 0 && order.details?.some(detail => detail.productName?.startsWith('[ĐỔI QUÀ]')) === true;
+
 export default function POSInvoiceHistoryModal({
   open,
   invoices,
@@ -125,7 +129,7 @@ export default function POSInvoiceHistoryModal({
           <div className="absolute inset-0 bg-white z-[650] flex flex-col animate-in slide-in-from-right duration-300">
             <div className="bg-[#1e293b] p-6 text-white flex justify-between items-center print-hide"><button onClick={() => onSelectOrder(null)} className="flex items-center text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100"><X size={18} className="mr-2" /> Quay lại danh sách</button><div className="text-right"><h3 className="font-semibold text-lg tracking-tight">Chi tiết hóa đơn</h3><p className="mt-1 text-[10px] font-medium text-white/60">{selectedOrder.invoiceCode}</p></div><button onClick={() => onPrint()} title="In hóa đơn" aria-label="In hóa đơn" className="bg-white/10 p-2 rounded-xl"><Printer size={20}/></button></div>
             <div id="invoice-print" data-paper-width={receiptSettings.paperWidth || 80} className="flex-1 overflow-auto p-8 flex flex-col items-center">
-              <ReceiptPreview settings={receiptSettings} branch={allBranches.find(branch => branch.id === selectedOrder.branchId) || { name: selectedOrder.branchName }} order={selectedOrder} />
+              <ReceiptPreview settings={receiptSettings} branch={allBranches.find(branch => branch.id === selectedOrder.branchId) || { name: selectedOrder.branchName }} documentType={isGiftOrder(selectedOrder) ? 'GiftRedemption' : 'Invoice'} order={selectedOrder} />
               <div className="hidden">
                 <div className="bg-white w-full max-w-2xl print:max-w-none">
                   <div className="grid grid-cols-2 gap-12 mb-10 pb-10 border-b border-gray-100"><div className="space-y-4"><div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Thông tin khách hàng</p><p className="text-lg font-black text-gray-800 uppercase italic">{selectedOrder.customerName}</p>{selectedOrder.customerPhone && <p className="text-xs font-bold text-blue-600 mt-1">{selectedOrder.customerPhone}</p>}</div><div className="flex space-x-8"><div><p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Lập hóa đơn</p><p className="text-sm font-bold text-gray-700">{new Date(selectedOrder.paymentAt || selectedOrder.createdAt).toLocaleString('vi-VN')}</p></div><div><p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Thanh toán</p><span className="text-xs font-semibold text-blue-600">{selectedOrder.paymentMethod || 'Chưa thanh toán'}</span></div></div></div><div className="text-right space-y-4"><div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Bàn / Vị trí</p><p className="text-lg font-black text-blue-600 uppercase italic">{selectedOrder.tableName || 'Mang về'}</p></div><div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Nhân viên thực hiện</p><p className="text-sm font-bold text-gray-700">{selectedOrder.createdBy || '---'}</p></div></div></div>

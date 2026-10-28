@@ -7,9 +7,10 @@ export interface PendingOrderCandidate {
   tableName?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
+  customerId?: string | null;
   totalAmount?: number | null;
   createdAt?: string | null;
-  details?: Array<{ productName?: string | null }>;
+  details?: Array<{ productName?: string | null; quantity?: number; unitPrice?: number; options?: string | null }>;
 }
 
 export function selectPendingWebOrders(orders: unknown): PendingOrderCandidate[] {

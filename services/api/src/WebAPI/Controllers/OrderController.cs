@@ -182,6 +182,17 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try
             {
+                var isGiftOrderRequest = IsCustomer() &&
+                    string.Equals(order.Status, "Đổi quà", StringComparison.Ordinal) &&
+                    order.TotalAmount == 0 &&
+                    order.Details?.Count == 1 &&
+                    !order.Details[0].ProductId.HasValue &&
+                    !order.Details[0].ToppingId.HasValue &&
+                    order.Details[0].UnitPrice == 0 &&
+                    order.Details[0].ProductName?.StartsWith("[ĐỔI QUÀ]", StringComparison.OrdinalIgnoreCase) == true;
+                if (string.Equals(order.Status, "Đổi quà", StringComparison.Ordinal) && !isGiftOrderRequest)
+                    return BadRequest(new { message = "Yêu cầu đổi quà không hợp lệ." });
+
                 var guestMarker = GuestSessionContext.IsGuest(User);
                 var guestContextValid = TryGetGuestSession(out var guestContext);
                 _logger?.LogInformation(
@@ -283,10 +294,11 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
                 else if (guestMarker)
                 {
-                    // Guest claims are not member identities and cannot earn points or
-                    // attach client-supplied customer contact data to the order.
-                    order.CustomerId = null;
-                    order.CustomerPhone = null;
+                    // Direct guests cannot attach client-supplied identity data. A
+                    // registered customer using QR keeps the server-resolved member
+                    // identity established above.
+                    if (!order.CustomerId.HasValue)
+                        order.CustomerPhone = null;
                     order.CustomerEmail = null;
                 }
                 else if (User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(order.CustomerPhone) && _context != null)
@@ -310,6 +322,16 @@ namespace RestaurantPOS.WebAPI.Controllers
                     // Staff must explicitly link a member by phone; never trust a
                     // standalone CustomerId from the request body.
                     order.CustomerId = null;
+                }
+
+                if (!IsCustomer() && !guestMarker &&
+                    Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var staffEmployeeId))
+                {
+                    order.CreatedByEmployeeId = staffEmployeeId;
+                }
+                else if (IsCustomer() || guestMarker)
+                {
+                    order.CreatedByEmployeeId = null;
                 }
 
                 // Customer orders must carry a branch resolved from trusted guest
@@ -372,9 +394,24 @@ namespace RestaurantPOS.WebAPI.Controllers
                         .FirstOrDefaultAsync();
                 }
 
-                var result = await _orderService.CreateOrUpdateOrderAsync(order, deferAvailabilityValidation);
+                var result = await _orderService.CreateOrUpdateOrderAsync(order, deferAvailabilityValidation, isGiftOrderRequest);
                 if (string.Equals(result.Status, "Đang xử lý", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(result.CreatedBy))
                     await NotifyPendingOrderChangedAsync(result.BranchId);
+                if (isGiftOrderRequest && _notificationService != null)
+                {
+                    var giftName = result.Details.FirstOrDefault()?.ProductName ?? "Quà tặng";
+                    await _notificationService.CreateAsync(new Notification
+                    {
+                        Type = "GIFT_REDEEM_REQUEST",
+                        Title = "Có yêu cầu đổi quà mới",
+                        Message = $"Khách {result.CustomerName ?? result.CustomerPhone ?? "thành viên"} yêu cầu đổi {giftName}.",
+                        EntityType = "Order",
+                        EntityId = result.Id,
+                        Route = $"/pos?giftOrderId={result.Id}",
+                        TargetRole = "admin",
+                        BranchId = result.BranchId
+                    });
+                }
 
                 if (existingAcceptedTableOrderId != Guid.Empty && result.Id == existingAcceptedTableOrderId)
                 {
@@ -431,7 +468,10 @@ namespace RestaurantPOS.WebAPI.Controllers
                 ?? User.FindFirst(ClaimTypes.Name)?.Value
                 ?? "Nhân viên";
 
-            var result = await _orderService.AcceptWebOrderAsync(id, request?.TableId, allowedBranchId, acceptedBy);
+            var acceptedByEmployeeId = Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var employeeId)
+                ? employeeId
+                : (Guid?)null;
+            var result = await _orderService.AcceptWebOrderAsync(id, request?.TableId, allowedBranchId, acceptedBy, acceptedByEmployeeId);
             if (result.Result == WebOrderAcceptResult.Accepted)
             {
                 await NotifyPendingOrderChangedAsync(result.Order?.BranchId);
@@ -491,7 +531,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         /// </summary>
         /// <summary>Gửi đơn hàng tới bếp để chế biến.</summary>
         [HttpPost("{id}/send-to-kitchen")]
-        [Authorize(Roles = "admin,manager,employee,cashier,kitchen")]
+        [Authorize(Roles = "admin,manager,employee,cashier")]
         public async Task<IActionResult> SendToKitchen(Guid id)
         {
             try
@@ -541,13 +581,18 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (request.Amount != existingOrder.TotalAmount)
                 return BadRequest("Payment amount must equal the order total.");
 
+            var paidByEmployeeId = Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var employeeId)
+                ? employeeId
+                : (Guid?)null;
+
             var result = await _orderService.PayOrderAsync(
                 id,
                 request.Amount,
                 request.PaymentMethod.Trim(),
                 request.CustomerPhone,
                 request.CustomerName,
-                request.CreateMember);
+                request.CreateMember,
+                paidByEmployeeId);
             if (result.Result == PaymentAttemptResult.Paid && result.Order != null && _hub != null)
             {
                 var paymentGroups = PaymentEventRouting.Groups(result.Order.BranchId);
@@ -607,6 +652,51 @@ namespace RestaurantPOS.WebAPI.Controllers
             });
         }
 
+        public sealed class GiftRedeemDto
+        {
+            public Guid CustomerId { get; set; }
+            public Guid PromotionId { get; set; }
+        }
+
+        [HttpPost("{id:guid}/redeem-gift")]
+        [Authorize]
+        public async Task<IActionResult> RedeemGift(Guid id, [FromBody] GiftRedeemDto request)
+        {
+            var existingOrder = await _orderService.GetOrderByIdAsync(id);
+            if (existingOrder == null) return NotFound();
+            if (!HasBranchAccess(existingOrder.BranchId)) return Forbid();
+            if (IsCustomer() && !OwnsOrder(existingOrder)) return Forbid();
+
+            var customerId = request.CustomerId;
+            if (IsCustomer())
+            {
+                if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var authenticatedCustomerId) ||
+                    existingOrder.CustomerId != authenticatedCustomerId)
+                    return Forbid();
+                customerId = authenticatedCustomerId;
+            }
+            else if (existingOrder.CustomerId.HasValue)
+            {
+                customerId = existingOrder.CustomerId.Value;
+            }
+            if (customerId == Guid.Empty || request.PromotionId == Guid.Empty)
+                return BadRequest(new { message = "Thông tin đổi quà không hợp lệ." });
+
+            var processedBy = IsCustomer()
+                ? null
+                : User.FindFirst("fullName")?.Value
+                    ?? User.FindFirst(ClaimTypes.Name)?.Value
+                    ?? "Nhân viên";
+            var processedByEmployeeId = IsCustomer() || !Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var employeeId)
+                ? (Guid?)null
+                : employeeId;
+            var result = await _loyaltyService.RedeemGiftAsync(customerId, id, request.PromotionId, processedBy, processedByEmployeeId);
+            if (result == null)
+                return BadRequest(new { message = "Không thể đổi quà. Vui lòng kiểm tra điểm, chương trình hoặc trạng thái yêu cầu." });
+
+            return Ok(new { message = "Đã trừ điểm và ghi nhận yêu cầu đổi quà.", transaction = result });
+        }
+
         /// <summary>
         /// Lấy chi tiết đơn hàng theo mã định danh (Id)
         /// </summary>
@@ -656,6 +746,8 @@ namespace RestaurantPOS.WebAPI.Controllers
                 return BadRequest(ex.Message);
             }
             if (order == null) return NotFound();
+            if (OrderStatusPolicy.IsCancelled(order.Status))
+                await _kitchenService.CancelActiveRequestsForOrderAsync(id);
             return Ok(order);
         }
 

@@ -147,6 +147,9 @@ namespace RestaurantPOS.Application.Services
                 };
 
                 _context.LoyaltyTransactions.Add(loyaltyTx);
+                order.Status = "Hoàn thành";
+                order.PaymentMethod = "Đổi điểm";
+                order.PaymentAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation(
@@ -229,6 +232,68 @@ namespace RestaurantPOS.Application.Services
             });
         }
 
+        public async Task<LoyaltyTransaction?> RedeemGiftAsync(Guid customerId, Guid orderId, Guid promotionId, string? processedBy = null, Guid? processedByEmployeeId = null)
+        {
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = _context.Database.CurrentTransaction == null
+                    ? await _context.Database.BeginTransactionAsync()
+                    : null;
+
+                var order = await _context.Orders.FindAsync(orderId);
+                var promotion = await _context.Promotions.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == promotionId && p.PromotionType == "Gift");
+                var isLegacyGiftRequest = order?.Details?.Count == 1 &&
+                    order.Details[0].ProductName?.StartsWith("[ĐỔI QUÀ]", StringComparison.OrdinalIgnoreCase) == true &&
+                    order.Details[0].ProductId == null &&
+                    order.Details[0].ToppingId == null &&
+                    order.Details[0].UnitPrice == 0 &&
+                    order.TotalAmount == 0;
+                if (order == null || promotion == null || !promotion.IsActive ||
+                    promotion.RequiredPoints <= 0 ||
+                    (promotion.EndDate.HasValue && promotion.EndDate.Value <= DateTime.UtcNow) ||
+                    (order.Status != "Đổi quà" && !(order.Status == "Đang xử lý" && isLegacyGiftRequest)) ||
+                    order.PaidAmount > 0)
+                    return null;
+
+                var existing = await _context.LoyaltyTransactions
+                    .AnyAsync(t => t.OrderId == orderId && t.Type == "RedeemGift");
+                if (existing) return null;
+
+                var affected = await _context.Customers
+                    .Where(c => c.Id == customerId && c.IsActive && c.LoyaltyPoints >= promotion.RequiredPoints)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(c => c.LoyaltyPoints, c => c.LoyaltyPoints - promotion.RequiredPoints)
+                        .SetProperty(c => c.UpdatedAt, DateTime.UtcNow));
+                if (affected == 0) return null;
+
+                var customer = await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == customerId);
+                order.CustomerId = customerId;
+                var loyaltyTx = new LoyaltyTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    CustomerId = customerId,
+                    OrderId = orderId,
+                    Type = "RedeemGift",
+                    Points = -promotion.RequiredPoints,
+                    BalanceAfter = customer?.LoyaltyPoints ?? 0,
+                    Description = $"Đổi quà: {promotion.Name}",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.LoyaltyTransactions.Add(loyaltyTx);
+                order.Status = "Hoàn thành";
+                order.PaymentMethod = "Đổi điểm";
+                order.PaymentAt = DateTime.UtcNow;
+                if (!string.IsNullOrWhiteSpace(processedBy)) order.CreatedBy = processedBy.Trim();
+                if (processedByEmployeeId.HasValue) order.CreatedByEmployeeId = processedByEmployeeId;
+                await _context.SaveChangesAsync();
+                if (transaction != null) await transaction.CommitAsync();
+                return loyaltyTx;
+            });
+        }
+
         public async Task<LoyaltyTransaction?> RefundPointsAsync(Guid orderId)
         {
             var strategy = _context.Database.CreateExecutionStrategy();
@@ -242,7 +307,7 @@ namespace RestaurantPOS.Application.Services
                 if (order == null || order.CustomerId == null) return null;
 
                 var transactions = await _context.LoyaltyTransactions
-                    .Where(t => t.OrderId == orderId && (t.Type == "Earn" || t.Type == "Redeem"))
+                    .Where(t => t.OrderId == orderId && (t.Type == "Earn" || t.Type == "Redeem" || t.Type == "RedeemGift"))
                     .ToListAsync();
 
                 if (!transactions.Any()) return null;
@@ -320,7 +385,7 @@ namespace RestaurantPOS.Application.Services
             return new OrderLoyaltySummaryDto
             {
                 PointsEarned = transactions.Where(t => t.Type == "Earn").Sum(t => t.Points),
-                PointsRedeemed = Math.Abs(transactions.Where(t => t.Type == "Redeem").Sum(t => t.Points)),
+                PointsRedeemed = Math.Abs(transactions.Where(t => t.Type == "Redeem" || t.Type == "RedeemGift").Sum(t => t.Points)),
                 BalanceAfter = transactions.Last().BalanceAfter
             };
         }

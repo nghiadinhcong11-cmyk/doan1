@@ -52,6 +52,22 @@ public class NotificationController : ControllerBase
         return Ok(new { count = await _notifications.MarkAllReadAsync(Role(), userId, effectiveBranchId, cutoff) });
     }
 
+    public sealed class EntityReadRequest
+    {
+        public Guid EntityId { get; set; }
+        public string? EntityType { get; set; }
+    }
+
+    [HttpPost("entity-read")]
+    public async Task<IActionResult> MarkEntityRead([FromBody] EntityReadRequest request)
+    {
+        if (request.EntityId == Guid.Empty) return BadRequest(new { message = "EntityId không hợp lệ." });
+        if (!TryGetUserId(out var userId)) return Forbid();
+        if (!TryResolveBranch(Role(), null, out var effectiveBranchId)) return Forbid();
+        var count = await _notifications.MarkEntityReadAsync(request.EntityId, request.EntityType, Role(), userId, effectiveBranchId);
+        return Ok(new { count });
+    }
+
     private string Role() => User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
     private bool TryGetUserId(out Guid userId) => Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId) && userId != Guid.Empty;
 

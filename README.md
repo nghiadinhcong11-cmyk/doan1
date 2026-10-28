@@ -6,6 +6,10 @@ Hệ thống quản lý nhà hàng đa chi nhánh gồm Admin/POS Web, Customer 
 
 - Quản lý chi nhánh, thực đơn, topping, khuyến mãi, bàn và đặt bàn.
 - POS, đơn hàng, thanh toán, hóa đơn, doanh thu, chi phí và báo cáo.
+- Loyalty: tích điểm theo đơn đã hoàn tất và đổi quà bằng điểm.
+- Yêu cầu đổi quà được gửi realtime tới chuông Admin/POS; nhân viên xác nhận hoặc từ chối bằng popup, không tạo quy trình món ăn/bếp.
+- Lịch sử hóa đơn nhận diện phiếu đổi quà riêng, không coi đổi quà là thanh toán tiền hay chi phí.
+- Cấu hình in theo loại chứng từ: hóa đơn bán hàng, phiếu đổi quà (`GiftRedemption`) và phiếu nhập kho.
 - Quản lý nhân viên, chấm công, ca làm và lịch làm việc.
 - Kho và các nghiệp vụ hỗ trợ vận hành nhà hàng.
 - KDS realtime qua SignalR tại `/kitchenHub`.
@@ -74,13 +78,38 @@ AI:CustomerGuestEmbeddingPilot
 AI:UatLogging
 ```
 
-Các flag pilot mặc định tắt. Khi UAT, bật bằng biến môi trường của phiên chạy API, không commit secret hoặc token.
+Cấu hình Development hiện bật hai pilot local để chạy thử trên máy phát triển. Runtime vẫn fail-closed nếu thiếu hoặc sai model, tokenizer hay reference catalog; không có fallback provider bên ngoài. Khi UAT, kiểm tra lại các flag bằng biến môi trường của phiên chạy API, không commit secret hoặc token.
 
 ## Chạy local bằng HTTPS
 
-Yêu cầu: .NET SDK 8, Node/npm và PostgreSQL/Supabase development phù hợp với cấu hình ứng dụng.
+Yêu cầu: .NET SDK 8, Node/npm và PostgreSQL local phù hợp với cấu hình ứng dụng.
 
-### API
+### Cách chạy khuyến nghị
+
+Launcher thiết lập HTTPS và chạy API, Admin, Customer cùng lúc. API được chạy từ đúng content root để đọc `appsettings.Development.json` và đường dẫn model local:
+
+```powershell
+Set-Location D:\Dev\doan
+.\scripts\start-dev.ps1 -Mode Localhost
+```
+
+Địa chỉ mặc định:
+
+```text
+API:      https://localhost:5000
+Admin:    https://localhost:5173
+Customer: https://localhost:5174
+```
+
+Dừng các process do launcher tạo:
+
+```powershell
+.\scripts\start-dev.ps1 -Stop
+```
+
+Launcher không tự động chạy migration. Database phải được cập nhật theo quy trình EF Core trước khi chạy nếu có migration mới.
+
+### Chạy riêng API
 
 ```powershell
 Set-Location D:\Dev\doan
@@ -121,6 +150,31 @@ $lanHost = '<LAN_IP>'
 
 Terminal Admin và Customer dùng cùng `$lanHost` với `-ValidateOnly`. Không hardcode IP LAN vào source/config. Khi đổi Wi-Fi hoặc IP, chạy lại setup và dùng certificate/QR phù hợp; không chuyển private key sang thiết bị client.
 
+## Luồng đổi quà và phiếu đổi quà
+
+```text
+Customer Web
+  → tạo yêu cầu đổi quà, chưa trừ điểm
+  → Notification + danh sách Đơn cần xử lý của Admin/POS
+  → popup xác nhận/từ chối
+  → kiểm tra promotion, số điểm và idempotency ở backend
+  → trừ điểm + tạo LoyaltyTransaction RedeemGift
+  → hoàn tất đơn và ghi nhân viên xác nhận
+```
+
+- Backend là nguồn sự thật cho promotion, customer, số điểm và trạng thái đơn.
+- Yêu cầu cũ có marker `[ĐỔI QUÀ]` vẫn được nhận diện tương thích.
+- Yêu cầu đã có giao dịch `RedeemGift` không tiếp tục xuất hiện trong danh sách cần xử lý.
+- Phiếu đổi quà dùng `ReceiptSettings.DocumentType = GiftRedemption`; không ghi nhận doanh thu, VAT, phí dịch vụ hoặc thanh toán tiền.
+- Trong Admin, vào **Cấu hình in ấn → Phiếu đổi quà** để cấu hình logo, thông tin chi nhánh, nhân viên và lời cảm ơn.
+
+## Thông báo và realtime
+
+- Chuông Admin/POS có hai nhóm: **Chưa đọc** và **Đơn cần xử lý**.
+- Đánh dấu đã đọc chỉ loại thông báo khỏi nhóm chưa đọc; yêu cầu vẫn nằm trong nhóm cần xử lý tới khi xác nhận hoặc từ chối.
+- Yêu cầu đổi quà mở popup ngay tại trang hiện tại; đơn web thông thường vẫn mở luồng POS.
+- SignalR dùng `/kitchenHub` cho notification, thay đổi đơn chờ và cập nhật KDS; polling chỉ là cơ chế đối soát dự phòng.
+
 ## Build và kiểm tra
 
 ```powershell
@@ -130,6 +184,14 @@ npm run build --prefix .\apps\customer-web
 npm run codegen:check
 git diff --check
 ```
+
+Khi API đang chạy và khóa file runtime, có thể build backend vào output tạm riêng:
+
+```powershell
+dotnet build .\services\api\RestaurantPOS.api.csproj --no-restore -p:UseAppHost=false -p:OutputPath=.\.tmp-build\
+```
+
+Không commit thư mục output tạm.
 
 Kiểm thử nghiệp vụ frontend hiện được thực hiện thủ công. Mở [ba-test-frontend/README.md](ba-test-frontend/README.md) để chọn checklist theo role. AI checklist nằm tại [ba-test-frontend/ai-chat/README.md](ba-test-frontend/ai-chat/README.md).
 

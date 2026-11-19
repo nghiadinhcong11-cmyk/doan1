@@ -12,6 +12,7 @@ namespace RestaurantPOS.Application.Services
         Task<List<object>> GetActiveKitchenRequestsAsync(Guid? branchId);
         Task<OrderRequest?> UpdateRequestStatusAsync(Guid requestId, string status);
         Task<OrderRequest?> UpdateRequestStatusAsync(Guid requestId, string status, string? processedBy);
+        Task<int> CancelActiveRequestsForOrderAsync(Guid orderId);
         Task<(IReadOnlyList<object> Items, int Total)> GetHistoryAsync(string? search, string? status, string? tableName, DateTime? fromDate, DateTime? toDate, Guid? branchId, int page, int pageSize);
         Task<object?> GetRequestDetailAsync(Guid requestId, Guid? branchId);
         Task<Order?> GetOrderRequestOrderAsync(Guid requestId);

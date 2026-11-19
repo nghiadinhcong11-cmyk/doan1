@@ -41,7 +41,12 @@ export function invalidateCachedJson(prefix?: string) {
   }
   const keys = new Set([...values.keys(), ...inFlight.keys()]);
   for (const key of keys) {
-    if (!key.includes(`|${prefix}`)) continue;
+    // Cache keys contain the auth scope followed by the absolute request URL,
+    // while callers invalidate using an API path such as /api/Product.
+    // Compare the URL portion so mutations invalidate the intended snapshots.
+    const separatorIndex = key.indexOf('|');
+    const url = separatorIndex >= 0 ? key.slice(separatorIndex + 1) : key;
+    if (!url.includes(prefix)) continue;
     values.delete(key);
     inFlight.delete(key);
     versions.set(key, (versions.get(key) || 0) + 1);

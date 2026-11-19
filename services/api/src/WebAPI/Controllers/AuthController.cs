@@ -315,7 +315,7 @@ namespace RestaurantPOS.WebAPI.Controllers
                 customerSessionType: "registered",
                 customerAuthMethod: "password"
             );
-            return Ok(new { token, role = "customer", fullName = customer.FullName, customerId = customer.Id });
+            return Ok(new { token, role = "customer", fullName = customer.FullName, customerId = customer.Id, phoneNumber = customer.PhoneNumber });
         }
 
         /// <summary>
@@ -332,6 +332,9 @@ namespace RestaurantPOS.WebAPI.Controllers
             var branchId = User.FindFirst("branchId")?.Value;
             var branchName = User.FindFirst("branchName")?.Value;
             var position = User.FindFirst("position")?.Value;
+            var phoneNumber = string.Equals(role, "customer", StringComparison.OrdinalIgnoreCase)
+                ? User.Identity?.Name
+                : null;
 
             return Ok(new
             {
@@ -340,7 +343,8 @@ namespace RestaurantPOS.WebAPI.Controllers
                 fullName,
                 branchId,
                 branchName,
-                position
+                position,
+                phoneNumber
             });
         }
 

@@ -27,15 +27,13 @@ var configuration = new ConfigurationBuilder()
 if (!string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), environmentName, StringComparison.Ordinal))
     return Fail("ENVIRONMENT CHECK: FAIL (Development required)");
 
-if (!string.Equals(configuration["Database:TargetMode"], SupabaseProjectTargetGuard.TestMode, StringComparison.OrdinalIgnoreCase) ||
-    !string.Equals(configuration["Database:ExpectedProjectRef"], MigrationUpgradePolicy.TestProjectRef, StringComparison.Ordinal))
-    return Fail("TEST TARGET CONFIGURATION: FAIL");
+if (!string.Equals(configuration["Database:TargetMode"], DatabaseTargetGuard.LocalMode, StringComparison.OrdinalIgnoreCase))
+    return Fail("LOCAL TARGET CONFIGURATION: FAIL");
 
 if (!bool.TryParse(configuration["DatabaseSafety:AllowAutomaticMigration"], out var automaticMigration) || automaticMigration)
     return Fail("AUTOMATIC MIGRATION CHECK: FAIL");
 
-var rawConnectionString = configuration.GetConnectionString("DefaultConnection")
-    ?? configuration["SUPABASE_CONNECTION_STRING"];
+var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(rawConnectionString))
     return Fail("DATABASE CREDENTIAL CONFIGURATION: FAIL");
 
@@ -43,15 +41,12 @@ NpgsqlConnectionStringBuilder connection;
 try
 {
     connection = NormalizeConnectionString(rawConnectionString);
-    SupabaseProjectTargetGuard.Validate(connection, configuration, isDevelopment: true);
+    DatabaseTargetGuard.Validate(connection, configuration, isDevelopment: true);
 }
 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UriFormatException)
 {
     return Fail($"TARGET CHECK: FAIL ({ex.GetType().Name})");
 }
-
-if (connection.SslMode is SslMode.Disable or SslMode.Prefer)
-    return Fail("SSL CHECK: FAIL");
 
 var options = new DbContextOptionsBuilder<ApplicationDbContext>()
     .UseNpgsql(WithSafePoolPolicy(connection).ConnectionString)
@@ -62,10 +57,8 @@ var available = metadataContext.Database.GetMigrations().ToArray();
 if (!MigrationUpgradePolicy.ValidateAvailable(available, out var sourceFailure))
     return Fail($"SOURCE MIGRATION CHECK: FAIL ({sourceFailure})");
 
-Console.WriteLine("TEST TARGET CHECK: PASS");
-Console.WriteLine($"PROJECT REF: {MigrationUpgradePolicy.TestProjectRef}");
+Console.WriteLine("LOCAL TARGET CHECK: PASS");
 Console.WriteLine($"TARGET: {connection.Host}:{connection.Port}/{connection.Database}");
-Console.WriteLine("MAIN TARGET: REJECTED");
 Console.WriteLine("ENVIRONMENT: Development");
 Console.WriteLine("AUTOMATIC MIGRATION/SEED: DISABLED");
 Console.WriteLine($"SOURCE MIGRATIONS: {available.Length}; HISTORICAL BASE: {MigrationUpgradePolicy.HistoricalMigrationCount}; APPROVED TARGET: {MigrationUpgradePolicy.ApprovedMigration}");
@@ -363,8 +356,7 @@ static async Task<bool> ApplyApprovedMigrationAsync(string root, NpgsqlConnectio
         startInfo.ArgumentList.Add(argument);
 
     startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
-    startInfo.Environment["Database__TargetMode"] = "Test";
-    startInfo.Environment["Database__ExpectedProjectRef"] = MigrationUpgradePolicy.TestProjectRef;
+    startInfo.Environment["Database__TargetMode"] = DatabaseTargetGuard.LocalMode;
     startInfo.Environment["DatabaseSafety__AllowAutomaticMigration"] = "false";
     startInfo.Environment["ConnectionStrings__DefaultConnection"] = WithSafePoolPolicy(connection).ConnectionString;
     startInfo.Environment["Jwt__Secret"] = jwtSecret;

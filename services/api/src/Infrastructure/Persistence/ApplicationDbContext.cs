@@ -77,6 +77,20 @@ namespace RestaurantPOS.Infrastructure.Persistence
                 .HasForeignKey(o => o.TableId)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.ClientSetNull);
+            modelBuilder.Entity<Order>()
+                .HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(o => o.CreatedByEmployeeId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Orders_Employees_CreatedByEmployeeId");
+            modelBuilder.Entity<Order>()
+                .HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(o => o.PaidByEmployeeId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Orders_Employees_PaidByEmployeeId");
 
             // 1.1 Order và OrderRequest
             modelBuilder.Entity<OrderRequest>()

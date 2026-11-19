@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Plus, Search, Store, MapPin, Phone, Globe, Edit2, Trash2, CheckCircle2, X, Loader2, Save, Lock, Unlock, Settings, FileText, Printer, ShieldCheck, ChevronRight } from 'lucide-react';
 import { API_URL } from '../../../config';
-import { getCachedJson } from '../../../api/queryCache';
+import { getCachedJson, invalidateCachedJson } from '../../../api/queryCache';
 import { notifyFeedback } from '../../../components/ui';
 import type { BranchManagementRecord } from '../branchTypes';
 
@@ -33,10 +33,10 @@ const BranchManagement = () => {
     businessType: ''
   });
 
-  const fetchBranches = async () => {
+  const fetchBranches = async (force = false) => {
     try {
       setLoading(true);
-      const data = await getCachedJson<Branch[]>(`${API_URL}/api/Branch/management`);
+      const data = await getCachedJson<Branch[]>(`${API_URL}/api/Branch/management`, undefined, { force });
       setBranches(data);
       const requestedBranchId = new URLSearchParams(window.location.search).get('branchId');
       if (requestedBranchId && data.some((branch: Branch) => branch.id === requestedBranchId)) {
@@ -100,7 +100,8 @@ const BranchManagement = () => {
         setIsModalOpen(false);
         setEditingBranch(null);
         resetForm();
-        fetchBranches();
+        invalidateCachedJson('/api/Branch/management');
+        void fetchBranches(true);
         window.dispatchEvent(new Event('branches:changed'));
       } else {
         const error = await response.json().catch(() => null);
@@ -170,7 +171,8 @@ const BranchManagement = () => {
         return;
       }
       if (response.ok) {
-        fetchBranches();
+        invalidateCachedJson('/api/Branch/management');
+        void fetchBranches(true);
         window.dispatchEvent(new Event('branches:changed'));
       } else {
         const error = await response.json().catch(() => null);
@@ -195,7 +197,8 @@ const BranchManagement = () => {
         return;
       }
       if (response.ok) {
-        fetchBranches();
+        invalidateCachedJson('/api/Branch/management');
+        void fetchBranches(true);
         window.dispatchEvent(new Event('branches:changed'));
       } else {
         const error = await response.json().catch(() => null);

@@ -158,7 +158,15 @@ namespace RestaurantPOS.WebAPI.Controllers
             var branchId = GetUserBranchId();
             if (!IsAdmin() && branchId == null) return Forbid();
 
-            var success = await _reservationService.UpdateStatusAsync(id, status, IsAdmin() ? null : branchId);
+            bool success;
+            try
+            {
+                success = await _reservationService.UpdateStatusAsync(id, status, IsAdmin() ? null : branchId);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
 
             if (!success) return NotFound();
             return Ok(new { id, status });

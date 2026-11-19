@@ -763,7 +763,7 @@ const DigitalMenu = () => {
           productName: `[ĐỔI QUÀ] ${promo.name}`,
           quantity: 1,
           unitPrice: 0,
-          options: `Trừ ${promo.requiredPoints} điểm`
+          options: `PromotionId=${promo.id};Trừ ${promo.requiredPoints} điểm`
         }]
       };
 
@@ -775,7 +775,7 @@ const DigitalMenu = () => {
 
       if (res.ok) {
         setFeedbackTone('success');
-        setFeedbackMessage('Yêu cầu đổi quà đã được gửi! Vui lòng đợi nhân viên xác nhận.');
+        setFeedbackMessage('Yêu cầu đổi quà đã được gửi! Điểm chỉ được trừ sau khi nhân viên xác nhận.');
         setIsPromoModalOpen(false);
       }
     } catch (e) {

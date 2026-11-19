@@ -31,7 +31,7 @@ export default function ManagementRoutes({ userRole, userName, userPosition, onL
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Mount only the active page. Keeping every previously visited page mounted
   // leaves its effects/listeners alive and makes each navigation accumulate API
-  // requests against Supabase.
+  // requests against the local PostgreSQL-backed API.
   const wasOpened = (path: string) => location.pathname === path;
 
   return (

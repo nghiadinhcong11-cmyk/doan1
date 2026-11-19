@@ -579,6 +579,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("CreatedByEmployeeId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CustomerEmail")
                         .HasColumnType("text");
 
@@ -602,6 +605,9 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.Property<decimal>("PaidAmount")
                         .HasColumnType("numeric");
+
+                    b.Property<Guid?>("PaidByEmployeeId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("PaymentAt")
                         .HasColumnType("timestamp with time zone");
@@ -639,7 +645,11 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedByEmployeeId");
+
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("PaidByEmployeeId");
 
                     b.HasIndex("TableId");
 
@@ -1604,9 +1614,21 @@ namespace RestaurantPOS.api.src.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("RestaurantPOS.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Orders_Employees_CreatedByEmployeeId");
+
                     b.HasOne("RestaurantPOS.Domain.Entities.Customer", null)
                         .WithMany()
                         .HasForeignKey("CustomerId");
+
+                    b.HasOne("RestaurantPOS.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("PaidByEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Orders_Employees_PaidByEmployeeId");
 
                     b.HasOne("RestaurantPOS.Domain.Entities.RestaurantTable", "Table")
                         .WithMany()

@@ -10,7 +10,7 @@ interface POSCartItemsProps {
 }
 
 const POSCartItems = ({ items, onRemove, onUpdateQuantity, onNoteChange }: POSCartItemsProps) => (
-  <div className="flex-1 overflow-auto px-4">
+  <div className="pos-cart-items min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
     {items.length > 0 ? items.map((item, idx) => (
       <div key={`${item.id}-${idx}`} className="flex items-start py-3 border-b border-gray-100 group transition-all">
         <div className="flex-1">

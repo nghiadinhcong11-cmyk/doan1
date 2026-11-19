@@ -43,10 +43,13 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole, sidebarCo
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchLoadError, setBranchLoadError] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const navRef = useRef<HTMLElement>(null);
   const location = useLocation();
-  const notificationCenter = useNotificationCenter(userRole === 'manager' ? 'manager' : 'admin');
+  const notificationCenter = useNotificationCenter(userRole === 'manager' ? 'manager' : 'admin', {
+    // Kitchen has its own request board and SignalR connection. Loading the
+    // global POS notification feeds here duplicates work on every KDS reload.
+    enabled: !location.pathname.startsWith('/kitchen')
+  });
   const pendingOrderCount = notificationCenter.pendingCount;
   const displayedNotifications: any[] = [];
   const loadingNoti = notificationCenter.loadingNotifications;
@@ -81,8 +84,8 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole, sidebarCo
       const savedBranchId = localStorage.getItem('selectedBranchId');
       const branch = data.find(b => b.id === savedBranchId) || data.find(b => b.isMain) || data[0];
       if (branch) {
-        setSelectedBranch(branch);
         localStorage.setItem('selectedBranchId', branch.id);
+        localStorage.setItem('selectedBranchName', branch.name);
         window.dispatchEvent(new Event('branch:changed'));
       }
     } catch (err) {
@@ -100,8 +103,8 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole, sidebarCo
 
   const handleBranchChange = (branch: Branch) => {
     if (userRole === 'manager') return;
-    setSelectedBranch(branch);
     localStorage.setItem('selectedBranchId', branch.id);
+    localStorage.setItem('selectedBranchName', branch.name);
     window.dispatchEvent(new Event('branch:changed'));
   };
 
@@ -274,7 +277,20 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout, userName, userRole, sidebarCo
                </Link>
             </div>
           </div>
-          {operationsNavItems.map((item) => (
+          {operationsNavItems.map((item) => item.id === 'kitchen' ? (
+            <div key={item.id} className="group relative h-auto w-full">
+              <Link
+                to={item.path}
+                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-[12px] font-bold uppercase tracking-widest transition-colors hover:bg-blue-600 ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''} ${isActive(item.path) ? 'bg-blue-700 shadow-inner' : ''}`}
+              >
+                {item.icon}<span className={sidebarCollapsed ? 'lg:hidden' : ''}>{item.label}</span><ChevronDown size={14} className={`ml-auto opacity-60 transition-transform group-hover:rotate-180 ${sidebarCollapsed ? 'lg:hidden' : ''}`} />
+              </Link>
+              <div className="absolute bottom-0 left-full z-[100] hidden w-56 rounded-lg border border-gray-200 bg-white p-2 text-gray-800 shadow-2xl group-hover:block">
+                <p className="px-3 pb-2 pt-1 text-[10px] font-black uppercase tracking-widest text-gray-400">Chọn chi nhánh bếp</p>
+                {branches.map(branch => <Link key={branch.id} to="/kitchen" onClick={() => handleBranchChange(branch)} className="block rounded-xl px-3 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-600">{branch.name}</Link>)}
+              </div>
+            </div>
+          ) : (
             <Link
               key={item.id}
               to={item.path}

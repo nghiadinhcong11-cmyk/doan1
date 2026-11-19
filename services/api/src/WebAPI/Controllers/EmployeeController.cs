@@ -331,6 +331,16 @@ namespace RestaurantPOS.WebAPI.Controllers
                 if (!ownBranch.HasValue || emp.BranchId != ownBranch.Value || IsManagementRole(emp.Role)) return Forbid();
             }
 
+            var hasOrderAudit = await _context.Orders.AsNoTracking()
+                .AnyAsync(order => order.CreatedByEmployeeId == id || order.PaidByEmployeeId == id);
+            if (hasOrderAudit)
+            {
+                return Conflict(new
+                {
+                    message = "Không thể xóa nhân viên đã được ghi nhận trong đơn hàng. Hãy vô hiệu hóa tài khoản thay vì xóa vĩnh viễn."
+                });
+            }
+
             _context.Employees.Remove(emp);
             await _context.SaveChangesAsync();
             _dashboardService?.InvalidateSummaryCache();

@@ -9,7 +9,7 @@ if (!string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
     return Fail("ENVIRONMENT CHECK: run this utility only with ASPNETCORE_ENVIRONMENT=Development.");
 
 var rawConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-    ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING");
+    ;
 var password = Environment.GetEnvironmentVariable("RESTAURANTPOS_BOOTSTRAP_ADMIN_PASSWORD");
 
 if (string.IsNullOrWhiteSpace(rawConnectionString))
@@ -21,7 +21,6 @@ if (passwordError is not null)
 
 var connection = new NpgsqlConnectionStringBuilder(rawConnectionString)
 {
-    SslMode = SslMode.Require,
     MaxPoolSize = 2,
     MinPoolSize = 0,
     Timeout = 15,

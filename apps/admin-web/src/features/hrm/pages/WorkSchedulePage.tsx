@@ -21,6 +21,13 @@ interface WorkSchedulePageProps {
   readOnly?: boolean;
 }
 
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false }) => {
   const userRole = localStorage.getItem('userRole');
   const assignedBranchId = localStorage.getItem('selectedBranchId');
@@ -46,7 +53,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
 
   const [newSchedule, setNewSchedule] = useState({
     employeeId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: formatLocalDate(new Date()),
     shiftName: 'Sáng',
     startTime: '08:00',
     endTime: '12:00'
@@ -70,7 +77,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
       const endOfWeekDate = new Date(startOfWeek);
       endOfWeekDate.setDate(startOfWeek.getDate() + 6);
 
-      const res = await fetch(`${API_URL}/api/WorkSchedule?startDate=${startOfWeek.toISOString()}&endDate=${endOfWeekDate.toISOString()}`);
+      const res = await fetch(`${API_URL}/api/WorkSchedule?startDate=${formatLocalDate(startOfWeek)}&endDate=${formatLocalDate(endOfWeekDate)}`);
       if (!res.ok) throw new Error('schedule request failed');
       const data = await res.json();
       setSchedules(data);
@@ -219,7 +226,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                 onClick={() => {
                   setNewSchedule({
                     employeeId: '',
-                    date: new Date().toISOString().split('T')[0],
+                    date: formatLocalDate(new Date()),
                     shiftName: 'Sáng',
                     startTime: '08:00',
                     endTime: '12:00'
@@ -279,7 +286,7 @@ const WorkSchedulePage: React.FC<WorkSchedulePageProps> = ({ readOnly = false })
                             </div>
                          </td>
                          {weekDays.map((date, idx) => {
-                            const dateStr = date.toISOString().split('T')[0];
+                             const dateStr = formatLocalDate(date);
                             const daySchedules = schedules.filter(s => s.employeeId === emp.id && s.date.split('T')[0] === dateStr);
 
                             return (

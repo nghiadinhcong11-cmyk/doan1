@@ -14,7 +14,6 @@ using RestaurantPOS.AI.Security;
 using RestaurantPOS.WebAPI.Hubs;
 using RestaurantPOS.WebAPI.Middleware;
 using RestaurantPOS.WebAPI.Configuration;
-using RestaurantPOS.WebAPI.Diagnostics;
 
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
@@ -343,34 +342,20 @@ builder.Services.AddScoped<IAiTool, GetCustomerBestSellersTool>();
 builder.Services.AddScoped<IAiTool, GetMyOrderTool>();
 
 Console.WriteLine("BACKEND_STARTUP_PHASE=PERSISTENCE_CONFIGURATION");
-// Cấu hình kết nối PostgreSQL (Supabase). Never fall back to localhost or a
-// bundled database; the connection string must come from secure configuration.
+// Cấu hình kết nối PostgreSQL local. The connection string must come from
+// secure configuration; never silently fall back to an embedded database.
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(connectionString))
-    connectionString = builder.Configuration["SUPABASE_CONNECTION_STRING"];
-if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException(
-        "ConnectionStrings:DefaultConnection must be supplied with the Supabase PostgreSQL connection string " +
+        "ConnectionStrings:DefaultConnection must be supplied with the local PostgreSQL connection string " +
         "(ConnectionStrings__DefaultConnection environment variable or .NET User Secrets)." );
 
-// Supabase exposes both URI and keyword/value formats. Npgsql expects the
-// latter here, so normalize a URI without exposing or persisting credentials.
+// Npgsql accepts keyword/value strings directly; URI support is retained for
+// local PostgreSQL-compatible development environments.
 connectionString = NormalizePostgresConnectionString(connectionString);
 var parsedConnectionString = new NpgsqlConnectionStringBuilder(connectionString);
-SupabaseProjectTargetGuard.Validate(parsedConnectionString, builder.Configuration, builder.Environment.IsDevelopment());
+DatabaseTargetGuard.Validate(parsedConnectionString, builder.Configuration, builder.Environment.IsDevelopment());
 connectionString = PostgresConnectionPoolPolicy.Apply(connectionString, builder.Configuration);
-
-// Capture the effective TEST target from this process, then verify it with a
-// read-only connection before registering the same connection for EF Core.
-if (builder.Environment.IsDevelopment() &&
-    string.Equals(builder.Configuration["Database:TargetMode"], SupabaseProjectTargetGuard.TestMode, StringComparison.OrdinalIgnoreCase))
-{
-    var targetAttestation = await DatabaseTargetAttestationWriter.WriteAsync(
-        builder.Environment,
-        builder.Configuration,
-        new NpgsqlConnectionStringBuilder(connectionString));
-    Console.WriteLine($"BACKEND_DATABASE_TARGET_ATTESTATION={targetAttestation.Status} PATH={targetAttestation.Path}");
-}
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
@@ -498,7 +483,7 @@ if (app.Environment.IsDevelopment() && allowAutomaticDatabaseMutation)
         }
         catch (Exception ex)
         {
-            // Do not start an API that cannot read/write its configured Supabase
+            // Do not start an API that cannot read/write its configured local
             // database. The exception intentionally contains no connection data.
             throw new InvalidOperationException(
                 "Database migration/seeding failed. Verify the isolated Development database configuration.", ex);
@@ -644,7 +629,7 @@ static string NormalizePostgresConnectionString(string rawConnectionString)
         !value.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase))
     {
         var keywordBuilder = new NpgsqlConnectionStringBuilder(value);
-        // Supabase port 6543 is the transaction pooler. Avoid retaining a
+        // Transaction pooler port is not suitable for retaining a
         // client-side session across EF migration commands.
         if (keywordBuilder.Port == 6543)
             keywordBuilder.Pooling = false;
@@ -654,7 +639,7 @@ static string NormalizePostgresConnectionString(string rawConnectionString)
     var uri = new Uri(value);
     var userInfo = uri.UserInfo.Split(':', 2);
     if (userInfo.Length != 2 || string.IsNullOrWhiteSpace(uri.Host))
-        throw new InvalidOperationException("The Supabase PostgreSQL connection URI is invalid.");
+        throw new InvalidOperationException("The PostgreSQL connection URI is invalid.");
 
     var builder = new NpgsqlConnectionStringBuilder
     {

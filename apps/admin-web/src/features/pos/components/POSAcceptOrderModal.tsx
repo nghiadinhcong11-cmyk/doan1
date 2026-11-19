@@ -1,4 +1,5 @@
 import { Trash2, Utensils, X } from 'lucide-react';
+import { useEffect } from 'react';
 import type { Table } from '../types';
 
 interface OrderDetail {
@@ -26,17 +27,26 @@ interface POSAcceptOrderModalProps {
 }
 
 export default function POSAcceptOrderModal({ order, tables, isSaving, onClose, onAccept, onReject }: POSAcceptOrderModalProps) {
+  useEffect(() => {
+    if (!order) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSaving) onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isSaving, onClose, order]);
+
   if (!order) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-[300] flex justify-center items-center p-4 backdrop-blur-md">
-      <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="bg-[#0070f4] p-6 text-white flex justify-between items-center">
-          <div>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md" onClick={event => { if (event.target === event.currentTarget && !isSaving) onClose(); }}>
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl animate-in zoom-in-95 duration-200 sm:rounded-[3rem]">
+        <div className="flex min-w-0 items-center justify-between bg-[#0070f4] p-4 text-white sm:p-6">
+          <div className="min-w-0 pr-2">
             <h3 className="font-black text-xl uppercase italic tracking-tighter">Xác nhận nhận đơn</h3>
             <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Chọn bàn để bắt đầu phục vụ món</p>
           </div>
-          <button onClick={onClose} className="bg-white/10 p-2 rounded-full hover:rotate-90 transition-all"><X size={24}/></button>
+          <button type="button" onClick={onClose} disabled={isSaving} aria-label="Đóng form tiếp nhận đơn" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-white/10 p-2 transition-all hover:rotate-90 disabled:cursor-not-allowed disabled:opacity-50"><X size={24}/></button>
         </div>
 
         <div className="p-8 flex flex-col md:flex-row gap-8">

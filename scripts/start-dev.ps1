@@ -3,6 +3,7 @@ param(
   [ValidateSet('Localhost', 'Lan')]
   [string]$Mode = 'Localhost',
   [string]$LanHost,
+  [switch]$DisableCustomerGuestAI,
   [switch]$Stop
 )
 
@@ -62,7 +63,15 @@ if (-not (Test-Path -LiteralPath $setup)) { throw 'HTTPS_SETUP_NOT_FOUND' }
 # Dot-sourcing is intentional: setup-https exports the verified certificate and
 # URL variables into this process so all three children receive one configuration.
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:Database__TargetMode = 'Local'
 $env:DatabaseSafety__AllowAutomaticMigration = 'false'
+if ($DisableCustomerGuestAI) {
+  # Environment variables override appsettings.Development.json for the child API process.
+  # Keep AdminEmbeddingPilot untouched; this switch is for Guest/registered Customer AI tests.
+  $env:AI__CustomerGuestEmbeddingPilot__Enabled = 'false'
+} else {
+  $env:AI__CustomerGuestEmbeddingPilot__Enabled = 'true'
+}
 if ($Mode -eq 'Lan') {
   . $setup -LanHost $LanHost
 } else {
@@ -77,7 +86,9 @@ function Start-Tracked([string]$FilePath, [string[]]$Arguments, [string]$Working
 }
 
 try {
-  Start-Tracked 'dotnet' @('run', '--project', (Join-Path $repoRoot 'services\api\RestaurantPOS.api.csproj'), '--no-launch-profile') $repoRoot 'Backend'
+  # Run the API from its content root so appsettings.Development.json and the
+  # local AI artifact paths resolve relative to services/api.
+  Start-Tracked 'dotnet' @('run', '--project', (Join-Path $repoRoot 'services\api\RestaurantPOS.api.csproj'), '--no-launch-profile') (Join-Path $repoRoot 'services\api') 'Backend'
   Start-Tracked 'npm.cmd' @('run', 'dev') (Join-Path $repoRoot 'apps\admin-web') 'Admin Web'
   Start-Tracked 'npm.cmd' @('run', 'dev') (Join-Path $repoRoot 'apps\customer-web') 'Customer Web'
 
@@ -85,6 +96,8 @@ try {
   $state | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
   Write-Host "State file: $statePath"
   Write-Host 'Press Ctrl+C to stop processes created by this launcher, or run scripts\start-dev.ps1 -Stop.'
+  $customerGuestAiState = if ($DisableCustomerGuestAI) { 'OFF' } else { 'ON' }
+  Write-Host "Customer/Guest AI: $customerGuestAiState"
   Write-Host ("API: {0}" -f $env:VITE_API_URL)
   if ($Mode -eq 'Lan') {
     Write-Host ("Admin: https://${LanHost}:5173")

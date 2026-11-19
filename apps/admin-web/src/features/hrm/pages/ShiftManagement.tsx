@@ -20,6 +20,13 @@ interface Shift {
   note: string;
 }
 
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const ShiftManagement = () => {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,15 +37,17 @@ const ShiftManagement = () => {
   const isAdmin = localStorage.getItem('userRole') === 'admin';
 
   // Date filters
-  const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState(formatLocalDate(new Date()));
+  const [toDate, setToDate] = useState(formatLocalDate(new Date()));
 
   const fetchData = async () => {
     if (dataRequestInFlight.current) return;
     dataRequestInFlight.current = true;
     try {
       setLoading(true);
-      const url = `${API_URL}/api/Shift?fromDate=${fromDate}&toDate=${toDate}`;
+      const params = new URLSearchParams({ fromDate, toDate });
+      if (isAdmin && filterBranch !== 'all') params.set('branchId', filterBranch);
+      const url = `${API_URL}/api/Shift?${params.toString()}`;
       const [resShifts, resBranches] = await Promise.all([
         fetch(url),
         isAdmin ? fetchBranchList() : Promise.resolve(null)
@@ -59,7 +68,7 @@ const ShiftManagement = () => {
 
   useEffect(() => {
     fetchData();
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, filterBranch]);
 
   const getDifference = (shift: Shift) => {
     // Tiền mặt kỳ vọng = Tiền mặt đầu ca + Doanh thu tiền mặt trong ca

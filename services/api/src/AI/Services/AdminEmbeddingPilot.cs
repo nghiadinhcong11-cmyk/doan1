@@ -24,7 +24,15 @@ public sealed record AdminEmbeddingPilotResult(
     bool SlotsValid,
     IReadOnlyDictionary<string, string> ParsedSlots,
     IReadOnlyList<string> MissingSlots,
-    string? Boundary);
+    string? Boundary)
+{
+    public double OutOfScopeScore { get; init; }
+    public double OutOfScopeGap { get; init; }
+    public double ConfiguredOutOfScopeScoreThreshold { get; init; }
+    public double ConfiguredOutOfScopeGapThreshold { get; init; }
+    public double ConfiguredScoreThreshold { get; init; }
+    public double ConfiguredMarginThreshold { get; init; }
+}
 
 /// <summary>
 /// Development/Test Admin E5 decision pilot. Authorization remains in the tool boundary.
@@ -44,6 +52,7 @@ public sealed class AdminEmbeddingPilot : IDisposable
     private readonly SemaphoreSlim _inference = new(1, 1);
     private readonly object _gate = new();
     private readonly List<Reference> _references = new();
+    private readonly List<Reference> _outOfScopeReferences = new();
     private Tokenizer? _tokenizer;
     private InferenceSession? _session;
     private bool _initialized;
@@ -68,13 +77,25 @@ public sealed class AdminEmbeddingPilot : IDisposable
     //phan tich y dinh
     public async Task<AdminEmbeddingPilotResult> DecideAsync(string text, AiUserContext context, CancellationToken cancellationToken)
     {
+        var outOfScopeScore = 0d;
+        var outOfScopeGap = 0d;
+        AdminEmbeddingPilotResult WithDiagnostics(AdminEmbeddingPilotResult result) => result with
+        {
+            OutOfScopeScore = outOfScopeScore,
+            OutOfScopeGap = outOfScopeGap,
+            ConfiguredOutOfScopeScoreThreshold = GetOutOfScopeScoreThreshold(),
+            ConfiguredOutOfScopeGapThreshold = GetOutOfScopeGapThreshold(),
+            ConfiguredScoreThreshold = GetScoreThreshold(),
+            ConfiguredMarginThreshold = GetMarginThreshold()
+        };
+
         EnterOperation();
         try
         {
             if (!IsEnabled || !string.Equals(context.Role, "admin", StringComparison.OrdinalIgnoreCase))
-                return Unsupported("PilotDisabledOrRoleNotAllowed");
+                return WithDiagnostics(Unsupported("PilotDisabledOrRoleNotAllowed"));
             if (string.IsNullOrWhiteSpace(text))
-                return Clarify("MissingInput");
+                return WithDiagnostics(Clarify("MissingInput"));
 
             await EnsureInitializedAsync(cancellationToken);
             if (_initializationError is not null)
@@ -103,26 +124,79 @@ public sealed class AdminEmbeddingPilot : IDisposable
                         .OrderByDescending(x => x.Score)
                         .ToArray();
 
-                    if (candidates.Length == 0) return Unsupported("EmptyCatalog", slots: slots);
+                    if (candidates.Length == 0) return WithDiagnostics(Unsupported("EmptyCatalog", slots: slots));
                     var top = candidates[0];
                     var second = candidates.Length > 1 ? candidates[1].Score : 0;
                     var margin = top.Score - second;
+                    // Score against a separate OOD catalog; the gap is measured against
+                    // the best supported intent and evaluated by the OOD policy below.
+                    var outOfScopeCandidate = _outOfScopeReferences
+                        .Select(reference => new { reference.Text, Score = Cosine(vector, reference.Vector) })
+                        .OrderByDescending(candidate => candidate.Score)
+                        .FirstOrDefault();
+                    outOfScopeScore = outOfScopeCandidate?.Score ?? 0d;
+                    outOfScopeGap = outOfScopeScore - top.Score;
                     var lexicalIntent = ResolveLexicalIntent(normalized);
                     var resolvedIntent = lexicalIntent ?? top.Intent;
                     var predictedTool = SupportedIntents.Contains(resolvedIntent) ? ToolFor(resolvedIntent) : null;
                     var secondIntent = candidates.Length > 1 ? candidates[1].Intent : null;
-                    if (IsNegated(normalized)) return Clarify("NegatedRequest", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "NEGATION");
-                    if (HasUnresolvedBranchReference(normalized)) return Clarify("BranchSelectionRequiresResolution", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "BRANCH_SELECTION");
-                    if (resolvedIntent != "UPDATE_PRODUCT_PRICE" && IsOutOfScope(normalized)) return Unsupported("UnsupportedCapability", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "OUT_OF_SCOPE");
-                    if (IsMultiIntent(normalized)) return Clarify("MultipleIntents", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "MULTI_INTENT");
-                    if (HasAmbiguousCurrentPeriod(normalized)) return Clarify("AmbiguousCurrentPeriod", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, new[] { "period" }, "TEMPORAL_SCOPE");
+                    if (IsNegated(normalized)) return WithDiagnostics(Clarify("NegatedRequest", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "NEGATION"));
+                    if (HasUnresolvedBranchReference(normalized)) return WithDiagnostics(Clarify("BranchSelectionRequiresResolution", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "BRANCH_SELECTION"));
+                    if (IsOutOfScope(normalized) && resolvedIntent != "UPDATE_PRODUCT_PRICE")
+                        return WithDiagnostics(Unsupported("UnsupportedCapability", top.Intent, secondIntent, null, top.Score, margin, slots, Array.Empty<string>(), "OUT_OF_SCOPE"));
+                    if (IsMultiIntent(normalized)) return WithDiagnostics(Clarify("MultipleIntents", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "MULTI_INTENT"));
+                    if (HasAmbiguousCurrentPeriod(normalized)) return WithDiagnostics(Clarify("AmbiguousCurrentPeriod", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, new[] { "period" }, "TEMPORAL_SCOPE"));
+                    if (outOfScopeScore >= GetOutOfScopeScoreThreshold() && outOfScopeGap >= GetOutOfScopeGapThreshold())
+                        return WithDiagnostics(Unsupported("OutOfScopeSimilarity", top.Intent, secondIntent, null, top.Score, margin, slots, Array.Empty<string>(), "OUT_OF_SCOPE_SIMILARITY"));
+
+                    // Explicit but incomplete catalog-write requests need a useful
+                    // slot prompt even when their embedding score/margin is low.
+                    // The price tool's empty-argument path only lists products; a
+                    // price mutation still requires all slots and confirmation.
+                    if (lexicalIntent is "UPDATE_PRODUCT_PRICE" or "UPDATE_PRODUCT_NAME" or "CREATE_PRODUCT" or "CREATE_TOPPING")
+                    {
+                        if (lexicalIntent == "UPDATE_PRODUCT_PRICE" &&
+                            !slots.ContainsKey("productName") && !slots.ContainsKey("newPrice"))
+                        {
+                            var emptyPriceArguments = BuildArguments(lexicalIntent, slots);
+                            return WithDiagnostics(new AdminEmbeddingPilotResult(
+                                "ACCEPT", "LexicalIncompleteWritePrompt", lexicalIntent, secondIntent,
+                                lexicalIntent, ToolFor(lexicalIntent), emptyPriceArguments, "unknown",
+                                top.Score, margin, second, true, slots, Array.Empty<string>(), null));
+                        }
+
+                        var writeSlotDecision = ValidateSlots(lexicalIntent, slots);
+                        if (writeSlotDecision is not null)
+                        {
+                            var boundary = lexicalIntent switch
+                            {
+                                "UPDATE_PRODUCT_PRICE" => "PRICE_UPDATE_SCOPE",
+                                "UPDATE_PRODUCT_NAME" => "NAME_UPDATE_SCOPE",
+                                "CREATE_PRODUCT" or "CREATE_TOPPING" => "CATALOG_CREATION_SCOPE",
+                                _ => null
+                            };
+                            return WithDiagnostics(Clarify(writeSlotDecision, lexicalIntent, secondIntent,
+                                ToolFor(lexicalIntent), top.Score, margin, slots,
+                                MissingSlots(lexicalIntent, slots), boundary));
+                        }
+
+                        // Complete lexical write requests are routed only to the
+                        // tool's preview/confirmation stage. The confirmation
+                        // endpoint remains the sole path that mutates catalog data.
+                        var writeArguments = BuildArguments(lexicalIntent, slots);
+                        return WithDiagnostics(new AdminEmbeddingPilotResult(
+                            "ACCEPT", "LexicalWritePreview", lexicalIntent, secondIntent,
+                            lexicalIntent, ToolFor(lexicalIntent), writeArguments,
+                            "unknown", top.Score, margin, second, true, slots,
+                            Array.Empty<string>(), null));
+                    }
 
                     if (top.Score < GetScoreThreshold())
-                        return Unsupported("LowSimilarity", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "LOW_SCORE");
-                    if (margin < GetMarginThreshold())
-                        return Clarify("CloseIntentCandidates", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "LOW_MARGIN");
+                        return WithDiagnostics(Unsupported("LowSimilarity", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "LOW_SCORE"));
+                    if (margin < GetMarginThreshold() && !HasStrongReadIntentEvidence(normalized, resolvedIntent, slots))
+                        return WithDiagnostics(Clarify("CloseIntentCandidates", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "LOW_MARGIN"));
                     if (!SupportedIntents.Contains(top.Intent))
-                        return Unsupported("UnsupportedCapability", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "UNSUPPORTED_INTENT");
+                        return WithDiagnostics(Unsupported("UnsupportedCapability", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "UNSUPPORTED_INTENT"));
 
                     // A comparison candidate must have explicit comparison evidence. A
                     // single-period revenue question must not inherit the comparison
@@ -132,14 +206,14 @@ public sealed class AdminEmbeddingPilot : IDisposable
                         if (secondIntent == "REVENUE_QUERY" && HasSinglePeriodRevenueQuery(normalized, slots) && ValidateSlots("REVENUE_QUERY", slots) is null)
                         {
                             var revenueArguments = BuildArguments("REVENUE_QUERY", slots);
-                            return new AdminEmbeddingPilotResult(
+                            return WithDiagnostics(new AdminEmbeddingPilotResult(
                                 "ACCEPT", "ExplicitRevenueQueryBoundary", top.Intent, secondIntent,
                                 "REVENUE_QUERY", "get_revenue", revenueArguments,
                                 slots["period"], top.Score, margin, second, true, slots,
-                                Array.Empty<string>(), "REVENUE_COMPARISON_WITHOUT_COMPARISON_CUE");
+                                Array.Empty<string>(), "REVENUE_COMPARISON_WITHOUT_COMPARISON_CUE"));
                         }
 
-                        return Clarify("AmbiguousRevenueComparison", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "AMBIGUOUS_REVENUE_BOUNDARY");
+                        return WithDiagnostics(Clarify("AmbiguousRevenueComparison", top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), "AMBIGUOUS_REVENUE_BOUNDARY"));
                     }
 
                     var slotDecision = ValidateSlots(resolvedIntent, slots);
@@ -153,15 +227,15 @@ public sealed class AdminEmbeddingPilot : IDisposable
                                 : slotDecision == "MissingProductPriceArguments" ? "PRICE_UPDATE_SCOPE"
                                 : slotDecision == "MissingProductNameArguments" ? "NAME_UPDATE_SCOPE"
                                 : slotDecision is "MissingProductCreationArguments" or "MissingToppingCreationArguments" ? "CATALOG_CREATION_SCOPE" : null;
-                        return Clarify(slotDecision, top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), boundary);
+                        return WithDiagnostics(Clarify(slotDecision, top.Intent, secondIntent, predictedTool, top.Score, margin, slots, MissingSlots(top.Intent, slots), boundary));
                     }
 
                     var tool = ToolFor(resolvedIntent);
                     var arguments = BuildArguments(resolvedIntent, slots);
-                    return new AdminEmbeddingPilotResult(
+                    return WithDiagnostics(new AdminEmbeddingPilotResult(
                         "ACCEPT", lexicalIntent is null ? "CapabilityValidated" : "LexicalIntentEvidence", resolvedIntent, secondIntent, resolvedIntent, tool, arguments,
                         slots.TryGetValue("period", out var period) ? period : "unknown",
-                        top.Score, margin, second, true, slots, Array.Empty<string>(), null);
+                        top.Score, margin, second, true, slots, Array.Empty<string>(), null));
                 }
                 finally { _inference.Release(); }
             }
@@ -196,6 +270,14 @@ public sealed class AdminEmbeddingPilot : IDisposable
                 if (validRows.Length == 0) throw new InvalidDataException("Admin v3 reference catalog is empty.");
                 foreach (var row in validRows)
                     _references.Add(new Reference(row.ExpectedIntent, row.Text, Encode(row.Text)));
+
+                var outOfScopeCatalogPath = ResolvePath("AI:AdminEmbeddingPilot:OutOfScopeCatalogPath");
+                var outOfScopeRows = JsonSerializer.Deserialize<ReferenceRow[]>(
+                    File.ReadAllText(outOfScopeCatalogPath),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? Array.Empty<ReferenceRow>();
+                foreach (var row in outOfScopeRows.Where(x => string.Equals(x.ExpectedIntent, "OUT_OF_SCOPE", StringComparison.Ordinal)))
+                    _outOfScopeReferences.Add(new Reference(row.ExpectedIntent, row.Text, Encode(row.Text)));
+                if (_outOfScopeReferences.Count == 0) throw new InvalidDataException("Admin out-of-scope reference catalog is empty.");
             }
             catch (Exception ex)
             {
@@ -311,7 +393,7 @@ public sealed class AdminEmbeddingPilot : IDisposable
             return "CREATE_TOPPING";
         if (Regex.IsMatch(value, @"\b(?:thuc don|menu|danh muc mon|mon an|do uong|khai vi|mon chinh)\b", RegexOptions.CultureInvariant))
             return "MENU_QUERY";
-        if (Regex.IsMatch(value, @"\b(?:xep hang mon|mon nao.*(?:ban chay|dung dau|goi nhieu)|ban chay|goi nhieu|top \d+ mon)\b", RegexOptions.CultureInvariant))
+        if (Regex.IsMatch(value, @"\b(?:xep hang mon|mon nao.*(?:ban chay|dung dau|goi nhieu|mua nhieu|ban duoc nhieu)|ban chay|goi nhieu|mua nhieu|top \d+ mon)\b", RegexOptions.CultureInvariant))
             return "PRODUCT_RANKING";
         if (Regex.IsMatch(value, @"\b(?:don|danh sach don).*(?:dang xu ly|hoan thanh|da huy)|(?:dang xu ly|hoan thanh|da huy).*\b(?:don|danh sach)\b", RegexOptions.CultureInvariant))
             return "ORDER_STATUS";
@@ -324,8 +406,29 @@ public sealed class AdminEmbeddingPilot : IDisposable
         return null;
     }
 
+    private static bool HasStrongReadIntentEvidence(string value, string intent, IReadOnlyDictionary<string, string> slots)
+    {
+        // A clear, complete read request can resolve close embedding candidates.
+        // Keep the score threshold, all scope/negation/multi-intent guards, and
+        // slot validation in force; write intents never use this exception.
+        if (ResolveLexicalIntent(value) != intent || ValidateSlots(intent, slots) is not null)
+            return false;
+
+        return intent switch
+        {
+            "REVENUE_QUERY" => HasSinglePeriodRevenueQuery(value, slots),
+            "BUSINESS_SUMMARY" => Regex.IsMatch(value, @"\b(?:chi so|kpi|tong quan|tom tat|bao cao|tinh hinh|chi phi|loi nhuan|gia von|gia tri don trung binh|aov)\b", RegexOptions.CultureInvariant),
+            "REVENUE_COMPARISON" => HasExplicitComparisonIntent(value) && slots.ContainsKey("currentPeriod") && slots.ContainsKey("comparisonPeriod"),
+            "PRODUCT_RANKING" => Regex.IsMatch(value, @"\b(?:xep hang mon|mon nao.*(?:ban chay|dung dau|goi nhieu|mua nhieu|ban duoc nhieu)|ban chay|goi nhieu|mua nhieu|top \d+ mon)\b", RegexOptions.CultureInvariant),
+            "ORDER_COUNT" => Regex.IsMatch(value, @"\b(?:so don|tong so don|tong cong.*don|bao nhieu don|dem don|luong don)\b", RegexOptions.CultureInvariant),
+            "ORDER_STATUS" => Regex.IsMatch(value, @"\b(?:don|danh sach don).*(?:dang xu ly|hoan thanh|da huy)|(?:dang xu ly|hoan thanh|da huy).*\b(?:don|danh sach)\b", RegexOptions.CultureInvariant),
+            "MENU_QUERY" => Regex.IsMatch(value, @"\b(?:thuc don|menu|danh muc mon|mon an|do uong|khai vi|mon chinh)\b", RegexOptions.CultureInvariant),
+            _ => false
+        };
+    }
+
     private static bool IsOutOfScope(string value) => Regex.IsMatch(value,
-        @"\b(?:ton kho|nguyen lieu|ca lam|lich lam|nhan vien|mo cua|gio phuc vu|xoa|tich diem|loyalty|tao don|dat mon|huy don|cap nhat trang thai)\b",
+        @"\b(?:ton kho|nguyen lieu|ca lam|lich lam|nhan vien|mo cua|gio phuc vu|xoa|tich diem|loyalty|tao don|dat mon|huy don|cap nhat trang thai)\b|\b(?:cap nhat|doi|sua|chuyen)\b.*\b(?:don|trang thai)\b.*\b(?:hoan thanh|dang xu ly|da huy)\b",
         RegexOptions.CultureInvariant);
 
     private static bool HasAmbiguousCurrentPeriod(string value) => Regex.IsMatch(value,
@@ -416,6 +519,11 @@ public sealed class AdminEmbeddingPilot : IDisposable
         }
         var category = Regex.Match(value, @"\b(?:loai|thuoc loai)\s+(do uong|do an|dich vu)\b", RegexOptions.CultureInvariant);
         if (category.Success) slots["category"] = category.Groups[1].Value switch { "do uong" => "Đồ uống", "do an" => "Đồ ăn", _ => "Dịch vụ" };
+        var freeFormCategory = Regex.Match(value,
+            @"\b(?:loai|thuoc loai)\s+(.+?)(?=\s+(?:nhom|gia|ban gia)\b|[,;.!?]|$)",
+            RegexOptions.CultureInvariant);
+        if (freeFormCategory.Success && !slots.ContainsKey("category"))
+            slots["category"] = freeFormCategory.Groups[1].Value.Trim();
         var group = Regex.Match(value, @"\b(?:nhom|nhom mon)\s+(.+?)(?:\s+(?:gia|co|la)\b|$)", RegexOptions.CultureInvariant);
         if (group.Success) slots["group"] = group.Groups[1].Value.Trim();
         var topping = Regex.Match(value, @"\btopping\s+(.+?)\s+(?:gia|ban gia)\s+([0-9][0-9\.,]*)\b", RegexOptions.CultureInvariant);
@@ -494,6 +602,8 @@ public sealed class AdminEmbeddingPilot : IDisposable
     private string ResolvePath(string key) => Path.GetFullPath(Path.Combine(_environment.ContentRootPath, _configuration[key] ?? throw new InvalidOperationException($"Missing {key}.")));
     private double GetScoreThreshold() => _configuration.GetValue<double?>("AI:AdminEmbeddingPilot:ScoreThreshold") ?? 0.70;
     private double GetMarginThreshold() => _configuration.GetValue<double?>("AI:AdminEmbeddingPilot:MarginThreshold") ?? 0.00;
+    private double GetOutOfScopeScoreThreshold() => _configuration.GetValue<double?>("AI:AdminEmbeddingPilot:OutOfScopeScoreThreshold") ?? 0.80;
+    private double GetOutOfScopeGapThreshold() => _configuration.GetValue<double?>("AI:AdminEmbeddingPilot:OutOfScopeGapThreshold") ?? -0.025;
     private int GetTimeout() => Math.Clamp(_configuration.GetValue<int?>("AI:AdminEmbeddingPilot:TimeoutMilliseconds") ?? 1500, 100, 10000);
     private static double Cosine(float[] a, float[] b) => a.Zip(b, (x, y) => x * y).Sum();
     private static string Fold(string text)

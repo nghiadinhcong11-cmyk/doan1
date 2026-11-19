@@ -198,24 +198,6 @@ const ToppingManagement = () => {
     if (response.ok) { invalidateCachedJson('/api/Topping'); fetchToppings(); }
   };
 
-  const updateAvailability = async (id: string, status: 'Available' | 'TemporarilyUnavailable' | 'OutOfStock') => {
-    if (!selectedBranchId) {
-      notifyFeedback('Vui lòng chọn chi nhánh trước khi đổi trạng thái topping.');
-      return;
-    }
-    const response = await fetch(`${API_URL}/api/Topping/${id}/availability?branchId=${encodeURIComponent(selectedBranchId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    });
-    if (!response.ok) {
-      notifyFeedback('Không thể cập nhật trạng thái topping tại chi nhánh.');
-      return;
-    }
-    invalidateCachedJson('/api/Topping');
-    await fetchToppings();
-  };
-
   const handleExportToppings = () => {
     const headers = ['name', 'price', 'costPrice', 'toppingType', 'category', 'isActive', 'description'];
     const rows = toppings.map(topping => [
@@ -504,12 +486,9 @@ const ToppingManagement = () => {
                         <p className="text-xl font-black text-blue-700 tracking-tighter">{t.price.toLocaleString()}đ</p>
                      </div>
                      <div className="flex flex-col items-end gap-2">
-                       {!t.isActive && <span className="text-[8px] font-black text-red-400 bg-red-50 px-2 py-1 rounded uppercase italic">Ngừng kinh doanh</span>}
-                       <select value={t.availabilityStatus || 'Available'} onChange={event => void updateAvailability(t.id!, event.target.value as 'Available' | 'TemporarilyUnavailable' | 'OutOfStock')} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[9px] font-bold text-gray-600">
-                         <option value="Available">Chi nhánh: Đang bán</option>
-                         <option value="TemporarilyUnavailable">Chi nhánh: Tạm hết</option>
-                         <option value="OutOfStock">Chi nhánh: Hết món</option>
-                       </select>
+                       <span className={`text-[9px] font-black uppercase ${t.availabilityStatus === 'Available' ? 'text-green-600' : t.availabilityStatus === 'OutOfStock' ? 'text-red-500' : 'text-amber-600'}`}>
+                         Bếp: {t.availabilityStatus === 'Available' ? 'Đang bán' : t.availabilityStatus === 'OutOfStock' ? 'Hết món' : 'Tạm hết'}
+                       </span>
                       </div>
                   </div>
                 </div>
@@ -538,10 +517,6 @@ const ToppingManagement = () => {
                           {formData.imageUrl ? <img src={formData.imageUrl} className="w-full h-full object-cover" /> : <Camera size={40} className="opacity-20 group-hover:scale-110 transition-transform"/>}
                        </div>
                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-                        <label className="flex items-center cursor-pointer bg-gray-50 px-6 py-3 rounded-2xl border border-gray-100 shadow-sm">
-                          <input type="checkbox" className="mr-3 h-5 w-5 text-blue-600 rounded-lg border-gray-300" checked={formData.isActive} onChange={e => setFormData({...formData, isActive: e.target.checked})} />
-                           <span className="text-xs font-black text-gray-700 uppercase">Đang kinh doanh</span>
-                       </label>
                     </div>
 
                      <div className="flex-1 space-y-6">

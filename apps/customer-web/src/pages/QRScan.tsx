@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { QrCode, Camera, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { QrCode, Camera, Upload, AlertCircle } from 'lucide-react';
 
 const QRScan = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -8,6 +8,7 @@ const QRScan = () => {
   const [canRetryCamera, setCanRetryCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<number>();
   const streamRef = useRef<MediaStream | null>(null);
   const navigate = useNavigate();
@@ -74,6 +75,61 @@ const QRScan = () => {
     };
   }, [startCamera, stopCamera]);
 
+  const handleQrData = (data: string) => {
+    try {
+      if (data.includes('qr=')) {
+        const url = new URL(data);
+        const qr = url.searchParams.get('qr');
+        if (qr && /^[A-Za-z0-9_-]{43}$/.test(qr)) {
+          stopCamera();
+          navigate(`/?qr=${encodeURIComponent(qr)}`);
+          return;
+        }
+      } else if (/^[A-Za-z0-9_-]{43}$/.test(data)) {
+        stopCamera();
+        navigate(`/?qr=${encodeURIComponent(data)}`);
+        return;
+      }
+      setError('Mã QR không đúng định dạng của bàn.');
+    } catch {
+      setError('Mã QR không hợp lệ.');
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        const decoder = (window as Window & {
+          jsQR?: (data: Uint8ClampedArray, width: number, height: number) => { data: string } | null;
+        }).jsQR;
+        if (!context || !decoder) {
+          setError('Không thể đọc ảnh QR này.');
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const code = decoder(imageData.data, imageData.width, imageData.height);
+        if (code) handleQrData(code.data);
+        else setError('Không tìm thấy mã QR trong ảnh này.');
+      };
+      image.onerror = () => setError('Không thể đọc file ảnh.');
+      image.src = String(reader.result);
+    };
+    reader.onerror = () => setError('Không thể đọc file ảnh.');
+    reader.readAsDataURL(file);
+  };
+
   const scanQRCode = () => {
     if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
       const canvas = canvasRef.current;
@@ -115,6 +171,7 @@ const QRScan = () => {
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center overflow-x-hidden bg-[#22252b] p-6 pb-[calc(8rem+env(safe-area-inset-bottom))] text-white sm:p-8">
        <canvas ref={canvasRef} className="hidden" />
+       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
 
        <div className="text-center mb-10">
           <h1 className="text-2xl font-black tracking-tight text-orange-400">Quét mã QR tại bàn</h1>
@@ -150,6 +207,13 @@ const QRScan = () => {
        </div>
 
        <div className="mt-12 flex flex-col items-center space-y-4">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600 active:scale-95"
+          >
+             <Upload size={16} className="mr-2" /> Tải ảnh QR lên
+          </button>
           <div className="p-4 bg-white/5 rounded-2xl flex items-center border border-white/10">
              <QrCode size={20} className="mr-3 text-orange-400" />
              <p className="text-[10px] text-gray-400 font-medium leading-relaxed italic max-w-[200px]">

@@ -70,7 +70,6 @@ const ProductManagement = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('selectedBranchId') || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,7 +84,6 @@ const ProductManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGroup, setFilterGroup] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>(''); // Đồ uống, Đồ ăn...
-  const [filterStatus, setFilterStatus] = useState<string>('active'); // active, inactive, all
 
   // Options State
   const [sizes, setSizes] = useState<ProductOption[]>([]);
@@ -95,8 +93,8 @@ const ProductManagement = () => {
   const productAbortController = useRef<AbortController | null>(null);
   const toppingRequestGeneration = useRef(0);
   const toppingAbortController = useRef<AbortController | null>(null);
-  const productQueryRef = useRef({ searchTerm, filterGroup, filterCategory, filterStatus, selectedBranchId });
-  productQueryRef.current = { searchTerm, filterGroup, filterCategory, filterStatus, selectedBranchId };
+  const productQueryRef = useRef({ searchTerm, filterGroup, filterCategory, selectedBranchId });
+  productQueryRef.current = { searchTerm, filterGroup, filterCategory, selectedBranchId };
   const searchEffectInitialized = useRef(false);
   const productSearchTimer = useRef<number | null>(null);
   const productRefreshTimer = useRef<number | null>(null);
@@ -146,7 +144,7 @@ const ProductManagement = () => {
   };
 
   const fetchProducts = async () => {
-    const { searchTerm: currentSearch, filterGroup: currentGroup, filterCategory: currentCategory, filterStatus: currentStatus, selectedBranchId: currentBranchId } = productQueryRef.current;
+    const { searchTerm: currentSearch, filterGroup: currentGroup, filterCategory: currentCategory, selectedBranchId: currentBranchId } = productQueryRef.current;
     const generation = ++productRequestGeneration.current;
     productAbortController.current?.abort();
     const controller = new AbortController();
@@ -158,8 +156,6 @@ const ProductManagement = () => {
       if (currentSearch) params.append('search', currentSearch);
       if (currentGroup) params.append('group', currentGroup);
       if (currentCategory) params.append('category', currentCategory);
-      if (currentStatus === 'active') params.append('isActive', 'true');
-      if (currentStatus === 'inactive') params.append('isActive', 'false');
       if (currentBranchId) params.append('branchId', currentBranchId);
 
       if (params.toString()) {
@@ -170,7 +166,6 @@ const ProductManagement = () => {
       if (generation !== productRequestGeneration.current) return;
       setProducts(data);
       setLoadError(null);
-      setSelectedProductIds(currentIds => currentIds.filter(id => data.some(product => product.id === id)));
 
       const uniqueGroups = Array.from(new Set(data.map(p => p.group).filter((g): g is string => !!g)));
       if (uniqueGroups.length > 0) {
@@ -202,7 +197,7 @@ const ProductManagement = () => {
       productSearchTimer.current = null;
     }
     void fetchProducts();
-  }, [filterGroup, filterCategory, filterStatus, selectedBranchId]);
+  }, [filterGroup, filterCategory, selectedBranchId]);
 
   useEffect(() => {
     const handleCatalogChanged = () => { invalidateCachedJson('/api/Product'); void fetchProducts(); };
@@ -445,55 +440,6 @@ const ProductManagement = () => {
     await fetchProducts();
   };
 
-  const handleBulkGlobalStatus = async (isActive: boolean) => {
-    if (selectedProductIds.length === 0) return;
-    const results = await Promise.all(selectedProductIds.map(async id => {
-      const product = products.find(item => item.id === id);
-      if (!product || product.isActive === isActive) return { ok: true } as Response;
-      return fetch(`${API_URL}/api/Product/${id}/global-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive })
-      });
-    }));
-    const succeeded = results.filter(response => response.ok).length;
-    setSelectedProductIds([]);
-    notifyFeedback(`Đã cập nhật ${succeeded}/${results.length} món. Bộ lọc sẽ được làm mới.`);
-    invalidateCachedJson('/api/Product');
-    await fetchProducts();
-  };
-
-  const handleBulkAvailability = async (status: 'Available' | 'TemporarilyUnavailable' | 'OutOfStock') => {
-    if (!selectedBranchId || selectedProductIds.length === 0) return;
-    const results = await Promise.all(selectedProductIds.map(id => fetch(
-      `${API_URL}/api/Product/${id}/availability?branchId=${encodeURIComponent(selectedBranchId)}`,
-      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }
-    )));
-    const succeeded = results.filter(response => response.ok).length;
-    setSelectedProductIds([]);
-    notifyFeedback(`Đã cập nhật trạng thái chi nhánh cho ${succeeded}/${results.length} món.`);
-    invalidateCachedJson('/api/Product');
-    await fetchProducts();
-  };
-
-  const handleAvailability = async (id: string, status: 'Available' | 'TemporarilyUnavailable' | 'OutOfStock') => {
-    if (!selectedBranchId) {
-      notifyFeedback('Vui lòng chọn chi nhánh trước khi đổi trạng thái món.');
-      return;
-    }
-    const response = await fetch(`${API_URL}/api/Product/${id}/availability?branchId=${encodeURIComponent(selectedBranchId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    });
-    if (!response.ok) {
-      notifyFeedback('Không thể cập nhật trạng thái món tại chi nhánh.');
-      return;
-    }
-    invalidateCachedJson('/api/Product');
-    await fetchProducts();
-  };
-
   const handleEditGroup = (oldName: string) => {
     const newName = prompt(`Sửa tên nhóm "${oldName}" thành:`, oldName);
     if (newName && newName !== oldName) {
@@ -548,24 +494,6 @@ const ProductManagement = () => {
       notifyFeedback('Lỗi khi xóa món');
     }
   };
-
-  const handleGlobalStatus = async (id: string, isActive: boolean) => {
-    try {
-      const response = await fetch(`${API_URL}/api/Product/${id}/global-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive })
-      });
-      if (response.ok) {
-        invalidateCachedJson('/api/Product');
-        fetchProducts();
-      }
-    } catch (err) {
-      notifyFeedback('Lỗi khi cập nhật trạng thái');
-    }
-  };
-
-  const isAdmin = localStorage.getItem('userRole') === 'admin';
 
   return (
     <div className="flex h-[calc(100vh-48px)] bg-[#f0f2f5] text-[13px]">
@@ -636,42 +564,6 @@ const ProductManagement = () => {
           </div>
         </div>
 
-        {/* Trạng thái */}
-        <div className="space-y-2 pt-4 border-t">
-          <p className="font-bold text-gray-700">Trạng thái</p>
-          <div className="space-y-1.5 ml-1">
-            <label className="flex items-center cursor-pointer group">
-              <input
-                type="radio"
-                name="status"
-                className="mr-2 h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
-                checked={filterStatus === 'active'}
-                onChange={() => setFilterStatus('active')}
-              />
-              <span className={`transition-colors ${filterStatus === 'active' ? 'text-blue-600 font-bold' : 'text-gray-600 group-hover:text-blue-600'}`}>Đang kinh doanh</span>
-            </label>
-            <label className="flex items-center cursor-pointer group">
-              <input
-                type="radio"
-                name="status"
-                className="mr-2 h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
-                checked={filterStatus === 'inactive'}
-                onChange={() => setFilterStatus('inactive')}
-              />
-              <span className={`transition-colors ${filterStatus === 'inactive' ? 'text-blue-600 font-bold' : 'text-gray-600 group-hover:text-blue-600'}`}>Ngừng kinh doanh</span>
-            </label>
-            <label className="flex items-center cursor-pointer group">
-              <input
-                type="radio"
-                name="status"
-                className="mr-2 h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
-                checked={filterStatus === 'all'}
-                onChange={() => setFilterStatus('all')}
-              />
-              <span className={`transition-colors ${filterStatus === 'all' ? 'text-blue-600 font-bold' : 'text-gray-600 group-hover:text-blue-600'}`}>Tất cả</span>
-            </label>
-          </div>
-        </div>
       </div>
 
       {/* MAIN CONTENT */}
@@ -696,7 +588,6 @@ const ProductManagement = () => {
                 onChange={event => {
                   setSelectedBranchId(event.target.value);
                   localStorage.setItem('selectedBranchId', event.target.value);
-                  setSelectedProductIds([]);
                 }}
                 className="max-w-[150px] bg-transparent outline-none"
                 disabled={branches.length === 0}
@@ -705,23 +596,6 @@ const ProductManagement = () => {
                 {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
             </label>
-            {selectedProductIds.length > 0 && (
-              <>
-                {isAdmin && <button onClick={() => void handleBulkGlobalStatus(true)} className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-100">
-                  Mở kinh doanh toàn hệ thống
-                </button>
-                }
-                {isAdmin && <button onClick={() => void handleBulkGlobalStatus(false)} className="bg-red-50 border border-red-200 text-red-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-100">
-                  Ngừng kinh doanh toàn hệ thống
-                </button>}
-                <button onClick={() => void handleBulkAvailability('Available')} className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-emerald-100">
-                  Bật bán tại chi nhánh
-                </button>
-                <button onClick={() => void handleBulkAvailability('TemporarilyUnavailable')} className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-amber-100">
-                  Tạm hết tại chi nhánh
-                </button>
-              </>
-            )}
             <button
               onClick={() => {
                 if (localStorage.getItem('userRole') !== 'admin') {
@@ -749,14 +623,6 @@ const ProductManagement = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-[#f9fafb] border-b text-gray-500 font-bold sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-2 w-10">
-                  <input
-                    type="checkbox"
-                    aria-label="Chọn tất cả món đang hiển thị"
-                    checked={products.length > 0 && products.every(product => product.id && selectedProductIds.includes(product.id))}
-                    onChange={event => setSelectedProductIds(event.target.checked ? products.flatMap(product => product.id ? [product.id] : []) : [])}
-                  />
-                </th>
                 <th className="px-4 py-2 w-16 uppercase text-[10px]">Ảnh</th>
                 <th className="px-4 py-2 w-32 uppercase text-[10px]">Mã món</th>
                 <th className="px-4 py-2 uppercase text-[10px]">Tên món</th>
@@ -766,15 +632,15 @@ const ProductManagement = () => {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-20"><Loader2 className="animate-spin inline mr-2 text-blue-600"/> Đang tải...</td></tr>
+                <tr><td colSpan={5} className="text-center py-20"><Loader2 className="animate-spin inline mr-2 text-blue-600"/> Đang tải...</td></tr>
               ) : loadError ? (
-                <tr><td colSpan={6} className="text-center py-20">
+                <tr><td colSpan={5} className="text-center py-20">
                   <p className="font-bold text-red-600">{loadError}</p>
                   <button onClick={() => { invalidateCachedJson('/api/Product'); void fetchProducts(); }} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Thử lại</button>
                 </td></tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-32 bg-gray-50/50">
+                  <td colSpan={5} className="text-center py-32 bg-gray-50/50">
                     <div className="flex flex-col items-center justify-center space-y-4">
                       <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-gray-300">
                         <Utensils size={40} />
@@ -804,20 +670,6 @@ const ProductManagement = () => {
                     className={`hover:bg-blue-50 cursor-pointer transition-colors ${expandedRow === p.id ? 'bg-blue-50' : ''}`}
                     onClick={() => setExpandedRow(expandedRow === p.id ? null : p.id!)}
                   >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Chọn món ${p.name}`}
-                        checked={Boolean(p.id && selectedProductIds.includes(p.id))}
-                        onClick={e => e.stopPropagation()}
-                        onChange={event => {
-                          if (!p.id) return;
-                          setSelectedProductIds(current => event.target.checked
-                            ? [...new Set([...current, p.id!])]
-                            : current.filter(id => id !== p.id));
-                        }}
-                      />
-                    </td>
                     <td className="px-4 py-3">
                        <div className="w-10 h-10 bg-gray-100 rounded border flex items-center justify-center overflow-hidden">
                           {p.imageUrl && p.imageUrl !== 'string' ? (
@@ -852,17 +704,10 @@ const ProductManagement = () => {
                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Nhóm món</p><p className="font-bold">{p.group}</p></div>
                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Giá bán</p><p className="font-black text-blue-700 text-base">{p.price.toLocaleString()} đ</p></div>
                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Loại món</p><p className="font-bold">{p.category}</p></div>
-                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Toàn hệ thống</p><p className={p.isActive ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>{p.isActive ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</p></div>
-                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Tại chi nhánh</p><p className={p.availabilityStatus === 'Available' ? 'text-green-600 font-bold' : 'text-amber-600 font-bold'}>{p.availabilityStatus === 'Available' ? 'Đang bán' : p.availabilityStatus === 'OutOfStock' ? 'Hết món' : 'Tạm hết'}</p></div>
+                                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Trạng thái từ bếp</p><p className={p.availabilityStatus === 'Available' ? 'text-green-600 font-bold' : 'text-amber-600 font-bold'}>{p.availabilityStatus === 'Available' ? 'Đang bán' : p.availabilityStatus === 'OutOfStock' ? 'Hết món' : 'Tạm hết'}</p></div>
                                 </div>
                                 <div className="mt-8 flex justify-end space-x-2">
                                    <button onClick={(e) => { e.stopPropagation(); openEditModal(p); }} className="bg-blue-600 text-white px-5 py-2 rounded-full font-bold flex items-center hover:bg-blue-700 shadow-lg shadow-blue-500/20"><Edit2 size={14} className="mr-2"/> Cập nhật</button>
-                                    {isAdmin && <button onClick={(e) => { e.stopPropagation(); void handleGlobalStatus(p.id!, !p.isActive); }} className="border border-red-200 text-red-700 px-5 py-2 rounded-full font-bold flex items-center hover:bg-red-50">{p.isActive ? 'Ngừng KD toàn hệ thống' : 'Mở KD toàn hệ thống'}</button>}
-                                    <select value={p.availabilityStatus || 'Available'} onClick={e => e.stopPropagation()} onChange={e => void handleAvailability(p.id!, e.target.value as 'Available' | 'TemporarilyUnavailable' | 'OutOfStock')} className="border border-gray-300 px-3 py-2 rounded-full font-bold text-xs bg-white">
-                                      <option value="Available">Chi nhánh: Đang bán</option>
-                                      <option value="TemporarilyUnavailable">Chi nhánh: Tạm hết</option>
-                                      <option value="OutOfStock">Chi nhánh: Hết món</option>
-                                    </select>
                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id!); }} className="border border-red-200 text-red-600 px-5 py-2 rounded-full font-bold flex items-center hover:bg-red-50"><Trash2 size={14} className="mr-2"/> Xóa món</button>
                                 </div>
                              </div>
@@ -976,13 +821,6 @@ const ProductManagement = () => {
                           <div className="relative">
                              <input type="number" className="w-full px-5 py-4 bg-white border-2 border-gray-100 rounded-2xl outline-none font-bold text-red-400 text-xl focus:border-red-400 transition-all" value={newProduct.costPrice} onChange={e => setNewProduct({...newProduct, costPrice: parseInt(e.target.value) || 0})}/>
                           </div>
-                       </div>
-                       <div className="flex flex-col justify-center items-center">
-                          <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-3">Trạng thái bán</label>
-                          <label className="flex items-center cursor-pointer bg-white px-6 py-3 rounded-2xl border shadow-sm hover:shadow-md transition-all">
-                             <input type="checkbox" className="mr-3 h-5 w-5 text-blue-600 rounded-lg border-gray-300" checked={newProduct.isActive} onChange={e => setNewProduct({...newProduct, isActive: e.target.checked})}/>
-                             <span className="text-xs font-black text-gray-700 uppercase tracking-tighter italic">Đang kinh doanh</span>
-                          </label>
                        </div>
                     </div>
                  </div>

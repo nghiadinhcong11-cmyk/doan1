@@ -4,6 +4,7 @@ import { API_URL } from '../../../config';
 import { useRef } from 'react';
 import { Feedback, FormField, notifyFeedback } from '../../../components/ui';
 import { fetchBranchList } from '../../../api/branchQuery';
+import { invalidateCachedJson } from '../../../api/queryCache';
 
 interface Employee {
   id?: string;
@@ -204,6 +205,7 @@ const EmployeeManagement = () => {
         setIsModalOpen(false);
         setEditingEmployee(null);
         resetForm();
+        invalidateCachedJson('/api/Employee');
         const refreshed = await fetchEmployees();
         if (!refreshed) notifyFeedback('Đã lưu hồ sơ, nhưng không thể tải lại danh sách.');
       } else {
@@ -268,6 +270,7 @@ const EmployeeManagement = () => {
         notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể xóa nhân viên.');
         return;
       }
+      invalidateCachedJson('/api/Employee');
       const refreshed = await fetchEmployees();
       if (!refreshed) notifyFeedback('Đã xóa nhân viên, nhưng không thể tải lại danh sách.');
     } catch (err) {
@@ -292,6 +295,7 @@ const EmployeeManagement = () => {
         notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể cập nhật trạng thái.');
         return;
       }
+      invalidateCachedJson('/api/Employee');
       const refreshed = await fetchEmployees();
       if (!refreshed) notifyFeedback('Đã cập nhật trạng thái, nhưng không thể tải lại danh sách.');
     } catch (err) {

@@ -129,7 +129,7 @@ public sealed class CustomerGuestEmbeddingPilot : IDisposable
     public static CustomerGuestEmbeddingPilotResult? EvaluateScopeBoundary(string text, bool guest)
     {
         var value = Normalize(text);
-        if (Regex.IsMatch(value, @"\b(?:doanh thu|doanh so|doanh tien|loi nhuan|chi phi|bao cao|dashboard|kpi|nhan vien|chi nhanh khac|chi nhanh nao khac)\b", RegexOptions.CultureInvariant)) return guest ? Reject("GuestScopeDenied", "GUEST_SCOPE") : Reject("CustomerScopeDenied", "CUSTOMER_SCOPE");
+        if (Regex.IsMatch(value, @"\b(?:doanh thu|doan thu|doanh so|doanh tien|loi nhuan|chi phi|bao cao|dashboard|kpi|nhan vien|chi nhanh khac|chi nhanh nao khac)\b", RegexOptions.CultureInvariant)) return guest ? Reject("GuestScopeDenied", "GUEST_SCOPE") : Reject("CustomerScopeDenied", "CUSTOMER_SCOPE");
         if (Regex.IsMatch(value, @"\b(?:cap nhat|sua|doi gia|xoa|tao don|huy don|dat mon|them mon|bot mon|gui bep|thanh toan|hoan tien|dat ban|giam gia|quan ly kho|quan ly nhan vien|chap nhan don|tu choi don)\b", RegexOptions.CultureInvariant)) return Reject("WriteOrDestructiveRequest", "WRITE_OR_DESTRUCTIVE");
         if (Regex.IsMatch(value, @"(?:^|\s)(?:dung|khong|chua)(?=\s+(?:xem|can|muon|yeu cau|lay|cho|thuc hien|kiem tra))", RegexOptions.CultureInvariant)) return Clarify("NegatedRequest", boundary: "NEGATION");
         // A guest order request must be rejected before embedding candidates are
@@ -137,7 +137,10 @@ public sealed class CustomerGuestEmbeddingPilot : IDisposable
         // such as "don da dat", "don nay", and "don cua khach hang khac" after
         // Vietnamese diacritic folding, without matching the menu token "mon".
         if (guest && IsGuestOrderRequest(value)) return Reject("GuestOrdersDenied", "GUEST_SCOPE");
-        if (!guest && Regex.IsMatch(value, @"\b(?:don cua nguoi khac|don cua khach khac|don cua khach hang khac|don hang cua nguoi khac|don hang cua khach khac|don hang cua khach hang khac|khach hang khac|so dien thoai|email|customerid)\b", RegexOptions.CultureInvariant)) return Reject("CustomerIdentityScopeDenied", "CUSTOMER_SCOPE");
+        if (!guest && (
+            Regex.IsMatch(value, @"\b(?:don cua nguoi khac|don cua khach khac|don cua khach hang khac|don hang cua nguoi khac|don hang cua khach khac|don hang cua khach hang khac|khach hang khac|so dien thoai|email|customerid)\b", RegexOptions.CultureInvariant) ||
+            Regex.IsMatch(value, @"\b(?:don|don hang)\b.*\b(?:khach khac|khach hang khac|nguoi khac|tai khoan khac)\b|\b(?:khach khac|khach hang khac|nguoi khac|tai khoan khac)\b.*\b(?:don|don hang)\b", RegexOptions.CultureInvariant)))
+            return Reject("CustomerIdentityScopeDenied", "CUSTOMER_SCOPE");
         if (Regex.IsMatch(value, @"\b(?:gia duoi|duoi \d+|ton kho|con hang|het hang|tim mon|mon ten|ten mon|mon nao co san)\b", RegexOptions.CultureInvariant)) return Unsupported("UnsupportedMenuCapability", boundary: "UNSUPPORTED_CAPABILITY");
         if (Regex.IsMatch(value, @"\b(?:mon nay|mon do|gia mon)\b.*\b(?:gia|bao nhieu|tien)\b|\b(?:gia|bao nhieu)\b.*\b(?:mon nay|mon do)\b", RegexOptions.CultureInvariant)) return Clarify("MenuItemNeedsClarification", boundary: "MENU_ITEM_UNSPECIFIED");
         if (Regex.IsMatch(value, @"\b(?:va|cung|dong thoi)\b", RegexOptions.CultureInvariant) && Regex.IsMatch(value, @"\b(?:menu|thuc don|mon)\b", RegexOptions.CultureInvariant) && Regex.IsMatch(value, @"\b(?:don hang|don cua toi)\b", RegexOptions.CultureInvariant)) return Clarify("MultipleIntents", boundary: "MULTI_INTENT");

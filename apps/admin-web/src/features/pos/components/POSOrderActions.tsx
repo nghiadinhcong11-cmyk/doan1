@@ -1,4 +1,4 @@
-import { Loader2, MoreVertical, RotateCcw, Utensils } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, MoreVertical, RotateCcw, Utensils } from 'lucide-react';
 import type { POSUserRole } from '../types';
 
 interface POSOrderActionsProps {
@@ -19,6 +19,8 @@ interface POSOrderActionsProps {
   isSendingToKitchen: boolean;
   isSaving: boolean;
   kitchenMessage: { type: 'success' | 'error'; text: string } | null;
+  showMobileActions?: boolean;
+  onToggleMobileActions?: () => void;
   onSendToKitchen: () => void;
   onPayment: () => void;
 }
@@ -34,11 +36,18 @@ const POSOrderActions = ({
   isSendingToKitchen,
   isSaving,
   kitchenMessage,
+  showMobileActions = true,
+  onToggleMobileActions,
   onSendToKitchen,
   onPayment
 }: POSOrderActionsProps) => (
-  <div className="p-4 border-t bg-white shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
-    <div className="flex justify-between items-center mb-4">
+  <div className="pos-order-actions shrink-0 border-t bg-white p-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
+    <button type="button" className="pos-mobile-actions-toggle" onClick={onToggleMobileActions} aria-expanded={showMobileActions}>
+      {showMobileActions ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+      <span>{showMobileActions ? 'Ẩn tổng & thao tác' : 'Hiện tổng & Gửi bếp'}</span>
+    </button>
+    <div className={`pos-mobile-actions-content ${showMobileActions ? '' : 'pos-mobile-actions-content-hidden'}`}>
+    <div className="pos-order-total flex justify-between items-center mb-4">
       <div className="flex items-center">
         <span className="text-xs font-bold text-gray-500 mr-2">{userName || 'Nhân viên'}</span>
         <MoreVertical size={14} className="text-gray-400 cursor-pointer" />
@@ -66,7 +75,7 @@ const POSOrderActions = ({
       <button
         onClick={onSendToKitchen}
         disabled={isSendingToKitchen || currentCartLength === 0}
-        className={`${userRole === 'employee' ? 'col-span-12' : 'col-span-4'} py-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all shadow-lg active:scale-[0.98] border-b-4 ${
+        className={`pos-action-button ${userRole === 'employee' ? 'col-span-12' : 'col-span-4'} py-4 rounded-xl font-bold flex flex-col items-center justify-center transition-all shadow-lg active:scale-[0.98] border-b-4 ${
           'bg-orange-500 text-white hover:bg-orange-600 border-orange-700 shadow-orange-500/20'
         }`}
       >
@@ -77,7 +86,7 @@ const POSOrderActions = ({
       {userRole !== 'employee' && <button
         onClick={onPayment}
         disabled={isSaving || currentCartLength === 0}
-        className="col-span-8 bg-[#0070f4] text-white py-4 rounded-xl font-bold flex items-center justify-center space-x-3 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 active:scale-[0.98] border-b-4 border-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="pos-action-button col-span-8 bg-[#0070f4] text-white py-4 rounded-xl font-bold flex items-center justify-center space-x-3 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 active:scale-[0.98] border-b-4 border-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <span className="bg-white/20 p-2 rounded-full"><RotateCcw size={24} className="rotate-90"/></span>
         <span className="text-xl uppercase tracking-tighter font-black italic">Thanh toán</span>
@@ -91,6 +100,7 @@ const POSOrderActions = ({
         {kitchenMessage.text}
       </div>
     )}
+    </div>
   </div>
 );
 

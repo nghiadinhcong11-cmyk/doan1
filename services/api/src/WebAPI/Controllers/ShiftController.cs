@@ -106,9 +106,24 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (!IsAdmin() && !IsManager() && CurrentUserId() != shift.EmployeeId) return Forbid();
             if (shift.Status != "Open") return Conflict(new { message = "Ca này đã được chốt." });
 
+            // CreatedBy is a legacy display-name field. Match the snapshot and
+            // current staff identifiers to keep old shifts working after a name change.
+            var employee = await _context.Employees
+                .AsNoTracking()
+                .Where(e => e.Id == shift.EmployeeId)
+                .Select(e => new { e.FullName, e.Username })
+                .FirstOrDefaultAsync();
+            var staffNames = new[] { shift.EmployeeName, employee?.FullName, employee?.Username }
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct()
+                .ToArray();
+
             // Lấy danh sách các đơn hàng hoàn thành trong ca này
             var shiftOrders = await _context.Orders
-                .Where(o => o.BranchId == shift.BranchId && o.CreatedAt >= shift.StartTime && o.Status == "Hoàn thành" && o.CreatedBy == shift.EmployeeName)
+                .Where(o => o.BranchId == shift.BranchId && o.CreatedAt >= shift.StartTime && o.Status == "Hoàn thành")
+                .Where(o => o.PaidByEmployeeId == shift.EmployeeId ||
+                    (o.PaidByEmployeeId == null && o.CreatedByEmployeeId == shift.EmployeeId) ||
+                    (o.PaidByEmployeeId == null && o.CreatedByEmployeeId == null && staffNames.Contains(o.CreatedBy)))
                 .ToListAsync();
 
             var cashRev = shiftOrders.Where(o => o.PaymentMethod == "Tiền mặt").Sum(o => o.PaidAmount);

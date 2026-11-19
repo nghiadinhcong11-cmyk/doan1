@@ -1,0 +1,20 @@
+[
+  { "id": "OOD-GENERAL-KNOWLEDGE-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Paris là trung tâm hành chính của quốc gia nào?" },
+  { "id": "OOD-GENERAL-KNOWLEDGE-02", "expectedIntent": "OUT_OF_SCOPE", "text": "Người giữ chức tổng thống đầu tiên tại Hoa Kỳ là ai?" },
+  { "id": "OOD-GEOGRAPHY-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Thành phố nào là thủ đô của Nhật Bản?" },
+  { "id": "OOD-GEOGRAPHY-02", "expectedIntent": "OUT_OF_SCOPE", "text": "Berlin là thủ đô của quốc gia nào?" },
+  { "id": "OOD-GEOGRAPHY-03", "expectedIntent": "OUT_OF_SCOPE", "text": "Canberra nằm ở nước nào và có vai trò gì?" },
+  { "id": "OOD-GEOGRAPHY-04", "expectedIntent": "OUT_OF_SCOPE", "text": "Núi Everest nằm giữa những quốc gia nào?" },
+  { "id": "OOD-GEOGRAPHY-05", "expectedIntent": "OUT_OF_SCOPE", "text": "Rừng nhiệt đới Amazon trải dài qua những nước nào?" },
+  { "id": "OOD-LITERATURE-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Bài thơ Tràng Giang của Huy Cận gợi lên cảm xúc gì?" },
+  { "id": "OOD-HISTORY-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Chiến tranh thế giới thứ hai kết thúc vào năm nào?" },
+  { "id": "OOD-SCIENCE-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Mối quan hệ giữa lực và gia tốc theo Newton được phát biểu ra sao?" },
+  { "id": "OOD-SCIENCE-02", "expectedIntent": "OUT_OF_SCOPE", "text": "Nước sôi ở nhiệt độ bao nhiêu độ C?" },
+  { "id": "OOD-SCIENCE-03", "expectedIntent": "OUT_OF_SCOPE", "text": "Lực hấp dẫn của Mặt Trăng ảnh hưởng đến mực nước biển như thế nào?" },
+  { "id": "OOD-GARDENING-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Hướng dẫn chăm sóc cây rau trồng trong không gian nhỏ." },
+  { "id": "OOD-RECIPES-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Cách pha cà phê sữa đá theo kiểu Việt Nam?" },
+  { "id": "OOD-WEATHER-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Cuối tuần này Đà Nẵng có khả năng mưa không?" },
+  { "id": "OOD-TRAVEL-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Gợi ý lịch trình du lịch Đà Lạt cuối tuần." },
+  { "id": "OOD-SPORTS-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Tỷ số trận bóng đá tối qua là bao nhiêu?" },
+  { "id": "OOD-ENTERTAINMENT-01", "expectedIntent": "OUT_OF_SCOPE", "text": "Lịch chiếu phim cuối tuần này thế nào?" }
+]

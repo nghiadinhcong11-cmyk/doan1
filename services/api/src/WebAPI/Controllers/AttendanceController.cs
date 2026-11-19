@@ -30,7 +30,12 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         /// <summary>Lấy danh sách chấm công theo ngày hoặc nhân viên.</summary>
         [HttpGet]
-        public async Task<IActionResult> GetAttendances([FromQuery] DateTime? date, [FromQuery] Guid? employeeId, [FromQuery] Guid? branchId)
+        public async Task<IActionResult> GetAttendances(
+            [FromQuery] DateTime? date,
+            [FromQuery] DateTime? dateFrom,
+            [FromQuery] DateTime? dateTo,
+            [FromQuery] Guid? employeeId,
+            [FromQuery] Guid? branchId)
         {
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
             var userId = CurrentUserId();
@@ -70,10 +75,26 @@ namespace RestaurantPOS.WebAPI.Controllers
                 query = query.Where(a => a.BranchId == branchId.Value);
             }
 
+            var vietnamZone = GetVietnamTimeZone();
             if (date.HasValue)
             {
-                var targetDate = date.Value.Date;
-                query = query.Where(a => a.CheckInTime.Date == targetDate);
+                var start = ToUtcStartOfVietnamDate(date.Value, vietnamZone);
+                var end = start.AddDays(1);
+                query = query.Where(a => a.CheckInTime >= start && a.CheckInTime < end);
+            }
+            else
+            {
+                if (dateFrom.HasValue)
+                {
+                    var start = ToUtcStartOfVietnamDate(dateFrom.Value, vietnamZone);
+                    query = query.Where(a => a.CheckInTime >= start);
+                }
+
+                if (dateTo.HasValue)
+                {
+                    var end = ToUtcStartOfVietnamDate(dateTo.Value, vietnamZone).AddDays(1);
+                    query = query.Where(a => a.CheckInTime < end);
+                }
             }
 
             if (employeeId.HasValue)
@@ -86,6 +107,12 @@ namespace RestaurantPOS.WebAPI.Controllers
         {
             try { return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); }
             catch { return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh"); }
+        }
+
+        private static DateTime ToUtcStartOfVietnamDate(DateTime value, TimeZoneInfo vietnamZone)
+        {
+            var vietnamDate = DateTime.SpecifyKind(value.Date, DateTimeKind.Unspecified);
+            return TimeZoneInfo.ConvertTimeToUtc(vietnamDate, vietnamZone);
         }
 
         /// <summary>Ghi nhận nhân viên check-in.</summary>

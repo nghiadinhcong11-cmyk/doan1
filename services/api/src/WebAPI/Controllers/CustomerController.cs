@@ -36,6 +36,7 @@ namespace RestaurantPOS.WebAPI.Controllers
         [Authorize(Roles = "admin,manager,employee,cashier")]
         public async Task<IActionResult> GetCustomers(
             [FromQuery] string? search,
+            [FromQuery] string? customerGroup,
             [FromQuery] int? page,
             [FromQuery] int? pageSize)
         {
@@ -46,6 +47,11 @@ namespace RestaurantPOS.WebAPI.Controllers
                 query = query.Where(c => c.FullName.Contains(search) || c.PhoneNumber.Contains(search));
             }
 
+            if (!string.IsNullOrEmpty(customerGroup))
+            {
+                query = query.Where(c => c.CustomerGroup == customerGroup);
+            }
+
             var pagedRequest = page.HasValue || pageSize.HasValue;
             var requestedPage = Math.Max(page ?? 1, 1);
             var requestedPageSize = Math.Clamp(pageSize ?? 50, 1, 100);
@@ -53,7 +59,7 @@ namespace RestaurantPOS.WebAPI.Controllers
             if (IsManagementStaff())
             {
                 // Project only the fields used by the staff response. This avoids
-                // loading password hashes and unrelated columns from Supabase.
+                // loading password hashes and unrelated columns from PostgreSQL.
                 IQueryable<Customer> orderedQuery = query.OrderByDescending(c => c.TotalSpending);
                 if (pagedRequest)
                 {

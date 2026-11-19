@@ -4,7 +4,10 @@ export interface POSPendingOrderRequest {
   id: string;
   tableName?: string;
   customerName?: string;
+  customerId?: string;
   status?: string;
+  totalAmount?: number;
+  details?: Array<{ productName?: string; quantity?: number; unitPrice?: number; options?: string }>;
 }
 
 export interface POSPendingReservationRequest {

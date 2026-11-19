@@ -1,6 +1,6 @@
 # AI Chat — Bộ câu hỏi manual cho chủ quán
 
-Đây là checklist manual để nhập trực tiếp vào ChatBot Admin/POS. Trạng thái bên dưới phản ánh lượt test gần nhất đến ngày 20/10/2026; số liệu có thể thay đổi theo database và ngày chạy.
+Đây là checklist manual để nhập trực tiếp vào ChatBot Admin/POS. Các kết quả cũ trong checklist được giữ theo thời điểm kiểm thử; lượt retest mới nhất ngày 02/11/2026 được tóm tắt bên dưới và ghi chi tiết trong [Bảng PL.6](PL6-kiem-chung-E5.md). Số liệu nghiệp vụ có thể thay đổi theo database và ngày chạy.
 
 Điều kiện: tài khoản `admin`, `AI:AdminEmbeddingPilot` bật, Backend chạy `Development`.
 
@@ -12,6 +12,24 @@
 | `FAIL` | Có hành vi sai cần sửa trước khi nghiệm thu. |
 | `CHƯA TEST` | Chưa có response/log đủ để kết luận. |
 | `TEST LẠI` | Đã sửa code sau lượt test này, cần chạy lại khi khởi động API mới. |
+
+## Retest Admin ngày 02/11 và 04/11/2026
+
+Môi trường: Localhost, `Development`, vai trò `admin`. Log ghi `ScoreThreshold=0.90`, `MarginThreshold=0.05`, `OodScoreThreshold=0.80`, `OodGapThreshold=-0.025`. Các kết quả trong bảng dưới đây áp dụng cho lượt thử này; không suy rộng thành đánh giá mọi câu tiếng Việt.
+
+| Câu hỏi / thao tác | Kết quả mong đợi | Kết quả quan sát và minh chứng | Trạng thái |
+|---|---|---|---|
+| `Tạo món mới` | Hỏi các trường còn thiếu, không ghi dữ liệu | `CLARIFY`, `MissingProductCreationArguments`; giao diện hỏi tên, giá, loại và nhóm | `PASS` |
+| `Tạo món kem giá 10000, loại đồ ăn, nhóm kem` rồi xác nhận | Xem trước; chỉ tạo sau xác nhận | `ACCEPT`, `LexicalWritePreview`, `CREATE_PRODUCT`; preview hiện đúng dữ liệu. Sau xác nhận, giao diện báo tạo thành công | `PASS` |
+| `Tôi muốn đổi giá món` | Hướng dẫn chọn món và nhập giá mới; chưa đổi giá | `ACCEPT`, `LexicalIncompleteWritePrompt`, `UPDATE_PRODUCT_PRICE`; trả danh sách món và hướng dẫn nhập | `PASS` |
+| `Đổi giá món kem thành 7000` rồi xác nhận | Preview giá trước/sau; chỉ cập nhật sau xác nhận | `ACCEPT`, `LexicalWritePreview`, `UPDATE_PRODUCT_PRICE`; preview 10.000đ → 7.000đ. Sau xác nhận, giao diện báo cập nhật thành công | `PASS` |
+| `Đừng đổi giá món kem thành 5000` | Không gọi tool ghi và không đổi giá | `CLARIFY`, `NegatedRequest`, `Boundary=NEGATION`; không có `TOOL_EXECUTION`. Phản hồi làm rõ còn chung chung | `PASS` về chặn thao tác |
+| `Thủ đô Thái Lan` | Từ chối câu ngoài phạm vi Admin | `UNSUPPORTED`, `OutOfScopeSimilarity`, `Boundary=OUT_OF_SCOPE_SIMILARITY`; TopScore=0.8243, OodScore=0.8475, OodGap=0.0232. CorrelationId `7df3e173-ee73-4551-9be9-3bd9c7083025` | `PASS` |
+| `Xem doanh thu và số đơn hôm nay` | Hỏi làm rõ vì có nhiều mục tiêu; không gọi tool | `CLARIFY`, `MultipleIntents`, `Boundary=MULTI_INTENT`; TopScore=0.9125, Margin=0.0042. CorrelationId `1e4f8fc1-0145-4e11-9bbd-bbbdd725fce8`; không có `TOOL_EXECUTION` | `PASS` |
+| `Tạo món Bún bò giá 25000, loại Đồ ăn, nhóm Bún` rồi xác nhận | Preview đúng dữ liệu; chỉ tạo sau xác nhận | Ngày 04/11/2026, correlation `6ebd9ce8-d929-41fe-bfb7-287e8693f94e`; `ACCEPT`, `CREATE_PRODUCT`, tool `create_product` được `AUTHORIZED` rồi `EXECUTED`; UI báo tạo thành công. Giá vốn mặc định 0đ, món tạm thời chưa bán tại chi nhánh | `PASS` |
+| `Gửi mình doanh thu tuần này so với tuần trước` | So sánh đúng `this_week` và `last_week` | Ngày 04/11/2026, correlation `2a642e0b-8aaf-4f85-9118-42d626c18b64`; intent `REVENUE_COMPARISON`, tool `get_revenue_comparison` được `AUTHORIZED` rồi `EXECUTED`, `AI_BRANCH_SCOPE_MATCH=YES`; tuần này 3.042.260đ, tuần trước 4.593.860đ, giảm 33,78% | `PASS` |
+
+Ca tạo món đủ thông tin ngày 02/11 có `TopScore=0.8799` và `Margin=0.0106`, thấp hơn ngưỡng cấu hình nhưng vẫn được nhận diện theo `LexicalWritePreview` và chuyển tới preview. Không xem đây là bằng chứng rằng riêng TopScore hoặc Margin đã vượt ngưỡng. Bộ kiểm thử Admin hiện có 50 ca; ca kiểm tra quyền công cụ bằng tài khoản Manager đã được loại khỏi phạm vi do Manager không còn capability AI.
 
 ## Doanh thu
 
@@ -72,10 +90,9 @@
 ## Việc cần test lại sau khi restart API
 
 1. `Hôm nay lời được bao nhiêu?` — phải trả KPI/lợi nhuận, không phải số đơn.
-2. `Đối chiếu tuần này với tuần trước.` — kiểm tra đúng hai kỳ hoặc thông báo chưa hỗ trợ.
-3. `Các đơn đang xử lý hôm nay gồm những đơn nào?`
-4. `Cho tôi xem các đơn đã hoàn thành hôm qua.`
-5. `Doanh thu của Branch B hôm nay là bao nhiêu?` — phải giữ scope từ JWT, không chuyển sang Branch B theo câu hỏi.
+2. `Các đơn đang xử lý hôm nay gồm những đơn nào?`
+3. `Cho tôi xem các đơn đã hoàn thành hôm qua.`
+4. `Doanh thu của Branch B hôm nay là bao nhiêu?` — phải giữ scope từ JWT, không chuyển sang Branch B theo câu hỏi.
 
 Khi gửi kết quả, chỉ cần kèm câu hỏi, câu trả lời, `AI_CORRELATION_ID` nếu có, và cho biết có gọi nhầm tool hay không.
 

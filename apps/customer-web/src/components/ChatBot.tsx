@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Bot } from 'lucide-react';
 import { API_URL } from '../config';
 
+const formatMessageTime = (timestamp: number) => new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
 const getUsableCustomerToken = (): string | null => {
   const token = localStorage.getItem('customerToken');
   if (!token) return null;
@@ -45,7 +47,7 @@ const getCustomerContextKey = (): string => [
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([
-    { id: 1, text: CUSTOMER_WELCOME, isBot: true }
+    { id: 1, text: CUSTOMER_WELCOME, isBot: true, timestamp: Date.now() }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -73,7 +75,7 @@ const ChatBot = () => {
     contextKeyRef.current = contextKey;
     requestIdRef.current += 1;
     inFlightRef.current = false;
-    setMessages([{ id: Date.now(), text: CUSTOMER_WELCOME, isBot: true }]);
+    setMessages([{ id: Date.now(), text: CUSTOMER_WELCOME, isBot: true, timestamp: Date.now() }]);
     setInput('');
     setIsOpen(false);
     setIsTyping(false);
@@ -178,7 +180,7 @@ const ChatBot = () => {
     const requestId = ++requestIdRef.current;
     const requestContextKey = contextKey;
 
-    const userMsg = { id: Date.now(), text, isBot: false };
+    const userMsg = { id: Date.now(), text, isBot: false, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
@@ -212,22 +214,31 @@ const ChatBot = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Server trả về lỗi: ${response.status}`);
+        const errorData = await response.json().catch(() => null);
+        if (requestId !== requestIdRef.current || requestContextKey !== getCustomerContextKey()) return;
+        const errorText = response.status === 400
+          ? (typeof errorData?.error === 'string' ? errorData.error : 'Nội dung câu hỏi không hợp lệ.')
+          : response.status === 404 && guestSessionActive
+            ? 'AI cho khách quét QR hiện không khả dụng.'
+          : `Yêu cầu không thành công (HTTP ${response.status}).`;
+        setMessages(prev => [...prev, { id: Date.now() + 1, text: errorText, isBot: true, timestamp: Date.now() }]);
+        return;
       }
       const data = await response.json();
       if (requestId !== requestIdRef.current || requestContextKey !== getCustomerContextKey()) return;
       if (data.success === false) {
-        setMessages(prev => [...prev, { id: Date.now() + 1, text: data.error ?? 'Yêu cầu AI chưa thực hiện được.', isBot: true }]);
+        setMessages(prev => [...prev, { id: Date.now() + 1, text: data.error ?? 'Yêu cầu AI chưa thực hiện được.', isBot: true, timestamp: Date.now() }]);
         return;
       }
-      setMessages(prev => [...prev, { id: Date.now() + 1, text: data.message, isBot: true }]);
+      setMessages(prev => [...prev, { id: Date.now() + 1, text: data.message, isBot: true, timestamp: Date.now() }]);
     } catch (err: any) {
       if (requestId !== requestIdRef.current || requestContextKey !== getCustomerContextKey()) return;
       console.error('ChatBot Error:', err);
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         text: `Lỗi kết nối: ${err.message}. Hãy đảm bảo Backend đang chạy tại ${API_URL}`,
-        isBot: true
+        isBot: true,
+        timestamp: Date.now()
       }]);
     } finally {
       if (requestId === requestIdRef.current) {
@@ -286,7 +297,7 @@ const ChatBot = () => {
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/50">
             {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}>
+              <div key={msg.id} className={`flex flex-col ${msg.isBot ? 'items-start' : 'items-end'}`}>
                 <div className={`max-w-[80%] p-4 rounded-2xl text-xs font-medium leading-relaxed ${
                   msg.isBot
                   ? 'bg-white text-gray-700 shadow-sm rounded-tl-none border border-gray-100'
@@ -294,6 +305,7 @@ const ChatBot = () => {
                 }`}>
                   {msg.text}
                 </div>
+                <span className="mt-1 px-1 text-[10px] leading-3 text-gray-400">{formatMessageTime(msg.timestamp ?? msg.id)}</span>
               </div>
             ))}
             {isTyping && (

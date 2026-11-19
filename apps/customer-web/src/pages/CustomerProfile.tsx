@@ -563,7 +563,7 @@ const CustomerProfile = ({ isGuest, onLoginRequest, onLogout }: { isGuest: boole
                            {(log.type === 'Earn' || log.type === 'Refund') ? '+' : ((log.type === 'Redeem' || log.type === 'Reversal') ? '-' : '±')}
                         </div>
                         <div>
-                           <p className="text-sm font-black text-gray-800">{log.description || (log.type === 'Earn' ? 'Tích điểm đơn hàng' : log.type === 'Redeem' ? 'Đổi quà' : 'Điều chỉnh điểm')}</p>
+                           <p className="text-sm font-black text-gray-800">{log.description || (log.type === 'Earn' ? 'Tích điểm đơn hàng' : (log.type === 'Redeem' || log.type === 'RedeemGift') ? 'Đổi quà' : 'Điều chỉnh điểm')}</p>
                            <p className="text-[10px] text-gray-400 font-bold flex items-center">
                               <Clock size={10} className="mr-1" /> {new Date(log.createdAt).toLocaleDateString('vi-VN')} {new Date(log.createdAt).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}
                            </p>

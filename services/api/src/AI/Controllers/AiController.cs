@@ -320,9 +320,9 @@ namespace RestaurantPOS.AI.Controllers
             var migrationEnabled = _configuration.GetValue<bool>("DatabaseSafety:AllowAutomaticMigration");
             var backgroundInsightsEnabled = _configuration.GetValue<bool>("BackgroundJobs:EnableInsights");
             var databaseTargetGuard = string.Equals(
-                _configuration["DEV_SUPABASE_PROJECT_REF"],
-                QrTokenBackfillTargetGuard.AuthorizedDevProjectRef,
-                StringComparison.Ordinal);
+                _configuration["Database:TargetMode"],
+                "Local",
+                StringComparison.OrdinalIgnoreCase);
 
             return Ok(new
             {

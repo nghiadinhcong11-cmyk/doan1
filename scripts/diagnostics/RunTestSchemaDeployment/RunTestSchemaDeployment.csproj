@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\services\api\src\Infrastructure\Configuration\SupabaseProjectTargetGuard.cs" Link="SupabaseProjectTargetGuard.cs" />
+    <Compile Include="..\..\..\services\api\src\Infrastructure\Configuration\DatabaseTargetGuard.cs" Link="DatabaseTargetGuard.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Npgsql" Version="8.0.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />

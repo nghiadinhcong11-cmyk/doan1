@@ -4,9 +4,7 @@ using Npgsql;
 namespace RestaurantPOS.Infrastructure.Configuration;
 
 /// <summary>
-/// Applies a conservative client-side pool budget for the Supabase Session Pooler.
-/// The default assumes one Backend instance and leaves room for other approved
-/// Development consumers under the observed 15-session pool limit.
+/// Applies a conservative client-side pool budget for development PostgreSQL.
 /// </summary>
 public static class PostgresConnectionPoolPolicy
 {

@@ -35,7 +35,7 @@ namespace RestaurantPOS.WebAPI.Controllers
 
         /// <summary>Lấy danh sách món theo các bộ lọc.</summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive, [FromQuery] Guid? branchId, [FromQuery] bool sellableOnly = false)
+        public async Task<IActionResult> GetProducts([FromQuery] string? search, [FromQuery] string? category, [FromQuery] string? group, [FromQuery] bool? isActive, [FromQuery] Guid? branchId, [FromQuery] bool sellableOnly = false, [FromQuery] bool summary = false)
         {
             // A QR/customer request carrying a malformed or expired bearer must
             // not be downgraded to anonymous branch selection.
@@ -78,6 +78,40 @@ namespace RestaurantPOS.WebAPI.Controllers
                         state.ProductId == product.Id &&
                         state.BranchId == scopedBranchId &&
                         state.Status == "Available"));
+            }
+
+            if (summary)
+            {
+                var summaryProducts = await query
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.Name,
+                        p.Code,
+                        p.IsActive,
+                        AvailabilityStatus = string.Empty
+                    })
+                    .ToListAsync();
+
+                if (effectiveBranchId.HasValue)
+                {
+                    var summaryStatuses = await _context.ProductBranchAvailabilities
+                        .AsNoTracking()
+                        .Where(state => state.BranchId == effectiveBranchId.Value)
+                        .ToDictionaryAsync(state => state.ProductId, state => state.Status);
+
+                    summaryProducts = summaryProducts.Select(product => new
+                    {
+                        product.Id,
+                        product.Name,
+                        product.Code,
+                        product.IsActive,
+                        AvailabilityStatus = summaryStatuses.TryGetValue(product.Id, out var status) ? status : "Available"
+                    }).ToList();
+                }
+
+                return Ok(summaryProducts);
             }
 
             var products = await query.OrderByDescending(p => p.CreatedAt).ToListAsync();

@@ -2,6 +2,48 @@
 
 Hệ thống quản lý nhà hàng đa chi nhánh gồm Admin/POS Web, Customer Web đặt món qua QR, Kitchen Display System và trợ lý AI local.
 
+## Cài từ GitHub trên máy mới
+
+Yêu cầu: .NET SDK 8, Node.js/npm và PostgreSQL. Chạy các lệnh sau từ thư mục gốc sau khi clone repository. Không cần chép `node_modules/`, `bin/`, `obj/`, `dist/` hoặc chứng chỉ từ máy phát triển.
+
+```powershell
+npm ci --prefix .\apps\admin-web
+npm ci --prefix .\apps\customer-web
+dotnet restore .\services\api\RestaurantPOS.api.csproj
+```
+
+Tạo một database PostgreSQL **trống** tên `restaurantpos`. Cấp chuỗi kết nối, JWT secret và mật khẩu admin ban đầu qua biến môi trường hoặc .NET User Secrets; xem [`.env.example`](.env.example). Không lưu giá trị thật vào Git. Trước khi chạy API, chuẩn bị model AI theo mục bên dưới. Khi khởi động lần đầu trên database trống, có thể bật migration và seed một lần:
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:ConnectionStrings__DefaultConnection = 'Host=localhost;Port=5432;Database=restaurantpos;Username=postgres;Password=<mat-khau-postgres>;SSL Mode=Disable'
+$env:Jwt__Secret = '<chuoi-ngau-nhien-it-nhat-32-byte>'
+$env:RESTAURANTPOS_SEED_ADMIN_PASSWORD = '<mat-khau-admin-ban-dau>'
+$env:DatabaseSafety__AllowAutomaticMigration = 'true'
+Push-Location .\services\api
+dotnet run --project .\RestaurantPOS.api.csproj --no-launch-profile
+Pop-Location
+```
+
+Sau khi migration và seed thành công, dừng API và đặt `DatabaseSafety__AllowAutomaticMigration=false` cho các lần chạy sau. Tài khoản admin ban đầu có username `admin` và mật khẩu đã cấp ở trên. Launcher `scripts/start-dev.ps1` luôn tắt migration tự động, nên cần hoàn tất bước đầu trước khi dùng launcher.
+
+### Chuẩn bị model AI local
+
+Development bật Admin AI; `scripts/start-dev.ps1` còn bật Customer/Guest AI. Cả hai dùng model `intfloat/multilingual-e5-small`. Các file model lớn không nằm trong Git; tải đúng hai file từ [nguồn phát hành chính thức](https://huggingface.co/intfloat/multilingual-e5-small/tree/main/onnx) vào đường dẫn mà `appsettings` đã cấu hình:
+
+```powershell
+$modelDir = '.\.tools\mock-ai-embedding-spike\artifacts\onnx'
+New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
+Invoke-WebRequest 'https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/onnx/model_O4.onnx' -OutFile (Join-Path $modelDir 'model_O4.onnx')
+Invoke-WebRequest 'https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/onnx/tokenizer.json' -OutFile (Join-Path $modelDir 'tokenizer.json')
+Get-FileHash (Join-Path $modelDir 'model_O4.onnx') -Algorithm SHA256
+Get-FileHash (Join-Path $modelDir 'tokenizer.json') -Algorithm SHA256
+```
+
+Hash SHA-256 lần lượt phải là `4654c156f3e4171abc9c716cdb771bf9116455d15ac1aab364aeeede0e3205b0` và `0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39`. Các catalog nhỏ mà AI dùng nằm sẵn trong repository. Nếu chưa tải model, API vẫn cần được cấu hình tắt các embedding pilot tương ứng.
+
+Sau khi chuẩn bị database và AI, chạy `scripts/start-dev.ps1 -Mode Localhost` theo hướng dẫn bên dưới để mở API và hai web app. PostgreSQL, dữ liệu của database và mật khẩu không được lưu trong repository; nếu cần dữ liệu minh họa riêng, phải chuẩn bị thêm trên máy chấm.
+
 ## Phạm vi hiện tại
 
 - Quản lý chi nhánh, thực đơn, topping, khuyến mãi, bàn và đặt bàn.

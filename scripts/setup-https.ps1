@@ -107,7 +107,11 @@ $caRoot = (Invoke-External $mkcert @('-CAROOT')).Trim()
 $caPath = Join-Path $caRoot 'rootCA.pem'
 if (-not (Test-Path -LiteralPath $caPath)) { throw "MKCERT_CA_NOT_FOUND: current mkcert CA was not found at $caPath. Trust setup must be performed manually." }
 
-if ($Localhost -and @($LanHost).Count -gt 0) { throw 'INVALID_MODE: do not combine -Localhost with -LanHost.' }
+if ($Localhost) {
+  # Dot-sourcing this script reuses the caller's scope. Clear a stale LAN host
+  # from an earlier invocation before selecting the localhost certificate.
+  $LanHost = @()
+}
 
 $runtimeLanHost = $null
 if (-not $Localhost) {

@@ -7,7 +7,7 @@ using RestaurantPOS.Infrastructure.Configuration;
 using RestaurantPOS.Infrastructure.Persistence;
 using RestaurantPOS.TestSeed;
 
-const string latestMigration = "20261013091926_AddManualExpenseIdempotency";
+const string latestMigration = "20261028145539_AddOrderEmployeeAuditForeignKeys";
 const int expectedMigrationCount = 48;
 const string testEnvironment = "Development";
 const string advisoryLockSql = "SELECT pg_advisory_xact_lock(hashtextextended('doan-pos-test-seed', 0));";
@@ -29,15 +29,13 @@ var configuration = new ConfigurationBuilder()
 if (!string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), testEnvironment, StringComparison.Ordinal))
     return Fail("ENVIRONMENT CHECK: FAIL (Development required)");
 
-if (!string.Equals(configuration["Database:TargetMode"], SupabaseProjectTargetGuard.TestMode, StringComparison.OrdinalIgnoreCase) ||
-    !string.Equals(configuration["Database:ExpectedProjectRef"], SupabaseProjectTargetGuard.TestProjectRef, StringComparison.Ordinal))
-    return Fail("TEST TARGET CONFIGURATION: FAIL");
+if (!string.Equals(configuration["Database:TargetMode"], DatabaseTargetGuard.LocalMode, StringComparison.OrdinalIgnoreCase))
+    return Fail("LOCAL TARGET CONFIGURATION: FAIL");
 
 if (!bool.TryParse(configuration["DatabaseSafety:AllowAutomaticMigration"], out var allowAutomaticMigration) || allowAutomaticMigration)
     return Fail("AUTOMATIC MIGRATION CHECK: FAIL");
 
-var rawConnectionString = configuration.GetConnectionString("DefaultConnection")
-    ?? configuration["SUPABASE_CONNECTION_STRING"];
+var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(rawConnectionString))
     return Fail("DATABASE CREDENTIAL CONFIGURATION: FAIL");
 
@@ -45,7 +43,7 @@ NpgsqlConnectionStringBuilder connection;
 try
 {
     connection = NormalizeConnectionString(rawConnectionString);
-    SupabaseProjectTargetGuard.Validate(connection, configuration, isDevelopment: true);
+    DatabaseTargetGuard.Validate(connection, configuration, isDevelopment: true);
 }
 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UriFormatException)
 {
@@ -60,10 +58,8 @@ connection.MinPoolSize = 0;
 connection.Timeout = 15;
 connection.CommandTimeout = 15;
 
-Console.WriteLine("TEST TARGET CHECK: PASS");
-Console.WriteLine($"PROJECT REF: {SupabaseProjectTargetGuard.TestProjectRef}");
+Console.WriteLine("LOCAL TARGET CHECK: PASS");
 Console.WriteLine($"TARGET: {connection.Host}:{connection.Port}/{connection.Database}");
-Console.WriteLine("MAIN TARGET: REJECTED");
 Console.WriteLine("ENVIRONMENT: Development");
 Console.WriteLine("AUTOMATIC MIGRATION/SEED: DISABLED");
 Console.WriteLine($"MODE: {mode}");

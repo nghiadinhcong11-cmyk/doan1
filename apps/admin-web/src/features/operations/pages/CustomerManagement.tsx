@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, User, Phone, MapPin, Mail, Edit2, Trash2, Loader2, Download, X, Star, History, Save, TrendingUp, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, User, Phone, MapPin, Mail, Edit2, Loader2, Download, X, Star, History, Save, TrendingUp, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { API_URL } from '../../../config';
 import { useRef } from 'react';
 import { notifyFeedback } from '../../../components/ui';
@@ -56,6 +56,7 @@ const CustomerManagement = () => {
       setLoading(true);
       const params = new URLSearchParams({ page: String(requestedPage), pageSize: '50' });
       if (query) params.set('search', query);
+      if (filterGroup !== 'all') params.set('customerGroup', filterGroup);
       const response = await fetch(`${API_URL}/api/Customer?${params.toString()}`, { signal: controller.signal });
       const data = await response.json();
       if (generation !== requestGeneration.current) return;
@@ -73,7 +74,7 @@ const CustomerManagement = () => {
     setPage(1);
     const timer = window.setTimeout(() => void fetchCustomers(searchTerm, 1), 350);
     return () => window.clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTerm, filterGroup]);
 
   useEffect(() => () => abortController.current?.abort(), []);
 
@@ -86,10 +87,20 @@ const CustomerManagement = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${API_URL}/api/Customer`, {
-        method: 'POST',
+      const isEditing = Boolean(editingCustomer?.phoneNumber);
+      const endpoint = isEditing
+        ? `${API_URL}/api/Customer/${encodeURIComponent(editingCustomer!.phoneNumber)}/profile`
+        : `${API_URL}/api/Customer`;
+      const response = await fetch(endpoint, {
+        method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCustomer)
+        body: JSON.stringify(isEditing ? {
+          fullName: newCustomer.fullName,
+          email: newCustomer.email || '',
+          address: newCustomer.address || '',
+          gender: newCustomer.gender || '',
+          birthday: newCustomer.birthday || null
+        } : newCustomer)
       });
 
       if (response.ok) {
@@ -97,6 +108,9 @@ const CustomerManagement = () => {
         setNewCustomer({ fullName: '', phoneNumber: '', totalSpending: 0 });
         setEditingCustomer(null);
         fetchCustomers();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        notifyFeedback(typeof errorData.message === 'string' ? errorData.message : 'Không thể lưu thông tin khách hàng.');
       }
     } catch (err) {
       notifyFeedback('Lỗi lưu thông tin khách hàng');
@@ -139,6 +153,34 @@ const CustomerManagement = () => {
     setSelectedCustomer(c);
     fetchLoyaltyHistory(c.id);
     setIsHistoryModalOpen(true);
+  };
+
+  const handleExportCustomers = () => {
+    if (filteredCustomers.length === 0) {
+      notifyFeedback('Không có khách hàng phù hợp để xuất file.');
+      return;
+    }
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const rows = [
+      ['Họ tên', 'Số điện thoại', 'Email', 'Hạng khách hàng', 'Tổng chi tiêu', 'Điểm tích lũy'],
+      ...filteredCustomers.map(customer => [
+        customer.fullName,
+        customer.phoneNumber,
+        customer.email || '',
+        customer.customerGroup || '',
+        String(customer.totalSpending),
+        String(customer.loyaltyPoints || 0)
+      ])
+    ];
+    const csv = `\uFEFF${rows.map(row => row.map(escapeCsv).join(',')).join('\r\n')}`;
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `hoi-vien-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
   };
 
   return (
@@ -201,7 +243,7 @@ const CustomerManagement = () => {
             >
               <Plus size={18} className="mr-2" /> THÊM HỘI VIÊN
             </button>
-            <button className="flex min-h-0 items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 shadow-sm transition-all hover:bg-gray-50">
+            <button type="button" onClick={handleExportCustomers} className="flex min-h-0 items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 shadow-sm transition-all hover:bg-gray-50">
               <Download size={14} className="mr-2" /> Xuất file
             </button>
           </div>
@@ -259,7 +301,6 @@ const CustomerManagement = () => {
                        <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100">
                           <button onClick={() => openHistory(c)} className="p-2 text-gray-400 hover:text-blue-600 transition-all" title="Lịch sử"><History size={18}/></button>
                           <button onClick={() => openEditModal(c)} className="p-2 text-gray-400 hover:text-blue-600 transition-all" title="Sửa"><Edit2 size={18}/></button>
-                          <button className="p-2 text-gray-400 hover:text-blue-600 transition-all" title="Xóa"><Trash2 size={18}/></button>
                        </div>
                     </td>
                   </tr>

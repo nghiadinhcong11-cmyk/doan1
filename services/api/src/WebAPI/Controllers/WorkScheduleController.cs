@@ -51,10 +51,16 @@ namespace RestaurantPOS.WebAPI.Controllers
                 }
 
                 if (startDate.HasValue)
-                    query = query.Where(s => s.Date >= startDate.Value.Date);
+                {
+                    var start = DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc);
+                    query = query.Where(s => s.Date >= start);
+                }
 
                 if (endDate.HasValue)
-                    query = query.Where(s => s.Date <= endDate.Value.Date);
+                {
+                    var end = DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc);
+                    query = query.Where(s => s.Date < end);
+                }
 
                 if (employeeId.HasValue)
                     query = query.Where(s => s.EmployeeId == employeeId.Value);

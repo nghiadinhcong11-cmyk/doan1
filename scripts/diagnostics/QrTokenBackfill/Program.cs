@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 using RestaurantPOS.Application.Common.Security;
+using RestaurantPOS.Infrastructure.Configuration;
 using RestaurantPOS.Infrastructure.Persistence;
 
 var execute = args.Contains("--execute", StringComparer.Ordinal);
@@ -9,18 +10,20 @@ var configuration = new ConfigurationBuilder()
     .AddUserSecrets<Program>(optional: true)
     .AddEnvironmentVariables()
     .Build();
-var rawConnectionString = configuration.GetConnectionString("DefaultConnection")
-    ?? configuration["SUPABASE_CONNECTION_STRING"];
+var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
 
 if (string.IsNullOrWhiteSpace(rawConnectionString))
     return Fail("ConnectionStrings:DefaultConnection is missing.");
 
 var connectionString = new NpgsqlConnectionStringBuilder(rawConnectionString);
-if (!QrTokenBackfillTargetGuard.IsAuthorized(
-        Environment.GetEnvironmentVariable("DEV_SUPABASE_PROJECT_REF"),
-        connectionString.Host,
-        connectionString.Username))
-    return Fail("Target guard rejected this configuration. No write was attempted.");
+try
+{
+    DatabaseTargetGuard.Validate(connectionString, configuration, isDevelopment: true);
+}
+catch (InvalidOperationException exception)
+{
+    return Fail($"Target guard rejected this configuration ({exception.Message}). No write was attempted.");
+}
 
 var options = new DbContextOptionsBuilder<ApplicationDbContext>()
     .UseNpgsql(connectionString.ConnectionString)

@@ -11,10 +11,12 @@ namespace RestaurantPOS.Application.Services
     public class ReservationService : IReservationService
     {
         private readonly ApplicationDbContext _context;
+        private readonly INotificationService _notificationService;
 
-        public ReservationService(ApplicationDbContext context)
+        public ReservationService(ApplicationDbContext context, INotificationService notificationService)
         {
             _context = context;
+            _notificationService = notificationService;
         }
 
         public async Task<List<Reservation>> GetReservationsAsync(ReservationQueryFilter filter)
@@ -92,18 +94,33 @@ namespace RestaurantPOS.Application.Services
             if (reservation.BranchId == Guid.Empty)
                 throw new InvalidOperationException("Đặt bàn phải thuộc một chi nhánh.");
 
+            var branch = await _context.Branches.FirstOrDefaultAsync(b => b.Id == reservation.BranchId && b.IsActive);
+            if (branch == null)
+                throw new InvalidOperationException("Chi nhánh không tồn tại hoặc đã ngừng hoạt động.");
+
             // Ensure BranchName is populated if BranchId is set
             if (string.IsNullOrEmpty(reservation.BranchName))
             {
-                var branch = await _context.Branches.FindAsync(reservation.BranchId);
-                if (branch != null) reservation.BranchName = branch.Name;
+                reservation.BranchName = branch.Name;
             }
 
             // Fix DateTime kind
             reservation.ReservationTime = DateTime.SpecifyKind(reservation.ReservationTime, DateTimeKind.Utc);
+            ValidateReservationInput(reservation.NumberOfGuests, reservation.ReservationTime);
+
+            if (reservation.TableId.HasValue)
+            {
+                var table = await _context.Tables.AsNoTracking().FirstAsync(t => t.Id == reservation.TableId.Value);
+                if (!table.IsActive || table.Status == "Đã khóa" || table.Name == "Mang về")
+                    throw new InvalidOperationException("Bàn đã ngừng hoạt động hoặc không nhận đặt trước.");
+                if (reservation.NumberOfGuests > table.SeatCount)
+                    throw new InvalidOperationException("Số khách vượt quá sức chứa của bàn.");
+                await EnsureNoTableConflictAsync(reservation);
+            }
 
             _context.Reservations.Add(reservation);
             await _context.SaveChangesAsync();
+            await NotifyReservationCreatedAsync(reservation);
             return reservation;
         }
 
@@ -120,6 +137,10 @@ namespace RestaurantPOS.Application.Services
 
             if (update.BranchId == Guid.Empty && res.BranchId == Guid.Empty)
                 throw new InvalidOperationException("Đặt bàn phải thuộc một chi nhánh.");
+
+            var isCustomerUpdate = !string.IsNullOrEmpty(authorizedCustomerPhone);
+            if (isCustomerUpdate && update.BranchId != Guid.Empty && update.BranchId != res.BranchId)
+                throw new InvalidOperationException("Khách hàng không được đổi chi nhánh của lịch đặt bàn.");
 
             // If branch is changing, validate it (only for staff who are NOT branch-restricted, i.e. Admins)
             if (!authorizedBranchId.HasValue && update.BranchId != Guid.Empty && update.BranchId != res.BranchId)
@@ -152,11 +173,32 @@ namespace RestaurantPOS.Application.Services
             }
 
             res.CustomerName = update.CustomerName;
-            res.CustomerPhone = update.CustomerPhone;
+            res.CustomerPhone = isCustomerUpdate ? res.CustomerPhone : update.CustomerPhone;
             res.ReservationTime = DateTime.SpecifyKind(update.ReservationTime, DateTimeKind.Utc);
             res.NumberOfGuests = update.NumberOfGuests;
             res.Note = update.Note;
-            res.Status = update.Status;
+            if (!isCustomerUpdate)
+            {
+                ValidateStatus(update.Status);
+                if (!IsAllowedStatusTransition(res.Status, update.Status))
+                    throw new InvalidOperationException("Không thể chuyển trạng thái đặt bàn theo luồng hiện tại.");
+                res.Status = update.Status;
+            }
+            else if (res.Status != "Pending")
+            {
+                throw new InvalidOperationException("Chỉ có thể chỉnh sửa lịch đang chờ xác nhận.");
+            }
+
+            ValidateReservationInput(res.NumberOfGuests, res.ReservationTime);
+            if (res.TableId.HasValue)
+            {
+                var table = await _context.Tables.AsNoTracking().FirstAsync(t => t.Id == res.TableId.Value);
+                if (!table.IsActive || table.Status == "Đã khóa" || table.Name == "Mang về")
+                    throw new InvalidOperationException("Bàn đã ngừng hoạt động hoặc không nhận đặt trước.");
+                if (res.NumberOfGuests > table.SeatCount)
+                    throw new InvalidOperationException("Số khách vượt quá sức chứa của bàn.");
+                await EnsureNoTableConflictAsync(res, res.Id);
+            }
 
             await _context.SaveChangesAsync();
             return res;
@@ -168,6 +210,10 @@ namespace RestaurantPOS.Application.Services
             if (res == null) return false;
 
             if (authorizedBranchId.HasValue && res.BranchId != authorizedBranchId.Value)
+                return false;
+
+            ValidateStatus(status);
+            if (!IsAllowedStatusTransition(res.Status, status))
                 return false;
 
             res.Status = status;
@@ -186,10 +232,43 @@ namespace RestaurantPOS.Application.Services
             if (!string.IsNullOrEmpty(authorizedCustomerPhone) && !string.Equals(res.CustomerPhone?.Trim(), authorizedCustomerPhone.Trim(), StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            _context.Reservations.Remove(res);
+            // Keep reservation history; deletion is represented as cancellation.
+            if (res.Status != "Cancelled" && res.Status != "Completed")
+                res.Status = "Cancelled";
             await _context.SaveChangesAsync();
             return true;
         }
+
+        private async Task EnsureNoTableConflictAsync(Reservation reservation, Guid? excludedId = null)
+        {
+            var windowStart = reservation.ReservationTime.AddHours(-2);
+            var windowEnd = reservation.ReservationTime.AddHours(2);
+            var conflict = await _context.Reservations.AnyAsync(existing =>
+                existing.Id != excludedId &&
+                existing.BranchId == reservation.BranchId &&
+                existing.TableId == reservation.TableId &&
+                (existing.Status == "Pending" || existing.Status == "Confirmed") &&
+                existing.ReservationTime >= windowStart && existing.ReservationTime <= windowEnd);
+            if (conflict)
+                throw new InvalidOperationException("Bàn đã có lịch đặt trong khoảng thời gian này.");
+        }
+
+        private static void ValidateReservationInput(int numberOfGuests, DateTime reservationTime)
+        {
+            if (numberOfGuests <= 0) throw new InvalidOperationException("Số lượng khách phải lớn hơn 0.");
+            if (reservationTime <= DateTime.UtcNow) throw new InvalidOperationException("Thời gian đặt bàn phải ở tương lai.");
+        }
+
+        private static void ValidateStatus(string status)
+        {
+            if (status is not ("Pending" or "Confirmed" or "Completed" or "Cancelled"))
+                throw new InvalidOperationException("Trạng thái đặt bàn không hợp lệ.");
+        }
+
+        private static bool IsAllowedStatusTransition(string current, string next) =>
+            current == next ||
+            (current == "Pending" && (next == "Confirmed" || next == "Cancelled")) ||
+            (current == "Confirmed" && (next == "Completed" || next == "Cancelled"));
 
         public async Task<(bool Success, string Message, Reservation? Reservation)> CreateBookingFromAiAsync(
             string customerName,
@@ -236,8 +315,21 @@ namespace RestaurantPOS.Application.Services
 
             _context.Reservations.Add(reservation);
             await _context.SaveChangesAsync();
+            await NotifyReservationCreatedAsync(reservation);
 
             return (true, $"Đã ghi nhận yêu cầu đặt bàn của bạn tại {branch.Name}, bàn {tableName} cho {guestCount} người vào lúc {bookingTime:dd/MM/yyyy HH:mm}. Nhân viên sẽ sớm liên hệ xác nhận!", reservation);
         }
+
+        private Task NotifyReservationCreatedAsync(Reservation reservation) => _notificationService.CreateAsync(new Notification
+        {
+            Type = "RESERVATION_CREATED",
+            Title = "Có yêu cầu đặt bàn mới",
+            Message = $"Khách {reservation.CustomerName} đặt bàn tại {reservation.BranchName} lúc {reservation.ReservationTime:dd/MM/yyyy HH:mm} cho {reservation.NumberOfGuests} người.",
+            EntityType = "Reservation",
+            EntityId = reservation.Id,
+            Route = "/reservations",
+            TargetRole = "admin",
+            BranchId = reservation.BranchId
+        });
     }
 }

@@ -29,6 +29,8 @@ const AttendanceManagement = () => {
   const [pageError, setPageError] = useState('');
   const attendanceRequestInFlight = React.useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [filterBranch, setFilterBranch] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all'); // all, Đúng giờ, Muộn
 
@@ -41,7 +43,12 @@ const AttendanceManagement = () => {
     attendanceRequestInFlight.current = true;
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/Attendance`);
+      const params = new URLSearchParams();
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      if (filterBranch !== 'all') params.set('branchId', filterBranch);
+      const query = params.toString();
+      const response = await fetch(`${API_URL}/api/Attendance${query ? `?${query}` : ''}`);
       if (!response.ok) throw new Error('attendance request failed');
       const data = await response.json();
 
@@ -75,7 +82,6 @@ const AttendanceManagement = () => {
   };
 
   useEffect(() => {
-    fetchAttendances();
     fetchBranches();
 
     const lastDate = localStorage.getItem('attendance_qr_date');
@@ -88,19 +94,31 @@ const AttendanceManagement = () => {
     }
   }, []);
 
+  useEffect(() => {
+    void fetchAttendances();
+  }, [dateFrom, dateTo, filterBranch]);
+
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
       const matchSearch = r.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchBranch = filterBranch === 'all' || r.branchId === filterBranch || r.branchName === branches.find(b=>b.id===filterBranch)?.name;
       const matchStatus = filterStatus === 'all' || r.status === filterStatus;
+      const attendanceDate = new Date(r.checkInTime);
+      const recordDate = Number.isNaN(attendanceDate.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(attendanceDate);
+      const matchDateFrom = !dateFrom || (recordDate !== '' && recordDate >= dateFrom);
+      const matchDateTo = !dateTo || (recordDate !== '' && recordDate <= dateTo);
 
-      return matchSearch && matchBranch && matchStatus;
+      return matchSearch && matchBranch && matchStatus && matchDateFrom && matchDateTo;
     });
-  }, [records, searchTerm, filterBranch, filterStatus, branches]);
+  }, [records, searchTerm, filterBranch, filterStatus, branches, dateFrom, dateTo]);
+
+  const formatVietnamDate = (value: string) => new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(value));
+  const formatVietnamTime = (value: string) => new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  const todayVietnam = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
 
   const generateAttendanceQr = () => {
     if (!selectedBranchForQr) return '';
-    const today = new Date().toLocaleDateString('en-GB');
+    const today = todayVietnam();
     const qrData = encodeURIComponent(JSON.stringify({
       type: 'ATTENDANCE_POINT',
       branchId: selectedBranchForQr.id,
@@ -111,13 +129,95 @@ const AttendanceManagement = () => {
   };
 
   const handleActivateQr = () => {
-    const today = new Date().toLocaleDateString();
+    const today = todayVietnam();
     localStorage.setItem('attendance_qr_date', today);
     if (selectedBranchForQr) {
       localStorage.setItem('attendance_qr_branch_id', selectedBranchForQr.id);
     }
     setShowInlineQr(true);
     setIsQrModalOpen(true);
+  };
+
+  const handleDownloadAttendanceQr = async () => {
+    if (!selectedBranchForQr) {
+      setPageError('Chưa chọn chi nhánh để tải mã QR.');
+      return;
+    }
+
+    try {
+      const response = await fetch(generateAttendanceQr());
+      if (!response.ok) throw new Error('QR image request failed');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `QR-cham-cong-${selectedBranchForQr.name.replace(/[^\p{L}\p{N}_-]+/gu, '-')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      setPageError('');
+    } catch {
+      setPageError('Không thể tải ảnh QR. Vui lòng thử lại.');
+    }
+  };
+
+  const handlePrintAttendanceQr = () => {
+    if (!selectedBranchForQr) {
+      setPageError('Chưa chọn chi nhánh để in mã QR.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=560,height=760');
+    if (!printWindow) {
+      setPageError('Trình duyệt đã chặn cửa sổ in. Hãy cho phép popup rồi thử lại.');
+      return;
+    }
+
+    const safeBranch = selectedBranchForQr.name.replace(/[<>&"']/g, character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[character] || character);
+    const qrUrl = generateAttendanceQr();
+    printWindow.document.write(`<!doctype html><html><head><title>QR chấm công - ${safeBranch}</title><style>body{font-family:Arial,sans-serif;text-align:center;margin:32px;color:#111}h1{font-size:26px;margin:0 0 8px}p{margin:4px 0;color:#555;font-size:14px}.qr{width:360px;height:360px;object-fit:contain;margin:24px auto 16px;display:block}@media print{body{margin:0;padding:20px}}</style></head><body><h1>QR CHẤM CÔNG</h1><p>${safeBranch}</p><img class="qr" src="${qrUrl}" alt="QR chấm công ${safeBranch}" /><p>Quét mã để chấm công tại chi nhánh</p></body></html>`);
+    printWindow.document.close();
+    const image = printWindow.document.querySelector('img');
+    if (image) {
+      image.addEventListener('load', () => {
+        printWindow.focus();
+        printWindow.print();
+      }, { once: true });
+    }
+  };
+
+  const handleExportAttendance = () => {
+    if (filteredRecords.length === 0) {
+      setPageError('Không có dữ liệu chấm công phù hợp để xuất file.');
+      return;
+    }
+
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const rows = [
+      ['Ngày làm', 'Nhân sự', 'Mã nhân viên', 'CN trực thuộc', 'CN làm việc', 'Giờ vào', 'Giờ ra', 'Xác nhận', 'Ghi chú'],
+      ...filteredRecords.map(record => [
+        formatVietnamDate(record.checkInTime),
+        record.employeeName,
+        record.employeeCode,
+        record.homeBranchName || '',
+        record.branchName,
+        formatVietnamTime(record.checkInTime),
+        record.checkOutTime ? formatVietnamTime(record.checkOutTime) : '',
+        record.status,
+        record.note || ''
+      ])
+    ];
+    const csv = `\uFEFF${rows.map(row => row.map(escapeCsv).join(',')).join('\r\n')}`;
+    const objectUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `cham-cong-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    setPageError('');
   };
 
   return (
@@ -222,10 +322,19 @@ const AttendanceManagement = () => {
             />
           </div>
           <div className="flex space-x-3">
+            <label className="hidden items-center gap-2 text-[10px] font-black uppercase text-gray-400 xl:flex">
+              Từ ngày
+              <input type="date" value={dateFrom} onChange={event => setDateFrom(event.target.value)} className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-bold text-gray-600 outline-none focus:border-blue-500" />
+            </label>
+            <label className="hidden items-center gap-2 text-[10px] font-black uppercase text-gray-400 xl:flex">
+              Đến ngày
+              <input type="date" value={dateTo} onChange={event => setDateTo(event.target.value)} className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-bold text-gray-600 outline-none focus:border-blue-500" />
+            </label>
+            {(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} className="hidden items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-all hover:bg-gray-50 xl:inline-flex">XÓA NGÀY</button>}
             <button type="button" disabled={loading} onClick={() => void fetchAttendances()} className="inline-flex min-h-0 items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-all hover:bg-gray-50 active:scale-95 disabled:cursor-wait disabled:opacity-50">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> LÀM MỚI
             </button>
-            <button className="flex min-h-0 items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-all hover:bg-gray-50 active:scale-95">
+            <button type="button" onClick={handleExportAttendance} className="flex min-h-0 items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-all hover:bg-gray-50 active:scale-95">
               <Download size={14} className="mr-2 text-gray-400"/> XUẤT FILE
             </button>
           </div>
@@ -261,7 +370,7 @@ const AttendanceManagement = () => {
                     ) : filteredRecords.map(r => (
                       <tr key={r.id} className="hover:bg-blue-50/50 transition-colors group">
                          <td className="px-4 py-3 border-r border-gray-100 text-center font-bold text-gray-500">
-                            {new Date(r.checkInTime).toLocaleDateString('vi-VN')}
+                            {formatVietnamDate(r.checkInTime)}
                          </td>
                          <td className="px-4 py-3 border-r border-gray-100 font-black text-gray-700 uppercase truncate">
                             {r.employeeName}
@@ -274,13 +383,13 @@ const AttendanceManagement = () => {
                          </td>
                          <td className="px-4 py-3 border-r border-gray-100 text-center">
                             <span className="bg-green-50 text-green-700 px-3 py-1 rounded-md font-black border border-green-100">
-                               {new Date(r.checkInTime).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}
+                               {formatVietnamTime(r.checkInTime)}
                             </span>
                          </td>
                          <td className="px-4 py-3 border-r border-gray-100 text-center">
                             {r.checkOutTime ? (
                                <span className="bg-orange-50 text-orange-700 px-3 py-1 rounded-md font-black border border-orange-100">
-                                  {new Date(r.checkOutTime).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}
+                                  {formatVietnamTime(r.checkOutTime)}
                                </span>
                             ) : (
                                <span className="text-gray-300 font-bold italic lowercase opacity-50">đang trực...</span>
@@ -335,15 +444,15 @@ const AttendanceManagement = () => {
               <div className="bg-gray-50 p-8 rounded-[3rem] border-4 border-white shadow-2xl mb-10 group relative transition-all hover:bg-white">
                  <img src={generateAttendanceQr()} alt="QR Attendance" className="w-full aspect-square" />
                  <div className="absolute inset-0 bg-blue-600/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-[3rem] flex items-center justify-center">
-                    <button className="rounded border border-gray-200 bg-white p-3 text-blue-600 shadow-2xl transition-all active:scale-90"><Download size={28}/></button>
+                    <button type="button" onClick={() => void handleDownloadAttendanceQr()} className="rounded border border-gray-200 bg-white p-3 text-blue-600 shadow-2xl transition-all active:scale-90" aria-label="Tải mã QR chấm công"><Download size={28}/></button>
                  </div>
               </div>
 
               <div className="flex space-x-4">
-                 <button className="flex flex-1 items-center justify-center rounded bg-gray-100 py-1.5 text-xs font-bold uppercase tracking-widest text-gray-600 transition-all hover:bg-gray-200 active:scale-95">
+                 <button type="button" onClick={() => void handleDownloadAttendanceQr()} className="flex flex-1 items-center justify-center rounded bg-gray-100 py-1.5 text-xs font-bold uppercase tracking-widest text-gray-600 transition-all hover:bg-gray-200 active:scale-95">
                     <Save size={18} className="mr-2" /> TẢI VỀ
                  </button>
-                 <button className="flex flex-[2] items-center justify-center rounded bg-[#0070f4] py-1.5 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95">
+                 <button type="button" onClick={handlePrintAttendanceQr} className="flex flex-[2] items-center justify-center rounded bg-[#0070f4] py-1.5 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-blue-500/30 transition-all hover:bg-blue-700 active:scale-95">
                     <Printer size={18} className="mr-2" /> IN NHÃN QR
                  </button>
               </div>

@@ -114,9 +114,14 @@ public sealed class AiOrchestrator : IAiOrchestrator
             {
                 if (!_adminPilot.IsEnabled)
                     return new AiResponse { Success = false, Error = "Admin AI is disabled." };
-                var decision = await _adminPilot.DecideAsync(request.Message, context, token);
-                _logger?.LogInformation("AI_E5_DECISION CorrelationId={CorrelationId} Role=admin Decision={Decision} Reason={Reason} Intent={Intent} Tool={Tool}",
-                    correlationId, decision.Decision, decision.Reason, decision.AcceptedIntent, decision.ProposedTool);
+                var adminMessage = ResolveAdminClarificationFollowUp(request, out var contextResolution);
+                var decision = await _adminPilot.DecideAsync(adminMessage, context, token);
+                _logger?.LogInformation("AI_E5_DECISION CorrelationId={CorrelationId} Role=admin ContextResolution={ContextResolution} Decision={Decision} Reason={Reason} Intent={Intent} PredictedIntent={PredictedIntent} SecondIntent={SecondIntent} Tool={Tool} TopScore={TopScore} SecondScore={SecondScore} Margin={Margin} OodScore={OodScore} OodGap={OodGap} ScoreThreshold={ScoreThreshold} MarginThreshold={MarginThreshold} OodScoreThreshold={OodScoreThreshold} OodGapThreshold={OodGapThreshold} Boundary={Boundary}",
+                    correlationId, contextResolution, decision.Decision, decision.Reason, decision.AcceptedIntent, decision.PredictedIntent,
+                    decision.SecondIntent, decision.ProposedTool, decision.TopScore, decision.SecondScore, decision.Margin,
+                    decision.OutOfScopeScore, decision.OutOfScopeGap, decision.ConfiguredScoreThreshold,
+                    decision.ConfiguredMarginThreshold, decision.ConfiguredOutOfScopeScoreThreshold,
+                    decision.ConfiguredOutOfScopeGapThreshold, decision.Boundary);
                 if (decision.Decision == "CLARIFY")
                 {
                     if (decision.Boundary == "TEMPORAL_SCOPE")
@@ -146,15 +151,20 @@ public sealed class AiOrchestrator : IAiOrchestrator
             if (!_customerGuestPilot.IsEnabled)
                 return new AiResponse { Success = false, Error = "Customer/Guest AI is disabled." };
             var customerDecision = await _customerGuestPilot.DecideAsync(request.Message, context, token);
-            _logger?.LogInformation("AI_E5_DECISION CorrelationId={CorrelationId} Role={Role} Decision={Decision} Reason={Reason} Intent={Intent} Tool={Tool}",
+            _logger?.LogInformation("AI_E5_DECISION CorrelationId={CorrelationId} AI_ROLE={Role} AI_DECISION={Decision} AI_REASON={Reason} AI_INTENT={Intent} AI_TOOL_NAME={Tool} TopScore={TopScore} Margin={Margin} AI_BOUNDARY={Boundary}",
                 correlationId, context.IsGuest ? "guest" : "customer", customerDecision.Decision,
-                customerDecision.Reason, customerDecision.Intent, customerDecision.ProposedTool);
+                customerDecision.Reason, customerDecision.Intent, customerDecision.ProposedTool, customerDecision.TopScore, customerDecision.Margin, customerDecision.Boundary ?? "NONE");
             if (customerDecision.Decision == "CLARIFY")
                 return new AiResponse { Success = true, Message = "Vui lòng nói rõ hơn yêu cầu về thực đơn hoặc đơn hàng của bạn." };
             if (customerDecision.Decision == "REJECT")
+            {
+                _logger?.LogWarning("AI_E5_ACCESS_DENIED CorrelationId={CorrelationId} AI_ROLE={Role} AI_POLICY_OUTCOME=DENIED_SCOPE AI_REASON={Reason} AI_BOUNDARY={Boundary} AI_TOOL_NAME={Tool} AI_TOOL_EXECUTED=NO",
+                    correlationId, context.IsGuest ? "guest" : "customer", customerDecision.Reason,
+                    customerDecision.Boundary ?? "NONE", customerDecision.ProposedTool ?? "NONE");
                 return new AiResponse { Success = true, Message = context.IsGuest
                     ? "Phiên khách chỉ được phép xem thực đơn của chi nhánh hiện tại."
                     : "Bạn không có quyền truy cập thông tin này." };
+            }
             if (customerDecision.Decision != "ACCEPT")
                 return new AiResponse { Success = true, Message = "Yêu cầu này chưa được hỗ trợ trong trợ lý Customer/Guest." };
             return await ExecuteAsync(new AiPilotToolDecision(customerDecision.Decision, customerDecision.Reason,
@@ -204,6 +214,50 @@ public sealed class AiOrchestrator : IAiOrchestrator
 
         response = string.Empty;
         return false;
+    }
+
+    private static string ResolveAdminClarificationFollowUp(AiRequest request, out string resolution)
+    {
+        resolution = "NONE";
+        var history = request.History;
+        if (history is null || history.Count < 2)
+            return request.Message;
+
+        var last = history[^1];
+        if (!string.Equals(last.Role, "assistant", StringComparison.OrdinalIgnoreCase) ||
+            !IsAdminClarificationPrompt(FoldForSocial(last.Content)))
+            return request.Message;
+
+        var previousUser = history.Take(history.Count - 1)
+            .LastOrDefault(item => string.Equals(item.Role, "user", StringComparison.OrdinalIgnoreCase));
+        if (previousUser is null || string.IsNullOrWhiteSpace(previousUser.Content))
+            return request.Message;
+
+        if (IsStandaloneAdminRequest(FoldForSocial(request.Message)))
+        {
+            resolution = "NEW_REQUEST_AFTER_CLARIFICATION";
+            return request.Message;
+        }
+
+        // The assistant's immediately preceding clarification marks the prior
+        // user request as unresolved. Join that request with the user's answer
+        // so E5 can classify intent and newly supplied slots together.
+        resolution = "CLARIFICATION_FOLLOWUP";
+        return $"{previousUser.Content} {request.Message}";
+    }
+
+    private static bool IsStandaloneAdminRequest(string normalized)
+    {
+        return Regex.IsMatch(normalized,
+            @"\b(?:doanh thu|doanh so|tien ban|thu ve|loi nhuan|loi duoc|kpi|tong quan|tom tat|bao cao|so sanh|doi chieu|mon nao|top\s+\d+|ban chay|goi nhieu|bao nhieu don|tong so don|danh sach don|don hang|doi gia|cap nhat|tao mon|them mon|thu do|la gi|o dau|vi sao|tai sao|thoi tiet|cach trong|ai la)\b",
+            RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsAdminClarificationPrompt(string normalized)
+    {
+        return Regex.IsMatch(normalized,
+            @"\b(?:ban muon xem ky nao|ban muon so sanh khoang thoi gian nao|vui long lam ro|vui long noi ro|vui long nhap du thong tin|vui long nhap ten mon|vui long nhap ten san pham)\b",
+            RegexOptions.CultureInvariant);
     }
 
     private static string FoldForSocial(string text)

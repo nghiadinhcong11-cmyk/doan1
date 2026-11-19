@@ -115,6 +115,60 @@ const TableManagement = () => {
       });
   }, [viewingQr?.id]);
 
+  const getTableQrUrl = (token: string, size = 600) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&qzone=4&ecc=M&data=${encodeURIComponent(`${CUSTOMER_WEB_URL}?qr=${token}`)}`;
+
+  const handleDownloadTableQr = async () => {
+    if (!viewingQr || !viewingQrToken) {
+      notifyFeedback('Mã QR chưa sẵn sàng để tải về.', 'warning');
+      return;
+    }
+
+    try {
+      const response = await fetch(getTableQrUrl(viewingQrToken));
+      if (!response.ok) throw new Error('QR image request failed');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `QR-${viewingQr.name.replace(/[^\p{L}\p{N}_-]+/gu, '-')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      notifyFeedback('Không thể tải ảnh QR. Vui lòng thử lại.', 'error');
+    }
+  };
+
+  const handlePrintTableQr = () => {
+    if (!viewingQr || !viewingQrToken) {
+      notifyFeedback('Mã QR chưa sẵn sàng để in.', 'warning');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=560,height=760');
+    if (!printWindow) {
+      notifyFeedback('Trình duyệt đã chặn cửa sổ in. Hãy cho phép popup rồi thử lại.', 'warning');
+      return;
+    }
+
+    const qrUrl = getTableQrUrl(viewingQrToken, 800);
+    const safeName = viewingQr.name.replace(/[<>&"']/g, character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[character] || character);
+    const safeArea = (viewingQr.areaName || '').replace(/[<>&"']/g, character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[character] || character);
+    const safeBranch = (viewingQr.branchName || '').replace(/[<>&"']/g, character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[character] || character);
+
+    printWindow.document.write(`<!doctype html><html><head><title>QR ${safeName}</title><style>body{font-family:Arial,sans-serif;text-align:center;margin:32px;color:#111}h1{font-size:28px;margin:0 0 8px}p{margin:4px 0;color:#555;font-size:14px}.qr{width:360px;height:360px;object-fit:contain;margin:24px auto 16px;display:block}@media print{body{margin:0;padding:20px}}</style></head><body><h1>${safeName}</h1><p>${safeArea}${safeBranch ? ` — ${safeBranch}` : ''}</p><img class="qr" src="${qrUrl}" alt="QR ${safeName}" /><p>Quét mã để mở thực đơn tại bàn</p></body></html>`);
+    printWindow.document.close();
+    const image = printWindow.document.querySelector('img');
+    if (image) {
+      image.addEventListener('load', () => {
+        printWindow.focus();
+        printWindow.print();
+      }, { once: true });
+    }
+  };
+
   const filteredTables = useMemo(() => {
     return tables.filter(t => {
       const matchSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -473,17 +527,17 @@ const TableManagement = () => {
               <p className="text-xs text-gray-400 mb-10 uppercase font-black tracking-[0.2em] opacity-60">{viewingQr.areaName} — {viewingQr.branchName}</p>
 
               <div className="bg-gray-50 p-10 rounded-[3rem] border-4 border-white shadow-2xl mb-10 group relative overflow-hidden">
-                 {viewingQrToken && <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${CUSTOMER_WEB_URL}?qr=${viewingQrToken}`)}`} alt="QR" className="w-full aspect-square" />}
+                 {viewingQrToken && <img src={getTableQrUrl(viewingQrToken, 300)} alt="QR" className="w-full aspect-square" />}
                  <div className="absolute inset-0 bg-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <QrCode size={48} className="text-blue-100 opacity-20" />
                  </div>
               </div>
 
               <div className="flex space-x-4">
-                 <button className="flex-1 py-5 bg-gray-100 text-gray-600 rounded-3xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center justify-center active:scale-95">
+                 <button type="button" onClick={() => void handleDownloadTableQr()} disabled={!viewingQrToken} className="flex-1 py-5 bg-gray-100 text-gray-600 rounded-3xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center justify-center active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
                     <Download size={18} className="mr-2" /> TẢI VỀ
                  </button>
-                 <button className="flex-[2] py-5 bg-[#0070f4] text-white rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center justify-center active:scale-95">
+                 <button type="button" onClick={handlePrintTableQr} disabled={!viewingQrToken} className="flex-[2] py-5 bg-[#0070f4] text-white rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center justify-center active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
                     <Printer size={18} className="mr-2" /> IN NHÃN QR
                  </button>
               </div>

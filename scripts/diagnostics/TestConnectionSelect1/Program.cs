@@ -14,20 +14,15 @@ if (!string.Equals(environment, environmentName, StringComparison.Ordinal))
     return Fail("ENVIRONMENT CHECK: FAIL");
 
 var targetMode = configuration["Database:TargetMode"]?.Trim();
-var expectedProjectRef = configuration["Database:ExpectedProjectRef"]?.Trim();
 var allowAutomaticMigration = configuration["DatabaseSafety:AllowAutomaticMigration"];
 
-if (!string.Equals(targetMode, SupabaseProjectTargetGuard.TestMode, StringComparison.OrdinalIgnoreCase))
+if (!string.Equals(targetMode, DatabaseTargetGuard.LocalMode, StringComparison.OrdinalIgnoreCase))
     return Fail("TARGET MODE CHECK: FAIL");
-
-if (!string.Equals(expectedProjectRef, SupabaseProjectTargetGuard.TestProjectRef, StringComparison.Ordinal))
-    return Fail("PROJECT REFERENCE CHECK: FAIL");
 
 if (!bool.TryParse(allowAutomaticMigration, out var automaticMigration) || automaticMigration)
     return Fail("AUTOMATIC MIGRATION CHECK: FAIL");
 
-var rawConnectionString = configuration.GetConnectionString("DefaultConnection")
-    ?? configuration["SUPABASE_CONNECTION_STRING"];
+var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
 
 if (string.IsNullOrWhiteSpace(rawConnectionString))
     return Fail("CREDENTIAL CONFIGURATION CHECK: FAIL");
@@ -36,7 +31,7 @@ NpgsqlConnectionStringBuilder connection;
 try
 {
     connection = NormalizeConnectionString(rawConnectionString);
-    SupabaseProjectTargetGuard.Validate(connection, configuration, isDevelopment: true);
+    DatabaseTargetGuard.Validate(connection, configuration, isDevelopment: true);
 }
 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UriFormatException)
 {
@@ -50,9 +45,8 @@ connection.Timeout = 15;
 connection.CommandTimeout = 15;
 
 Console.WriteLine("TARGET CHECK: PASS");
-Console.WriteLine($"TARGET PROJECT REF: {SupabaseProjectTargetGuard.TestProjectRef}");
 Console.WriteLine($"TARGET: {connection.Host}:{connection.Port}/{connection.Database}");
-Console.WriteLine("SSL: REQUIRED");
+Console.WriteLine($"SSL: {connection.SslMode}");
 Console.WriteLine("AUTOMATIC MIGRATION/SEED: DISABLED");
 Console.WriteLine("DATABASE MUTATION: NONE");
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +37,9 @@ namespace RestaurantPOS.Application.Services
 
             return await strategy.ExecuteAsync(async () =>
             {
-                using var transaction = await _context.Database.BeginTransactionAsync();
+                // Serialize sends for the same order so concurrent clicks cannot
+                // read the same SentQuantity/RequestNumber and create duplicates.
+                await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
                 try
                 {
                     var order = await _context.Orders
@@ -127,7 +130,13 @@ namespace RestaurantPOS.Application.Services
                 .Distinct()
                 .ToArray();
 
-            if (productIds.Length == 0)
+            var toppingIds = order.Details
+                .Where(detail => detail.ToppingId.HasValue)
+                .Select(detail => detail.ToppingId!.Value)
+                .Distinct()
+                .ToArray();
+
+            if (productIds.Length == 0 && toppingIds.Length == 0)
                 return false;
 
             var availableProductCount = await _context.Products
@@ -141,7 +150,19 @@ namespace RestaurantPOS.Application.Services
                         availability.Status == "Available"))
                 .CountAsync();
 
-            return availableProductCount == productIds.Length;
+            var availableToppingCount = await _context.Toppings
+                .Where(topping => toppingIds.Contains(topping.Id) &&
+                    topping.IsActive &&
+                    _context.ToppingBranchAvailabilities.Any(availability =>
+                        availability.ToppingId == topping.Id &&
+                        availability.BranchId == order.BranchId &&
+                        availability.Branch != null &&
+                        availability.Branch.IsActive &&
+                        availability.Status == "Available"))
+                .CountAsync();
+
+            return availableProductCount == productIds.Length &&
+                availableToppingCount == toppingIds.Length;
         }
 
         public async Task<List<object>> GetActiveKitchenRequestsAsync(Guid? branchId)
@@ -224,14 +245,46 @@ namespace RestaurantPOS.Application.Services
             }
             else
             {
-                request = await _context.OrderRequests.FindAsync(requestId);
-                if (request == null) return null;
+                if (string.Equals(status, "Cancelled", StringComparison.Ordinal))
+                {
+                    await using var cancellationTransaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+                    request = await _context.OrderRequests
+                        .Include(item => item.Items)
+                        .FirstOrDefaultAsync(item => item.Id == requestId);
+                    if (request == null) return null;
 
-                request.Status = status;
-                request.ProcessedBy = processedBy ?? request.ProcessedBy;
-                var now = DateTime.UtcNow;
-                if (status == "Preparing") { request.AcceptedAt ??= now; request.PreparingAt ??= now; }
-                await _context.SaveChangesAsync();
+                    var order = await _context.Orders
+                        .Include(item => item.Details)
+                        .FirstOrDefaultAsync(item => item.Id == request.OrderId);
+                    if (order != null)
+                    {
+                        foreach (var requestItem in request.Items)
+                        {
+                            var detail = order.Details.FirstOrDefault(item =>
+                                item.ProductId == requestItem.ProductId &&
+                                string.Equals(item.ProductName, requestItem.ProductName, StringComparison.Ordinal) &&
+                                string.Equals(item.Options ?? string.Empty, requestItem.Options ?? string.Empty, StringComparison.Ordinal));
+                            if (detail != null)
+                                detail.SentQuantity = Math.Max(0, detail.SentQuantity - requestItem.Quantity);
+                        }
+                    }
+
+                    request.Status = status;
+                    request.ProcessedBy = processedBy ?? request.ProcessedBy;
+                    await _context.SaveChangesAsync();
+                    await cancellationTransaction.CommitAsync();
+                }
+                else
+                {
+                    request = await _context.OrderRequests.FindAsync(requestId);
+                    if (request == null) return null;
+
+                    request.Status = status;
+                    request.ProcessedBy = processedBy ?? request.ProcessedBy;
+                    var now = DateTime.UtcNow;
+                    if (status == "Preparing") { request.AcceptedAt ??= now; request.PreparingAt ??= now; }
+                    await _context.SaveChangesAsync();
+                }
             }
 
             var orderRow = await (from r in _context.OrderRequests.AsNoTracking()
@@ -308,6 +361,27 @@ namespace RestaurantPOS.Application.Services
             }
 
             return request;
+        }
+
+        public async Task<int> CancelActiveRequestsForOrderAsync(Guid orderId)
+        {
+            var orderBranchId = await _context.Orders
+                .Where(order => order.Id == orderId)
+                .Select(order => (Guid?)order.BranchId)
+                .FirstOrDefaultAsync();
+            var requests = await _context.OrderRequests
+                .Where(request => request.OrderId == orderId &&
+                    request.Status != "Completed" && request.Status != "Cancelled")
+                .ToListAsync();
+            if (requests.Count == 0) return 0;
+
+            foreach (var request in requests)
+                request.Status = "Cancelled";
+
+            await _context.SaveChangesAsync();
+            foreach (var request in requests)
+                await _kitchenNotifier.NotifyRequestStatusUpdatedAsync(request.Id, "Cancelled", orderBranchId);
+            return requests.Count;
         }
 
         private static bool IsValidKitchenStatus(string status) => status is "Pending" or "Preparing" or "Ready" or "Completed" or "Cancelled";

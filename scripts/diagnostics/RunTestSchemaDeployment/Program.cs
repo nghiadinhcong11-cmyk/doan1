@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Npgsql;
 using RestaurantPOS.Infrastructure.Configuration;
 
-const string latestMigration = "20261005072156_RemoveLegacyTableAreaName";
+const string latestMigration = "20261028145539_AddOrderEmployeeAuditForeignKeys";
 const string repoRootMarker = "dotnet-tools.json";
 
 var mode = args.Length == 0 ? "--dry-run" : args[0];
@@ -25,15 +25,13 @@ var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 if (!string.Equals(environment, "Development", StringComparison.Ordinal))
     return Fail("ENVIRONMENT CHECK: FAIL");
 
-if (!string.Equals(configuration["Database:TargetMode"], SupabaseProjectTargetGuard.TestMode, StringComparison.OrdinalIgnoreCase) ||
-    !string.Equals(configuration["Database:ExpectedProjectRef"], SupabaseProjectTargetGuard.TestProjectRef, StringComparison.Ordinal))
-    return Fail("TEST TARGET CONFIGURATION: FAIL");
+if (!string.Equals(configuration["Database:TargetMode"], DatabaseTargetGuard.LocalMode, StringComparison.OrdinalIgnoreCase))
+    return Fail("LOCAL TARGET CONFIGURATION: FAIL");
 
 if (!bool.TryParse(configuration["DatabaseSafety:AllowAutomaticMigration"], out var allowAutomaticMigration) || allowAutomaticMigration)
     return Fail("AUTOMATIC MIGRATION CHECK: FAIL");
 
-var rawConnectionString = configuration.GetConnectionString("DefaultConnection")
-    ?? configuration["SUPABASE_CONNECTION_STRING"];
+var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(rawConnectionString))
     return Fail("CREDENTIAL CONFIGURATION CHECK: FAIL");
 
@@ -41,25 +39,20 @@ NpgsqlConnectionStringBuilder connection;
 try
 {
     connection = NormalizeConnectionString(rawConnectionString);
-    SupabaseProjectTargetGuard.Validate(connection, configuration, isDevelopment: true);
+    DatabaseTargetGuard.Validate(connection, configuration, isDevelopment: true);
 }
 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UriFormatException)
 {
     return Fail($"TARGET CHECK: FAIL ({ex.GetType().Name})");
 }
 
-if (connection.SslMode == SslMode.Disable)
-    return Fail("SSL CHECK: FAIL");
-
 connection.MaxPoolSize = 5;
 connection.MinPoolSize = 0;
 connection.Timeout = 15;
 connection.CommandTimeout = 15;
 
-Console.WriteLine("TEST TARGET CHECK: PASS");
-Console.WriteLine($"PROJECT REF: {SupabaseProjectTargetGuard.TestProjectRef}");
+Console.WriteLine("LOCAL TARGET CHECK: PASS");
 Console.WriteLine($"TARGET: {connection.Host}:{connection.Port}/{connection.Database}");
-Console.WriteLine("MAIN TARGET: REJECTED");
 Console.WriteLine("AUTOMATIC MIGRATION/SEED: DISABLED");
 Console.WriteLine($"MODE: {mode}");
 
@@ -160,7 +153,7 @@ foreach (var argument in new[]
 
 ef.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
 ef.Environment["Database__TargetMode"] = "Test";
-ef.Environment["Database__ExpectedProjectRef"] = SupabaseProjectTargetGuard.TestProjectRef;
+ef.Environment["Database__TargetMode"] = DatabaseTargetGuard.LocalMode;
 ef.Environment["DatabaseSafety__AllowAutomaticMigration"] = "false";
 ef.Environment["ConnectionStrings__DefaultConnection"] = connection.ConnectionString;
 ef.Environment["Jwt__Secret"] = jwtSecret;

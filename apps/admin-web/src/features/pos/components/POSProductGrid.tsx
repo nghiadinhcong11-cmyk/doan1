@@ -7,7 +7,7 @@ interface POSProductGridProps {
 }
 
 const POSProductGrid = ({ products, onAddProduct }: POSProductGridProps) => (
-  <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+  <div className="pos-product-grid grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
     {products.map((product, idx) => (
       <button
         type="button"
